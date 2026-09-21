@@ -97,16 +97,30 @@ fi
 
 # ------------------------------------------------------------
 if [ "$DO_ZRAM" -eq 1 ]; then
-  echo "== 2/5 · zram (swap comprimido en RAM) =="
-  echo "   Motivo: hoy hay 493 MB de swap en /var/swap, que es la SD."
-  run apt-get install -y systemd-zram-generator
-  run cp "$REPO_DIR/deploy/zram-generator.conf" /etc/systemd/zram-generator.conf
+  echo "== 2/5 · zram con el gestor NATIVO de Raspberry Pi OS =="
+  echo "   Motivo: cientos de MB de swap escribiendose en la SD."
+  echo
+  echo "   NO se usa systemd-zram-generator. Raspberry Pi OS ya trae"
+  echo "   /usr/lib/systemd/zram-generator.conf.d/20-rpi-swap-zram0-ctrl.conf"
+  echo "   con fs-type=none, que DESACTIVA zram a proposito: es rpi-swap"
+  echo "   quien lo activa. Un fichero propio en /etc/ pisaria ese control"
+  echo "   y rompe la cadena de dependencias (paso, comprobado)."
+  echo
+  # Limpieza de aquel intento fallido, si existe.
+  if [ -f /etc/systemd/zram-generator.conf ]; then
+    echo "   AVISO: existe /etc/systemd/zram-generator.conf (el intento"
+    echo "   fallido). Se retira para restaurar la config del fabricante."
+    run rm -f /etc/systemd/zram-generator.conf
+  fi
+  run mkdir -p /etc/rpi/swap.conf.d
+  run cp "$REPO_DIR/deploy/rpi-swap-jarvis.conf" /etc/rpi/swap.conf.d/99-jarvis.conf
   run cp "$REPO_DIR/deploy/sysctl-swappiness.conf" /etc/sysctl.d/99-jarvis-memoria.conf
   run systemctl daemon-reload
-  run systemctl start systemd-zram-setup@zram0.service
-  run sysctl --system
-  echo "   Comprueba después con:  zramctl  y  swapon --show"
-  echo "   (zram0 debe tener prioridad 100; /var/swap queda de reserva)"
+  run systemctl restart rpi-resize-swap-file.service
+  echo
+  echo "   Hace falta REINICIAR para que rpi-swap aplique el mecanismo:"
+  echo "     sudo reboot"
+  echo "   Luego comprobar con:  zramctl ; swapon --show ; free -m"
   echo
 fi
 

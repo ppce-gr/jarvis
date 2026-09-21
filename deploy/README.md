@@ -14,7 +14,7 @@ El análisis y las mediciones que justifican cada pieza están en el proyecto
 
 | # | Problema medido | Gravedad | Solución preparada |
 |---|---|---|---|
-| 1 | **493 MB de swap escribiéndose en la SD** (`/var/swap` en `/dev/mmcblk0p2`) | 🔴 Alta | `zram-generator.conf` + `sysctl-swappiness.conf` |
+| 1 | **Cientos de MB de swap escribiéndose en la SD** (`/var/swap` en `/dev/mmcblk0p2`) | 🔴 Alta | `rpi-swap-jarvis.conf` + `sysctl-swappiness.conf` |
 | 2 | `npx @deepseek-ai/dsh@latest` en el arranque | 🟠 Media | `npm install -g @deepseek-ai/dsh@0.1.5-rc.2` |
 | 3 | `killall -9 node socat python3` mata también a Jarvis | 🟠 Media | `legacy/arrancar-dsh.sh` corregido |
 | 4 | Jarvis corre dentro del cgroup del servicio de DSH | 🟡 Baja | `systemd/jarvis.service` propio |
@@ -27,7 +27,7 @@ El análisis y las mediciones que justifican cada pieza están en el proyecto
 deploy/
 ├── README.md                      # este fichero
 ├── instalar.sh                    # aplica los cambios (idempotente, con --dry-run)
-├── zram-generator.conf           → /etc/systemd/zram-generator.conf
+├── rpi-swap-jarvis.conf          → /etc/rpi/swap.conf.d/99-jarvis.conf
 ├── sysctl-swappiness.conf        → /etc/sysctl.d/99-jarvis-memoria.conf
 ├── systemd/
 │   ├── jarvis.service            → /etc/systemd/system/  (interfaz, puerto 3081)
@@ -51,14 +51,45 @@ sudo bash deploy/instalar.sh --dry-run --all
 
 ```bash
 sudo bash deploy/instalar.sh --zram
+sudo reboot
 ```
+
+### ⚠️ Lo que NO hay que hacer (y por qué está escrito aquí)
+
+El primer intento copió un `/etc/systemd/zram-generator.conf` propio. **Eso
+rompe el sistema.** Raspberry Pi OS ya trae:
+
+```text
+/usr/lib/systemd/zram-generator.conf                        [zram0] base
+/usr/lib/systemd/zram-generator.conf.d/
+    20-rpi-swap-zram0-ctrl.conf                             fs-type=none
+                                                            host-memory-limit=0
+```
+
+Es decir: **el fabricante desactiva zram a propósito** y es `rpi-swap` quien lo
+activa cuando el mecanismo lo pide. Un fichero en `/etc/` tiene más precedencia,
+así que el nuestro sustituyó ese control y dejó la cadena de dependencias rota
+(`systemd-zram-setup@zram0.service` → *dependency failed*).
+
+**La forma correcta es configurar `rpi-swap`**, el gestor nativo, con un drop-in
+en `/etc/rpi/swap.conf.d/`. Eso es lo que hace `instalar.sh --zram` ahora, y
+además retira el fichero conflictivo si lo encuentra.
 
 Y comprobar que ha funcionado:
 
 ```bash
-zramctl                 # debe aparecer zram0 con ~450 MB
-swapon --show           # zram0 prioridad 100, /var/swap prioridad -2
-free -m                 # el "swap used" debería dejar de crecer en la SD
+zramctl                 # debe aparecer zram0 con ~900 MB descomprimidos
+swapon --show           # debe aparecer zram0... y NO /var/swap
+free -m                 # el swap total pasa a ser solo zram
+cat /proc/sys/vm/swappiness   # 100
+```
+
+Con `Mechanism=zram` **el fichero `/var/swap` deja de usarse**. Cuando lo
+confirmes, puedes borrarlo para recuperar 2 GB de SD:
+
+```bash
+ls -la /var/swap            # comprueba que sigue ahí (2 GB)
+sudo rm -f /var/swap        # solo si NO aparece en swapon --show
 ```
 
 **Por qué esto importa:** con `swappiness=60` y sin zram, el kernel estaba
