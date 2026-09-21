@@ -115,8 +115,13 @@ if [ "$DO_ZRAM" -eq 1 ]; then
   run mkdir -p /etc/rpi/swap.conf.d
   run cp "$REPO_DIR/deploy/rpi-swap-jarvis.conf" /etc/rpi/swap.conf.d/99-jarvis.conf
   run cp "$REPO_DIR/deploy/sysctl-swappiness.conf" /etc/sysctl.d/99-jarvis-memoria.conf
+  # OJO: NO se reinicia rpi-resize-swap-file.service. Es parte del mecanismo de
+  # FICHERO, que es justo el que se abandona, y al ejecutarse con /var/swap en
+  # uso falla con "Text file busy". Basta con recargar y reiniciar la maquina.
   run systemctl daemon-reload
-  run systemctl restart rpi-resize-swap-file.service
+  # Aplica el swappiness ya, sin esperar al reinicio (que hace falta igualmente
+  # para que rpi-swap elija el mecanismo).
+  run sysctl --system
   echo
   echo "   Hace falta REINICIAR para que rpi-swap aplique el mecanismo:"
   echo "     sudo reboot"
