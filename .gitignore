@@ -1,0 +1,17 @@
+# Dependencias (el proyecto no tiene de runtime, pero por si acaso)
+node_modules/
+npm-debug.log*
+
+# Entorno y secretos
+.env
+.env.local
+*.key
+*.pem
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Temporales de la raíz (las bitácoras de projects/ SÍ se versionan)
+*.tmp
+/jarvis-core.log

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b0f14" />
+  <title>Jarvis · Centro de Mando</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Cabecera -->
+    <header class="topbar">
+      <button id="menu-toggle" class="icon-btn" aria-label="Mostrar menú">☰</button>
+      <div class="brand">
+        <span class="brand-mark">J</span>
+        <div class="brand-text">
+          <strong>JARVIS</strong>
+          <small id="brand-sub">Centro de Mando</small>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span id="git-status" class="pill" title="Estado del respaldo Git">git · …</span>
+        <button id="new-project-btn" class="btn btn-primary btn-sm">+ Idea</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- Panel lateral: proyectos e ideas -->
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-title">Proyectos / Ideas</div>
+          <ul id="project-list" class="tree"></ul>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-title">
+            <span>Notas de <em id="current-project-label">—</em></span>
+            <button id="new-note-btn" class="icon-btn tiny" title="Nueva nota">＋</button>
+          </div>
+          <ul id="note-list" class="tree"></ul>
+        </div>
+      </aside>
+
+      <!-- Panel principal -->
+      <main class="main">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="conceptual" role="tab">Conceptual</button>
+          <button class="tab" data-tab="code" role="tab">Código</button>
+          <button class="tab" data-tab="logs" role="tab">Bitácora</button>
+          <span class="tabs-spacer"></span>
+          <button id="edit-toggle" class="btn btn-ghost btn-sm" title="Editar / Ver">✎ Editar</button>
+          <button id="save-note-btn" class="btn btn-primary btn-sm hidden">💾 Guardar</button>
+        </div>
+
+        <section id="pane-conceptual" class="pane">
+          <div id="note-header" class="note-header hidden">
+            <h1 id="note-title-view">—</h1>
+            <div id="note-tags" class="tags"></div>
+          </div>
+          <article id="markdown-view" class="markdown">
+            <div class="empty-state">
+              <h2>Bienvenido a Jarvis</h2>
+              <p>Selecciona una idea en el panel izquierdo o crea una nueva con <strong>+ Idea</strong>.</p>
+              <p class="muted">Aquí vivirán tus notas conceptuales, tus subideas enlazadas y tus ficheros de preguntas y respuestas.</p>
+            </div>
+          </article>
+          <textarea id="markdown-editor" class="editor hidden" spellcheck="true"></textarea>
+        </section>
+
+        <section id="pane-code" class="pane hidden">
+          <div class="file-browser">
+            <ul id="code-file-list" class="file-list"></ul>
+            <pre id="code-file-view" class="file-view"><span class="muted">Selecciona un fichero de la lista.</span></pre>
+          </div>
+        </section>
+
+        <section id="pane-logs" class="pane hidden">
+          <div class="file-browser">
+            <ul id="logs-file-list" class="file-list"></ul>
+            <pre id="logs-file-view" class="file-view"><span class="muted">Aquí verás las bitácoras del orquestador y de los agentes.</span></pre>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Barra de órdenes para el orquestador -->
+    <footer class="commandbar">
+      <span class="command-prefix" title="Orquestador">⌘</span>
+      <input
+        id="command-input"
+        type="text"
+        placeholder="Dile a Jarvis qué hacer con la idea seleccionada…"
+        autocomplete="off"
+      />
+      <button id="command-send" class="btn btn-primary">Enviar</button>
+    </footer>
+  </div>
+
+  <!-- Modal: nueva idea -->
+  <dialog id="new-project-dialog" class="dialog">
+    <form id="new-project-form" method="dialog">
+      <h2>Nueva idea / proyecto</h2>
+      <label>
+        Título
+        <input name="name" required placeholder="Ej: Asistente de recetas" />
+      </label>
+      <label>
+        Descripción breve
+        <textarea name="description" rows="4" placeholder="¿De qué va esta idea?"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+        <button type="submit" class="btn btn-primary">Crear idea</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal: nueva nota -->
+  <dialog id="new-note-dialog" class="dialog">
+    <form id="new-note-form" method="dialog">
+      <h2>Nueva nota conceptual</h2>
+      <label>
+        Identificador (sin espacios)
+        <input name="noteId" required placeholder="Ej: subidea-auth" />
+      </label>
+      <label>
+        Título
+        <input name="title" placeholder="Ej: Subidea de autenticación" />
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+        <button type="submit" class="btn btn-primary">Crear nota</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

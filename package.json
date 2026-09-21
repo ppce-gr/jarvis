@@ -1,0 +1,22 @@
+{
+  "name": "jarvis-core",
+  "version": "1.0.0",
+  "description": "Sistema de gestión de ideas, proyectos e indexado Markdown con arquitectura hexagonal y orquestación asistida por IA para Raspberry Pi 3B",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "keywords": [
+    "jarvis",
+    "hexagonal",
+    "solid",
+    "markdown-engine",
+    "raspberry-pi",
+    "orchestrator"
+  ],
+  "author": "Jarvis Bot",
+  "license": "MIT"
+}

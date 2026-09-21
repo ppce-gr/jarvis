@@ -1,0 +1,26 @@
+[Unit]
+Description=Jarvis · Centro de Mando (interfaz web de ideas y orquestación)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Ajusta estas dos líneas a tu usuario y ruta reales:
+User=jarvis
+WorkingDirectory=/home/jarvis/jarvis
+Environment=JARVIS_PORT=3081
+Environment=JARVIS_HOST=0.0.0.0
+
+ExecStart=/usr/bin/node src/index.js
+
+Restart=on-failure
+RestartSec=5
+# La Pi 3B tiene poca RAM: nada de reinicios agresivos ni de fork masivo
+MemoryMax=256M
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jarvis
+
+[Install]
+WantedBy=multi-user.target
