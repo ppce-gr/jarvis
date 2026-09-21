@@ -471,3 +471,21 @@ test('la preferencia guardada se usa al arrancar una sesión nueva', async () =>
 
   await adapter.closeAll();
 });
+
+test('rechaza un segundo turno simultáneo en la misma sesión', async () => {
+  const ws = await tempWorkspace();
+  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+
+  const eventos = [];
+  adapter.subscribe('demo', (e) => eventos.push(e));
+
+  await adapter.send('demo', 'primero');
+  // ACP no etiqueta los deltas por turno: dos a la vez corromperían el buffer.
+  await assert.rejects(() => adapter.send('demo', 'segundo'), /CHAT_BUSY/);
+
+  await waitFor(() => eventos.some((e) => e.type === 'turn-end'));
+  // Terminado el turno, vuelve a aceptarse.
+  await adapter.send('demo', 'tercero');
+
+  await adapter.closeAll();
+});

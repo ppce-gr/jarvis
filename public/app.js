@@ -476,7 +476,13 @@ function setChatStatus(status) {
   el.textContent = labels[status] || status;
   el.className = `chat-status ${status}`;
   state.chat.busy = status === 'running' || status === 'starting';
-  $('#chat-input').disabled = false;   // el servidor encola; no bloqueamos al usuario
+  // ACP no permite separar los deltas de dos turnos a la vez, así que el
+  // servidor rechaza el segundo. Se deshabilita el campo para no chocar.
+  $('#chat-input').disabled = state.chat.busy;
+  $('#chat-send').disabled = state.chat.busy;
+  $('#chat-input').placeholder = state.chat.busy
+    ? 'Jarvis está respondiendo… (pulsa Detener para interrumpir)'
+    : 'Escribe a Jarvis… (Enter envía, Shift+Enter salto de línea)';
   // El botón de detener sólo tiene sentido mientras el agente trabaja.
   const stop = $('#chat-stop');
   if (stop) stop.classList.toggle('hidden', !state.chat.busy);

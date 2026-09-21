@@ -596,6 +596,14 @@ export class AcpConversationAdapter extends ConversationPort {
       throw new Error('No se pudo preparar la sesión de conversación con ACP');
     }
 
+    // Un turno a la vez por sesión. ACP no etiqueta los deltas con el turno al
+    // que pertenecen, así que dos prompts simultáneos mezclarían sus textos en
+    // un mismo buffer y el transcript quedaría corrupto. Se rechaza el segundo
+    // en vez de arriesgarse: la interfaz deshabilita el campo mientras tanto.
+    if (session.busy) {
+      throw new Error('CHAT_BUSY: ya hay una respuesta en curso; espera o pulsa Detener');
+    }
+
     await this._record(projectId, { role: 'user', text: clean });
     this._emit(projectId, { type: 'user', text: clean });
 
