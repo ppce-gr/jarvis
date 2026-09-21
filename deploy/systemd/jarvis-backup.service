@@ -1,0 +1,11 @@
+[Unit]
+Description=Jarvis · respaldo Git del workspace (protección de la SD)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=jarvis
+WorkingDirectory=/home/jarvis/jarvis
+Environment=HOME=/home/jarvis
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/jarvis/jarvis/scripts/backup.sh

@@ -53,8 +53,9 @@ La primera ejecución crea `~/.dsh/profiles/headless` **sin red y sin
 `pnpm install`** (usa un symlink a la propia instalación de DSH).
 
 > **Ojo con el servicio systemd:** si `dsh` no está instalado globalmente, el
-> PATH del servicio no lo encontrará. Ajusta `Environment=JARVIS_DSH_BIN=` en
-> `scripts/jarvis.service` con la ruta absoluta que devuelva `command -v dsh`.
+> PATH del servicio no lo encontrará. El instalador
+> `deploy/instalar.sh --jarvis` detecta la ruta y la inyecta en la unidad
+> automáticamente. Si lo haces a mano, ajusta `Environment=JARVIS_DSH_BIN=`.
 
 ---
 
@@ -86,16 +87,38 @@ Abre `http://<nueva-ip>:3081` y verifica que ves tus proyectos y notas.
 
 ## 5. Si quieres arranque automático
 
-Copia la unidad de ejemplo y ajústala:
+Todo lo que va a `/etc` está preparado en `deploy/`, con un instalador idempotente
+que además detecta la ruta real del binario `dsh`:
 
 ```bash
-sudo cp scripts/jarvis.service /etc/systemd/system/jarvis.service
-sudo nano /etc/systemd/system/jarvis.service   # ajusta User y rutas
+cd ~/jarvis
+sudo bash deploy/instalar.sh --dry-run --all   # ver el plan sin tocar nada
+sudo bash deploy/instalar.sh --dsh-global      # CLI fijado (recomendado primero)
+sudo bash deploy/instalar.sh --zram            # swap comprimido en RAM
+sudo bash deploy/instalar.sh --jarvis          # interfaz en el puerto 3081
+sudo bash deploy/instalar.sh --backup          # respaldo Git cada 30 min
+```
+
+El detalle de cada paso y las comprobaciones están en
+[`deploy/README.md`](../deploy/README.md).
+
+Si prefieres hacerlo a mano:
+
+```bash
+sudo cp deploy/systemd/jarvis.service /etc/systemd/system/jarvis.service
+sudo nano /etc/systemd/system/jarvis.service   # ajusta User, rutas y JARVIS_DSH_BIN
 sudo systemctl daemon-reload
 sudo systemctl enable --now jarvis
 ```
 
-Para el respaldo periódico en Git:
+Para el respaldo periódico en Git, la vía limpia es el temporizador:
+
+```bash
+sudo cp deploy/systemd/jarvis-backup.{service,timer} /etc/systemd/system/
+sudo systemctl enable --now jarvis-backup.timer
+```
+
+O, si lo prefieres por cron:
 
 ```bash
 crontab -e

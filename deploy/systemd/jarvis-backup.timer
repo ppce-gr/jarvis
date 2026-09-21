@@ -1,0 +1,12 @@
+[Unit]
+Description=Jarvis · respaldo Git cada 30 minutos
+
+[Timer]
+# Espera 10 min tras el arranque para no competir con el boot de la Pi.
+OnBootSec=10min
+OnUnitActiveSec=30min
+# Si la Pi estuvo apagada, recupera el respaldo perdido al encender.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

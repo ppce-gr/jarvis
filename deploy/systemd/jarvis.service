@@ -5,25 +5,30 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Ajusta estas dos líneas a tu usuario y ruta reales:
+
+# --- Ajusta estas tres líneas a tu usuario y rutas reales ---
 User=jarvis
 WorkingDirectory=/home/jarvis/jarvis
-# HOME es necesario para que el CLI dsh encuentre ~/.dsh (perfiles y credenciales)
 Environment=HOME=/home/jarvis
+
+# El CLI dsh vive aquí tras 'npm install -g @deepseek-ai/dsh@<version fijada>'.
+# Un `command -v dsh` en tu shell te da la ruta exacta.
+Environment=JARVIS_DSH_BIN=/usr/local/bin/dsh
+Environment=JARVIS_DSH_PROFILE=headless
 Environment=JARVIS_PORT=3081
 Environment=JARVIS_HOST=0.0.0.0
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-# Ruta al binario de DeepSeek Harness. Si instalas dsh globalmente
-# (npm install -g @deepseek-ai/dsh) basta con "dsh"; si no, pon la ruta
-# absoluta que devuelva `command -v dsh` en tu shell.
-Environment=JARVIS_DSH_BIN=/usr/local/bin/dsh
 
 ExecStart=/usr/bin/node src/index.js
 
 Restart=on-failure
 RestartSec=5
-# La Pi 3B tiene poca RAM: nada de reinicios agresivos ni de fork masivo
+# La Pi 3B tiene 905 MB: limitamos para que un descontrol no arrastre al sistema.
 MemoryMax=256M
+
+# Endurecimiento básico: Jarvis no necesita privilegios ni escribir fuera de casa.
+NoNewPrivileges=true
+PrivateTmp=true
 
 StandardOutput=journal
 StandardError=journal

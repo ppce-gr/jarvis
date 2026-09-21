@@ -51,7 +51,9 @@ jarvis/
 │   └── index.js                 # Raíz de composición (aquí se inyecta todo)
 ├── public/                      # Interfaz web (HTML/CSS/JS sin frameworks)
 ├── projects/                    # TUS ideas: Markdown + código + bitácoras
+│   └── sistema-jarvis/          # Meta-proyecto: contexto y decisiones del propio Jarvis
 ├── docs/                        # Documentación y guías
+├── deploy/                      # Ficheros de sistema (systemd, zram) + instalador
 ├── scripts/                     # Despliegue y respaldo
 └── test/                        # Suite de pruebas (node:test)
 ```
@@ -67,6 +69,11 @@ jarvis/
 | [`docs/integracion-dsh.md`](docs/integracion-dsh.md) | Cómo se conecta con DeepSeek Harness: alternativas, mediciones y decisión. |
 | [`docs/manual-interfaz.md`](docs/manual-interfaz.md) | Cómo usar la interfaz web desde el móvil. |
 | [`docs/guia-migracion.md`](docs/guia-migracion.md) | Cómo llevarte Jarvis a otro hardware. |
+| [`deploy/README.md`](deploy/README.md) | Instalación de los servicios de sistema, zram y respaldo. |
+
+> **Contexto del proyecto:** todo el hilo de decisiones que dio forma a Jarvis
+> vive en `projects/sistema-jarvis/`. Si retomas esto tras un parón, empieza por
+> `projects/sistema-jarvis/conceptual/_indice.md`.
 
 ---
 

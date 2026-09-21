@@ -82,4 +82,4 @@ Cada proyecto o idea pasa por dos etapas bien diferenciadas:
 * **Dominio, puertos y casos de uso** implementados con arquitectura hexagonal.
 * **Adaptadores:** sistema de ficheros (Markdown + explorador), Git y DSH (orquestación).
 * **19 pruebas automáticas** en verde (`npm test`).
-* **Respaldo y migración:** `scripts/backup.sh`, `scripts/deploy.sh` y `scripts/jarvis.service`.
+* **Respaldo y migración:** `scripts/backup.sh`, `scripts/deploy.sh` y `deploy/` (unidades systemd, zram y guía de instalación).
