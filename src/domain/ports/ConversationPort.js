@@ -74,6 +74,24 @@ export class ConversationPort {
     throw new Error('METHOD_NOT_IMPLEMENTED');
   }
 
+  /**
+   * Catálogo de modelos y opciones que ofrece el motor, más la selección
+   * actual. Permite que la interfaz ofrezca un selector real en vez de
+   * obligar a tocar variables de entorno.
+   * @returns {Promise<{options: Array<object>, current: object}>}
+   */
+  async getConfig(projectId) {
+    return { options: [], current: {} };
+  }
+
+  /**
+   * Cambia una opción de configuración (`model`, `reasoning_effort`…).
+   * Debe persistirla para que se aplique a futuras sesiones.
+   */
+  async setConfig(configId, value) {
+    throw new Error('METHOD_NOT_IMPLEMENTED');
+  }
+
   /** Cierra todas las sesiones y libera los procesos. */
   async closeAll() {
     throw new Error('METHOD_NOT_IMPLEMENTED');

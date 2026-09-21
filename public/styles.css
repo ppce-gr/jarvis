@@ -362,7 +362,24 @@ html, body {
 .chat-status.running { color: #9ccbff; border-color: #23496f; }
 .chat-status.idle { color: var(--text-dim); }
 .chat-status.error { color: #ffb4ae; border-color: #4a1f1c; }
-.chat-head .btn { margin-left: auto; }
+.chat-head .btn { margin-left: 0; }
+.chat-head #chat-reset { margin-left: auto; }
+
+/* Selector de modelo y esfuerzo */
+.chat-select {
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  max-width: 210px;
+  cursor: pointer;
+}
+.chat-select:hover { border-color: #2f4356; }
+.chat-select:focus { outline: none; border-color: var(--accent-strong); }
+.chat-select-sm { max-width: 110px; }
+.chat-select.loading { opacity: .5; }
 
 .chat-messages {
   flex: 1 1 auto;

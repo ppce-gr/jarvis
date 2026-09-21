@@ -38,6 +38,8 @@ import { JsonRpcStdioClient } from './JsonRpcStdioClient.js';
  */
 export class AcpConversationAdapter extends ConversationPort {
   static DEFAULT_IDLE_MS = 15 * 60 * 1000;
+  static DEFAULT_PERMISSION_MS = 120 * 1000;
+  static DEFAULT_STALL_MS = 10 * 60 * 1000;
 
   constructor({
     workspaceRoot = process.cwd(),
@@ -48,6 +50,11 @@ export class AcpConversationAdapter extends ConversationPort {
     model = process.env.JARVIS_CHAT_MODEL || 'deepseek-v4-flash',
     reasoningEffort = process.env.JARVIS_CHAT_EFFORT || 'high',
     idleTimeoutMs = AcpConversationAdapter.DEFAULT_IDLE_MS,
+    permissionTimeoutMs = Number(process.env.JARVIS_PERMISSION_TIMEOUT_MS
+      || AcpConversationAdapter.DEFAULT_PERMISSION_MS),
+    stallTimeoutMs = Number(process.env.JARVIS_STALL_TIMEOUT_MS
+      || AcpConversationAdapter.DEFAULT_STALL_MS),
+    configFile = null,
     spawnFn = nodeSpawn
   } = {}) {
     super();
@@ -55,11 +62,19 @@ export class AcpConversationAdapter extends ConversationPort {
     this.dshBin = dshBin;
     this.profile = profile;
     this.dshHome = dshHome;
-    this.provider = provider;
-    this.model = model;
-    this.reasoningEffort = reasoningEffort;
     this.idleTimeoutMs = idleTimeoutMs;
+    this.permissionTimeoutMs = permissionTimeoutMs;
+    this.stallTimeoutMs = stallTimeoutMs;
     this.spawnFn = spawnFn;
+
+    // Preferencia de modelo y esfuerzo. Se carga de disco si existe; los
+    // valores de entorno son sólo el punto de partida.
+    this.configFile = configFile || path.join(workspaceRoot, 'chat-config.json');
+    this.preferred = {
+      model: JSON.stringify([provider, model]),
+      reasoning_effort: reasoningEffort
+    };
+    this._preferredLoaded = false;
 
     /** @type {null | {child: any, rpc: JsonRpcStdioClient}} */
     this._client = null;
@@ -67,6 +82,39 @@ export class AcpConversationAdapter extends ConversationPort {
 
     /** @type {Map<string, object>} projectId -> sesión */
     this._sessions = new Map();
+
+    /** Catálogo de modelos publicado por DSH. Es el mismo para todas las
+     *  sesiones, así que se cachea para no arrancar el proceso sólo por él. */
+    this._catalog = null;
+
+    /** Peticiones de permiso sin contestar: id JSON-RPC -> datos.
+     *  Sirven para dos cosas: no dejar al agente colgado si algo falla, y
+     *  poder contestarlas al cerrar para que el servidor termine limpio. */
+    this._pendingPermissions = new Map();
+  }
+
+  /* ------------------------------------------------------------------
+   * Preferencia de modelo (persistida)
+   * ------------------------------------------------------------------ */
+  async _loadPreferred() {
+    if (this._preferredLoaded) return;
+    this._preferredLoaded = true;
+    try {
+      const raw = await fs.readFile(this.configFile, 'utf8');
+      const saved = JSON.parse(raw);
+      if (saved?.model) this.preferred.model = saved.model;
+      if (saved?.reasoning_effort) this.preferred.reasoning_effort = saved.reasoning_effort;
+    } catch { /* sin fichero: se usan los valores de entorno */ }
+  }
+
+  async _savePreferred() {
+    try {
+      await fs.mkdir(path.dirname(this.configFile), { recursive: true });
+      await fs.writeFile(
+        this.configFile,
+        JSON.stringify({ ...this.preferred, updatedAt: new Date().toISOString() }, null, 2)
+      );
+    } catch { /* no es crítico */ }
   }
 
   /* ------------------------------------------------------------------
@@ -246,8 +294,9 @@ export class AcpConversationAdapter extends ConversationPort {
     const created = await client.rpc.request('session/new', { cwd: projectDir, mcpServers: [] });
     record.sessionId = created?.sessionId || null;
     record.ready = true;
+    record.configOptions = created?.configOptions || [];
     await this._storeSession(projectId, record.sessionId);
-    this._applyPreferredConfig(client, record).catch(() => {});
+    await this._applyPreferredConfig(client, record);
     this._emit(projectId, { type: 'status', status: 'idle' });
     return record;
   }
@@ -262,11 +311,12 @@ export class AcpConversationAdapter extends ConversationPort {
       const record = this._sessions.get(projectId);
       record.sessionId = sessionId;
       record.ready = true;
+      if (resumed?.configOptions) record.configOptions = resumed.configOptions;
       await this._storeSession(projectId, sessionId);
-      this._applyPreferredConfig(client, record).catch(() => {});
+      await this._applyPreferredConfig(client, record);
       this._emit(projectId, { type: 'status', status: 'idle' });
       this._emit(projectId, { type: 'log', text: `Conversación reanudada (${sessionId}).` });
-      return Boolean(resumed !== undefined || true);
+      return true;
     } catch {
       return false;
     }
@@ -284,20 +334,31 @@ export class AcpConversationAdapter extends ConversationPort {
     }
   }
 
-  /** Fija modelo y esfuerzo de razonamiento, si la sesión los ofrece. */
+  /**
+   * Aplica la preferencia guardada. DSH publica el catálogo de modelos en
+   * `session/new`, así que aquí sólo se empuja la elección; la lista de lo
+   * disponible se expone aparte en `getConfig()`.
+   */
   async _applyPreferredConfig(client, record) {
     if (!record.sessionId) return;
+    await this._loadPreferred();
     const set = async (configId, value) => {
+      if (value === undefined || value === null || value === '') return;
       try {
-        await client.rpc.request('session/set_config_option', {
+        const res = await client.rpc.request('session/set_config_option', {
           sessionId: record.sessionId,
           configId,
           value
         });
-      } catch { /* el agente puede no ofrecer esa opción */ }
+        // DSH devuelve el estado completo; se guarda para que la interfaz
+        // muestre el valor real, no el que creíamos haber puesto.
+        if (res?.configOptions) record.configOptions = res.configOptions;
+      } catch (error) {
+        record.configError = `${configId}: ${error.message}`;
+      }
     };
-    await set('model', JSON.stringify([this.provider, this.model]));
-    if (this.reasoningEffort) await set('reasoning_effort', this.reasoningEffort);
+    await set('model', this.preferred.model);
+    await set('reasoning_effort', this.preferred.reasoning_effort);
   }
 
   async _readStoredSession(projectId) {
@@ -383,21 +444,57 @@ export class AcpConversationAdapter extends ConversationPort {
 
   /**
    * El servidor nos pide permiso para una herramienta y ESPERA respuesta.
-   * Se concede automáticamente (perfil de automatización) y se deja rastro.
+   *
+   * Dos redes de seguridad, porque un permiso sin contestar deja al agente
+   * colgado para siempre:
+   *   1. Se responde de inmediato (perfil de automatización, controller de
+   *      confianza), prefiriendo `allow_always`.
+   *   2. Si por lo que sea no se hubiera contestado, un temporizador responde
+   *      con la opción más conservadora disponible y lo deja anotado. Y si el
+   *      cliente se cierra con permisos pendientes, se contestan en `closeAll`
+   *      para que el servidor pueda terminar en vez de esperar indefinidamente.
    */
   _onServerRequest(client, message) {
     if (message.method !== 'session/request_permission') {
       client.rpc.respond(message.id, null, { code: -32601, message: `no soportado: ${message.method}` });
       return;
     }
-    const session = this._sessionByAcpId(message.params?.sessionId);
+
     const options = Array.isArray(message.params?.options) ? message.params.options : [];
-    const elegida =
+    const permitir =
       options.find((o) => o.kind === 'allow_always') ||
       options.find((o) => o.kind === 'allow_once') ||
-      options.find((o) => String(o.kind || '').startsWith('allow')) ||
-      options.find((o) => String(o.kind || '').startsWith('reject_once')) ||
+      options.find((o) => String(o.kind || '').startsWith('allow'));
+    const conservadora =
+      options.find((o) => o.kind === 'reject_once') ||
+      options.find((o) => String(o.kind || '').startsWith('reject')) ||
       options[0];
+
+    const session = this._sessionByAcpId(message.params?.sessionId);
+    const elegida = permitir || conservadora;
+
+    const pending = { client, id: message.id, answered: false, fallback: conservadora, session };
+    this._pendingPermissions.set(message.id, pending);
+
+    const timer = setTimeout(() => {
+      if (pending.answered) return;
+      pending.answered = true;
+      this._pendingPermissions.delete(message.id);
+      // Se responde lo más conservador posible: mejor rechazar que colgar.
+      if (conservadora) {
+        client.rpc.respond(message.id, { outcome: { outcome: 'selected', optionId: conservadora.optionId } });
+      } else {
+        client.rpc.respond(message.id, { outcome: { outcome: 'cancelled' } });
+      }
+      if (session) {
+        this._emit(session.projectId, {
+          type: 'permission',
+          text: `${message.params?.toolCall?.title || 'herramienta'} → sin respuesta a tiempo, rechazado automáticamente`
+        });
+      }
+    }, this.permissionTimeoutMs);
+    if (typeof timer.unref === 'function') timer.unref();
+    pending.timer = timer;
 
     if (session) {
       this._emit(session.projectId, {
@@ -406,11 +503,49 @@ export class AcpConversationAdapter extends ConversationPort {
       });
     }
 
-    if (!elegida) {
-      client.rpc.respond(message.id, { outcome: { outcome: 'cancelled' } });
+    this._answerPermission(message.id, elegida);
+  }
+
+  /** Contesta un permiso pendiente exactamente una vez. */
+  _answerPermission(requestId, option) {
+    const pending = this._pendingPermissions.get(requestId);
+    if (!pending || pending.answered) return;
+    pending.answered = true;
+    clearTimeout(pending.timer);
+    this._pendingPermissions.delete(requestId);
+
+    if (!option) {
+      pending.client.rpc.respond(requestId, { outcome: { outcome: 'cancelled' } });
       return;
     }
-    client.rpc.respond(message.id, { outcome: { outcome: 'selected', optionId: elegida.optionId } });
+    pending.client.rpc.respond(requestId, {
+      outcome: { outcome: 'selected', optionId: option.optionId }
+    });
+  }
+
+  /**
+   * Vigila que un turno en marcha no se quede mudo. No cancela nada: avisa
+   * para que el usuario decida, porque una tarea larga legítima (tests,
+   * instalación) puede estar minutos sin emitir eventos.
+   */
+  _armStallWatchdog(session) {
+    this._clearStallWatchdog(session);
+    if (!(this.stallTimeoutMs > 0)) return;
+    session.stallTimer = setTimeout(() => {
+      if (!session.busy) return;
+      this._emit(session.projectId, {
+        type: 'stalled',
+        text: `Sin novedades desde hace ${Math.round(this.stallTimeoutMs / 60000)} min. Puede seguir trabajando; si no, pulsa Detener.`
+      });
+    }, this.stallTimeoutMs);
+    if (typeof session.stallTimer.unref === 'function') session.stallTimer.unref();
+  }
+
+  _clearStallWatchdog(session) {
+    if (session?.stallTimer) {
+      clearTimeout(session.stallTimer);
+      session.stallTimer = null;
+    }
   }
 
   /** Extrae el texto de un ContentBlock de ACP. */
@@ -466,6 +601,7 @@ export class AcpConversationAdapter extends ConversationPort {
 
     session.busy = true;
     session.turnBuffer = '';
+    this._armStallWatchdog(session);
     this._emit(projectId, { type: 'status', status: 'running' });
 
     const isFirstOfSession = session.turnCount === 0;
@@ -486,12 +622,14 @@ export class AcpConversationAdapter extends ConversationPort {
       }
       session.turnBuffer = '';
       session.busy = false;
+      this._clearStallWatchdog(session);
       this._emit(projectId, { type: 'turn-end', reason: result?.stopReason || 'end_turn' });
       this._emit(projectId, { type: 'status', status: 'idle' });
       this._touchClient();
     }).catch((error) => {
       session.busy = false;
       session.turnBuffer = '';
+      this._clearStallWatchdog(session);
       this._emit(projectId, { type: 'error', text: error.message });
       this._emit(projectId, { type: 'status', status: 'idle' });
     });
@@ -572,6 +710,7 @@ export class AcpConversationAdapter extends ConversationPort {
       session.busy = false;
       session.turnCount = 0;
       session.turnBuffer = '';
+      this._clearStallWatchdog(session);
     }
     this._emit(projectId, { type: 'reset' });
     return { reset: true };
@@ -580,13 +719,100 @@ export class AcpConversationAdapter extends ConversationPort {
   async closeAll() {
     const client = this._client;
     if (client && !client.dead) {
+      // Contesta los permisos que quedaran pendientes: si no, el servidor
+      // esperaria indefinidamente y no terminaria nunca.
+      for (const requestId of [...this._pendingPermissions.keys()]) {
+        this._answerPermission(requestId, null);
+      }
       for (const session of this._sessions.values()) {
+        this._clearStallWatchdog(session);
         if (session.sessionId) {
           try { await client.rpc.request('session/close', { sessionId: session.sessionId }); } catch { /* ya cerrada */ }
         }
       }
     }
+    this._pendingPermissions.clear();
     this._shutdownClient();
     this._sessions.clear();
+  }
+
+  /* ------------------------------------------------------------------
+   * Catalogo de modelos y configuracion
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Devuelve el catalogo que DSH publica para esta sesion y la seleccion
+   * actual. La interfaz lo usa para ofrecer un selector real en vez de
+   * obligar a tocar variables de entorno.
+   */
+  async getConfig(projectId) {
+    if (!projectId) throw new Error('PROJECT_ID_REQUIRED');
+    await this._loadPreferred();
+
+    // El catálogo lo publica DSH al crear la sesión. Si todavía no hay ninguna
+    // se prepara una: sin catálogo no habría selector de modelo.
+    if (!this._catalog) {
+      try {
+        const session = await this._ensureSession(projectId);
+        this._catalog = session.configOptions || [];
+      } catch { /* sin catálogo: la interfaz mostrará al menos la selección */ }
+    }
+
+    const session = this._sessions.get(projectId);
+    const options = session?.configOptions?.length ? session.configOptions : (this._catalog || []);
+    return { options, current: this._currentSelection(session) };
+  }
+
+  /** Selección vigente, tal como debe verla la interfaz. */
+  _currentSelection(session) {
+    let provider = '';
+    let model = '';
+    try { [provider, model] = JSON.parse(this.preferred.model); } catch { /* formato inesperado */ }
+    return {
+      model: this.preferred.model,
+      provider,
+      modelName: model,
+      reasoning_effort: this.preferred.reasoning_effort,
+      error: session?.configError || null
+    };
+  }
+
+  /**
+   * Cambia modelo o esfuerzo. Se guarda en disco y se aplica a la sesion viva
+   * si la hay; si no, se aplicara al abrirla.
+   */
+  async setConfig(configId, value) {
+    if (!['model', 'reasoning_effort'].includes(configId)) {
+      throw new Error(`CONFIG_ID_NOT_SUPPORTED: ${configId}`);
+    }
+    if (value === undefined || value === null || String(value) === '') {
+      throw new Error('CONFIG_VALUE_REQUIRED');
+    }
+    await this._loadPreferred();
+    this.preferred[configId] = String(value);
+    await this._savePreferred();
+
+    // Aplicar a las sesiones vivas: el cambio rige para el siguiente turno.
+    if (this._client && !this._client.dead) {
+      for (const session of this._sessions.values()) {
+        if (!session.sessionId) continue;
+        try {
+          const res = await this._client.rpc.request('session/set_config_option', {
+            sessionId: session.sessionId,
+            configId,
+            value: String(value)
+          });
+          if (res?.configOptions) {
+            session.configOptions = res.configOptions;
+            this._catalog = res.configOptions;
+          }
+          session.configError = null;
+        } catch (error) {
+          session.configError = `${configId}: ${error.message}`;
+        }
+      }
+    }
+    const session = [...this._sessions.values()].find((s) => s.sessionId) || null;
+    return { options: this._catalog || [], current: this._currentSelection(session) };
   }
 }

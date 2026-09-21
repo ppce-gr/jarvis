@@ -96,7 +96,9 @@ Variables de entorno opcionales:
 | `JARVIS_DSH_BIN` | `dsh` | Binario de DeepSeek Harness. |
 | `JARVIS_DSH_PROFILE` | `headless` | Perfil de DSH usado para orquestar. |
 | `JARVIS_CHAT_PROTOCOL` | `acp` | Protocolo del chat: `acp` o `sdk`. |
-| `JARVIS_CHAT_MODEL` | `deepseek-v4-flash` | Modelo del chat. |
+| `JARVIS_CHAT_MODEL` | `deepseek-v4-flash` | Modelo del chat (luego manda el selector). |
+| `JARVIS_PERMISSION_TIMEOUT_MS` | `120000` | Tope para contestar un permiso del agente. |
+| `JARVIS_STALL_TIMEOUT_MS` | `600000` | Aviso si un turno lleva mucho tiempo mudo. |
 | `JARVIS_TASK_TIMEOUT_MS` | `900000` | Tope por tarea de agentes (15 min). |
 | `DSH_HOME` | el del entorno | Raíz de perfiles y sesiones de DSH. |
 
@@ -112,6 +114,10 @@ Variables de entorno opcionales:
 - [x] **Chat conversacional persistente** dentro de Jarvis sobre **ACP**
       (`dsh --profile acp`): streaming por deltas, cancelación real,
       reanudación de la memoria y sin dependencias nuevas
+- [x] **Selector de modelo** en la interfaz, alimentado por el catálogo que
+      publica DSH (26 modelos), con la elección persistida
+- [x] **Recuperación**: permisos con temporizador y drenaje, vigilante de turno
+      mudo y resincronización al reconectar
 - [x] **Orquestación real con DSH** (`dsh --profile headless`), verificada end-to-end
       en la Pi 3B: cola de uno, bitácora en vivo, timeout y estados
 - [x] Respaldo Git y guía de migración

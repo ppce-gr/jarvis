@@ -55,13 +55,57 @@ elige con `JARVIS_CHAT_PROTOCOL=sdk`.
 ## Permisos: el detalle que bloquea si se ignora
 
 ACP invierte una responsabilidad: el servidor **pide** permiso con
-`session/request_permission` y **espera respuesta**. Si el cliente no contesta,
-el agente se queda colgado para siempre.
+`session/request_permission` y **espera respuesta**. Un cliente que no conteste
+deja al agente colgado **para siempre**.
 
-Este adaptador responde automáticamente, prefiriendo `allow_always`, y deja
-constancia en el chat («🔓 autorizado: …») para que se vea qué se permitió. Es el
-mismo nivel de confianza que ya tenía el modo headless, con el aislamiento de
-trabajar en la carpeta del proyecto.
+Hay **tres** redes de seguridad, porque de este punto depende que el chat no se
+quede muerto:
+
+1. **Respuesta inmediata.** El adaptador contesta en el momento, prefiriendo
+   `allow_always`, y lo deja visible en el chat («🔓 autorizado: read_file») para
+   que se vea qué se permitió.
+2. **Temporizador de seguridad** (`JARVIS_PERMISSION_TIMEOUT_MS`, 2 min por
+   defecto). Si por lo que sea un permiso se quedara sin contestar, al vencer se
+   responde con la opción **más conservadora** disponible y se avisa en el chat.
+   Mejor rechazar una herramienta que dejar el turno colgado.
+3. **Drenaje al cerrar.** Si Jarvis se apaga con permisos pendientes, los
+   contesta antes de terminar el proceso. Sin esto, DSH esperaría
+   indefinidamente y no cerraría nunca.
+
+Además hay un **vigilante de turno mudo** (`JARVIS_STALL_TIMEOUT_MS`, 10 min):
+si un turno lleva mucho tiempo sin emitir nada, se avisa en el chat. **No
+cancela nada** a propósito: una tarea legítima (tests, instalación) puede estar
+minutos trabajando en silencio.
+
+## «Si salgo y vuelvo, vuelve al origen»
+
+Los eventos SSE **no se reenvían**: si el móvil se queda sin cobertura o el
+navegador suspende la pestaña, lo que ocurrió en ese hueco no llega. La única
+fuente fiable es el disco. Por eso la interfaz hace tres cosas:
+
+1. **Al abrir un proyecto** lee historial y estado del servidor.
+2. **Al reconectar el stream** (`onopen`) vuelve a leerlos. EventSource
+   reconecta solo, así que una caída breve se recupera sin intervención.
+3. **Al volver a la pestaña** (`visibilitychange`) también, porque los móviles
+   suspenden las conexiones en segundo plano.
+
+En el lado del servidor no hay estado que se pueda quedar descolgado: si el
+proceso de DSH muere, la sesión queda `stopped` y el siguiente mensaje la
+reanuda desde el disco.
+
+## Elegir modelo y esfuerzo de razonamiento
+
+DSH publica un **catálogo** de modelos en cada sesión (en esta instalación:
+**26 modelos** de `deepseek-official` y `google`) más el selector de esfuerzo
+(`off`, `low`, `high`, `max`).
+
+Jarvis lo expone y ofrece un **selector en la cabecera del chat**. La elección se
+guarda en `chat-config.json` (versionado a propósito: es parte de «cómo tengo el
+sistema» y debe sobrevivir a la muerte de la SD) y se aplica a las sesiones
+vivas en el siguiente turno.
+
+Sin elegir nada, el valor inicial sale de `JARVIS_CHAT_MODEL` y
+`JARVIS_CHAT_EFFORT`.
 
 ## Comportamiento observado en la Pi 3B
 
@@ -82,6 +126,8 @@ Vale la pena distinguir **medido** de **esperado**:
 | `GET` | `/api/projects/:id/chat` | Historial + estado de la sesión |
 | `POST` | `/api/projects/:id/chat` | Envía mensaje (`{ text }`) → `202` |
 | `POST` | `/api/projects/:id/chat/cancel` | Detiene el turno en curso |
+| `GET` | `/api/projects/:id/chat/config` | Catálogo de modelos y selección |
+| `POST` | `/api/projects/:id/chat/config` | Cambia modelo o esfuerzo |
 | `POST` | `/api/projects/:id/chat/reset` | Empieza conversación nueva |
 | `GET` | `/api/projects/:id/chat/stream` | Server-Sent Events |
 
@@ -95,6 +141,8 @@ Vale la pena distinguir **medido** de **esperado**:
 | `JARVIS_CHAT_MODEL` | `deepseek-v4-flash` | Modelo. |
 | `JARVIS_CHAT_EFFORT` | `high` | Esfuerzo de razonamiento. |
 | `JARVIS_CHAT_IDLE_MS` | `900000` | Inactividad antes de dormir el proceso. |
+| `JARVIS_PERMISSION_TIMEOUT_MS` | `120000` | Tope para contestar un permiso. |
+| `JARVIS_STALL_TIMEOUT_MS` | `600000` | Aviso si un turno lleva mucho sin emitir. |
 
 Al dormirse, el proceso se cierra por EOF de stdin (cierre limpio de ACP) y las
 sesiones quedan persistidas para reanudarse al siguiente mensaje.

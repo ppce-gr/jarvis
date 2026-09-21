@@ -34,6 +34,8 @@ import { GetChatHistoryUseCase } from './application/GetChatHistoryUseCase.js';
 import { ResetChatUseCase } from './application/ResetChatUseCase.js';
 import { SubscribeChatUseCase } from './application/SubscribeChatUseCase.js';
 import { CancelChatTurnUseCase } from './application/CancelChatTurnUseCase.js';
+import { GetChatConfigUseCase } from './application/GetChatConfigUseCase.js';
+import { SetChatConfigUseCase } from './application/SetChatConfigUseCase.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(__dirname, '..');
@@ -100,6 +102,8 @@ const getChatHistoryUseCase = new GetChatHistoryUseCase(conversationAdapter);
 const resetChatUseCase = new ResetChatUseCase(conversationAdapter);
 const subscribeChatUseCase = new SubscribeChatUseCase(conversationAdapter);
 const cancelChatTurnUseCase = new CancelChatTurnUseCase(conversationAdapter);
+const getChatConfigUseCase = new GetChatConfigUseCase(conversationAdapter);
+const setChatConfigUseCase = new SetChatConfigUseCase(conversationAdapter);
 
 // --- Servidor web (adaptador de entrada) ---
 const webServer = new JarvisWebServer({
@@ -116,6 +120,8 @@ const webServer = new JarvisWebServer({
   resetChatUseCase,
   subscribeChatUseCase,
   cancelChatTurnUseCase,
+  getChatConfigUseCase,
+  setChatConfigUseCase,
   publicDir: path.join(workspaceRoot, 'public'),
   host: HOST,
   port: PORT

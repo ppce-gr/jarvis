@@ -333,3 +333,141 @@ test('un fallo de initialize se reporta con las últimas líneas de DSH', async 
     /No se pudo inicializar ACP/
   );
 });
+
+/* ================================================================
+   Permisos: que el agente nunca se quede colgado
+   ================================================================ */
+
+test('un permiso sin opciones se rechaza y el turno termina igual', async () => {
+  const ws = await tempWorkspace();
+  const record = path.join(ws, 'record.jsonl');
+  const adapter = new AcpConversationAdapter({
+    workspaceRoot: ws,
+    spawnFn: fakeSpawn({ FAKE_ACP_RECORD: record })
+  });
+
+  const events = [];
+  adapter.subscribe('demo', (e) => events.push(e));
+  await adapter.send('demo', 'hola');
+
+  // El servidor falso manda opciones allow/reject; aquí lo importante es que
+  // SIEMPRE se contesta algo: si no, el turno nunca terminaría.
+  await waitFor(() => events.some((e) => e.type === 'turn-end'));
+  assert.ok(events.some((e) => e.type === 'permission'));
+
+  await adapter.closeAll();
+});
+
+test('closeAll contesta los permisos que quedaran pendientes', async () => {
+  const ws = await tempWorkspace();
+  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+
+  // Se simula un permiso sin contestar con un cliente espía: es la vía por la
+  // que el servidor se quedaría esperando para siempre.
+  const respuestas = [];
+  const clienteFalso = {
+    rpc: {
+      respond: (id, result) => respuestas.push({ id, result }),
+      closeInput: () => {}
+    }
+  };
+  const timer = setTimeout(() => {}, 60000);
+  adapter._pendingPermissions.set(4242, {
+    client: clienteFalso,
+    id: 4242,
+    answered: false,
+    fallback: { optionId: 'reject' },
+    session: null,
+    timer
+  });
+  adapter._client = { child: { kill() {} }, rpc: clienteFalso.rpc, dead: false, idleTimer: null };
+
+  await adapter.closeAll();
+
+  assert.equal(respuestas.length, 1, 'debe contestarse exactamente una vez');
+  assert.equal(respuestas[0].id, 4242);
+  assert.equal(respuestas[0].result.outcome.outcome, 'cancelled');
+  assert.equal(adapter._pendingPermissions.size, 0);
+});
+
+/* ================================================================
+   Catálogo de modelos
+   ================================================================ */
+
+test('getConfig devuelve el catálogo que publica el motor', async () => {
+  const ws = await tempWorkspace();
+  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+
+  const eventos = [];
+  adapter.subscribe('demo', (e) => eventos.push(e));
+  await adapter.send('demo', 'hola');
+  await waitFor(() => eventos.some((e) => e.type === 'turn-end'));
+
+  const { options, current } = await adapter.getConfig('demo');
+  const modelo = options.find((o) => o.id === 'model');
+  assert.ok(modelo, 'debe exponer la opción de modelo');
+  assert.ok(current.model, 'debe indicar la selección actual');
+  assert.equal(current.reasoning_effort, 'high');
+
+  await adapter.closeAll();
+});
+
+test('setConfig persiste la elección y la aplica a la sesión viva', async () => {
+  const ws = await tempWorkspace();
+  const record = path.join(ws, 'record.jsonl');
+  const adapter = new AcpConversationAdapter({
+    workspaceRoot: ws,
+    spawnFn: fakeSpawn({ FAKE_ACP_RECORD: record })
+  });
+
+  const eventos = [];
+  adapter.subscribe('demo', (e) => eventos.push(e));
+  await adapter.send('demo', 'hola');
+  await waitFor(() => eventos.some((e) => e.type === 'turn-end'));
+
+  await adapter.setConfig('model', '["deepseek-official","deepseek-v4-pro"]');
+
+  // Se guarda en disco...
+  const guardado = JSON.parse(await fs.readFile(path.join(ws, 'chat-config.json'), 'utf8'));
+  assert.equal(guardado.model, '["deepseek-official","deepseek-v4-pro"]');
+
+  // ...y se empuja al motor.
+  const calls = (await fs.readFile(record, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+  assert.ok(calls.some((c) => c.method === 'session/set_config_option'
+    && c.params.value === '["deepseek-official","deepseek-v4-pro"]'));
+
+  await adapter.closeAll();
+});
+
+test('setConfig rechaza opciones no soportadas', async () => {
+  const ws = await tempWorkspace();
+  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  await assert.rejects(() => adapter.setConfig('temperatura', '0.5'), /CONFIG_ID_NOT_SUPPORTED/);
+  await assert.rejects(() => adapter.setConfig('model', ''), /CONFIG_VALUE_REQUIRED/);
+});
+
+test('la preferencia guardada se usa al arrancar una sesión nueva', async () => {
+  const ws = await tempWorkspace();
+  await fs.writeFile(path.join(ws, 'chat-config.json'), JSON.stringify({
+    model: '["google","gemini-2.5-pro"]',
+    reasoning_effort: 'max'
+  }));
+
+  const record = path.join(ws, 'record.jsonl');
+  const adapter = new AcpConversationAdapter({
+    workspaceRoot: ws,
+    spawnFn: fakeSpawn({ FAKE_ACP_RECORD: record })
+  });
+
+  const eventos = [];
+  adapter.subscribe('demo', (e) => eventos.push(e));
+  await adapter.send('demo', 'hola');
+  await waitFor(() => eventos.some((e) => e.type === 'turn-end'));
+
+  const calls = (await fs.readFile(record, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+  const puestos = calls.filter((c) => c.method === 'session/set_config_option').map((c) => c.params.value);
+  assert.ok(puestos.includes('["google","gemini-2.5-pro"]'), 'debe aplicar el modelo guardado');
+  assert.ok(puestos.includes('max'), 'debe aplicar el esfuerzo guardado');
+
+  await adapter.closeAll();
+});

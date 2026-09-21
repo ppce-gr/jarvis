@@ -327,16 +327,11 @@ async function openChat(projectId) {
   closeChat();
   state.chat.projectId = projectId;
   state.chat.messages = [];
+  state.chat.streaming = '';
   renderChat();
 
-  try {
-    const data = await api(`/api/projects/${encodeURIComponent(projectId)}/chat`);
-    state.chat.messages = data.messages || [];
-    setChatStatus(data.status?.status || 'idle');
-    renderChat();
-  } catch (error) {
-    toast(`No se pudo cargar la conversación: ${error.message}`, 'err');
-  }
+  await resyncChat();
+  loadChatConfig();
 
   // Stream en vivo. EventSource reconecta solo si se cae la conexión.
   const source = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/chat/stream`);
@@ -349,7 +344,113 @@ async function openChat(projectId) {
     }
     handleChatEvent(payload);
   };
+  // Al (re)conectar se vuelve a leer el estado real del servidor: así no se
+  // pierde nada de lo ocurrido mientras el móvil estuvo desconectado.
+  source.onopen = () => { resyncChat(); };
   state.chat.source = source;
+}
+
+/**
+ * Vuelve a leer historial y estado del servidor. Es la garantía de «si sales
+ * y vuelves, todo está donde debe»: los eventos SSE no se reenvían, así que
+ * la única fuente fiable tras una desconexión es el disco.
+ */
+async function resyncChat() {
+  if (!state.chat.projectId) return;
+  const projectId = state.chat.projectId;
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(projectId)}/chat`);
+    if (state.chat.projectId !== projectId) return;   // cambió de proyecto entretanto
+    state.chat.messages = data.messages || [];
+    state.chat.streaming = '';
+    removeStreamingBubble();
+    setChatStatus(data.status?.status || 'idle');
+    renderChat();
+  } catch (error) {
+    // Sin conexión: se conserva lo que ya había en pantalla.
+  }
+}
+
+/* ---------------- Selector de modelo y esfuerzo ---------------- */
+async function loadChatConfig() {
+  if (!state.chat.projectId) return;
+  const modelSel = $('#chat-model');
+  const effortSel = $('#chat-effort');
+  modelSel.classList.add('loading');
+  try {
+    const { options, current } = await api(
+      `/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/config`
+    );
+    fillModelSelect(modelSel, options, current);
+    fillSimpleSelect(effortSel, options, 'reasoning_effort', current);
+    modelSel.classList.remove('loading');
+    if (current.error) toast(`Aviso del motor: ${current.error}`, 'err');
+  } catch {
+    modelSel.classList.remove('loading');
+  }
+}
+
+function fillModelSelect(sel, options, current) {
+  const opt = (options || []).find((o) => o.id === 'model' || o.category === 'model');
+  sel.innerHTML = '';
+  if (!opt?.options?.length) {
+    sel.classList.add('hidden');
+    return;
+  }
+  sel.classList.remove('hidden');
+  for (const group of opt.options) {
+    if (group.options) {
+      const og = document.createElement('optgroup');
+      og.label = group.name || group.group;
+      for (const item of group.options) {
+        const o = document.createElement('option');
+        o.value = item.value;
+        o.textContent = item.description ? `${item.name} — ${item.description}` : item.name;
+        o.title = item.description || item.name;
+        if (item.value === current.model) o.selected = true;
+        og.appendChild(o);
+      }
+      sel.appendChild(og);
+    } else {
+      const o = document.createElement('option');
+      o.value = group.value;
+      o.textContent = group.name;
+      if (group.value === current.model) o.selected = true;
+      sel.appendChild(o);
+    }
+  }
+}
+
+function fillSimpleSelect(sel, options, id, current) {
+  const opt = (options || []).find((o) => o.id === id || o.category === 'thought_level');
+  sel.innerHTML = '';
+  if (!opt?.options?.length) {
+    sel.classList.add('hidden');
+    return;
+  }
+  sel.classList.remove('hidden');
+  for (const item of opt.options) {
+    const o = document.createElement('option');
+    o.value = item.value;
+    o.textContent = item.name || item.value;
+    o.title = item.description || '';
+    if (item.value === current[id]) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+async function saveChatConfig(configId, value) {
+  if (!state.chat.projectId) return;
+  try {
+    await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/config`, {
+      method: 'POST',
+      body: JSON.stringify({ configId, value })
+    });
+    toast('Ajuste guardado: se aplica al siguiente mensaje', 'ok');
+  } catch (error) {
+    toast(`No se pudo guardar: ${error.message}`, 'err');
+    loadChatConfig();
+  }
 }
 
 function closeChat() {
@@ -360,6 +461,7 @@ function closeChat() {
   state.chat.projectId = null;
   state.chat.busy = false;
   state.chat.streaming = '';
+  removeStreamingBubble();
 }
 
 function setChatStatus(status) {
@@ -420,6 +522,12 @@ function handleChatEvent(event) {
 
     case 'permission':
       state.chat.messages.push({ role: 'note', text: `🔓 autorizado: ${event.text}`, at: event.at });
+      renderChat();
+      break;
+
+    case 'stalled':
+      // El turno lleva mucho tiempo sin emitir nada: se avisa, no se cancela.
+      state.chat.messages.push({ role: 'note', text: `⏳ ${event.text}`, at: event.at });
       renderChat();
       break;
 
@@ -798,6 +906,14 @@ function bindEvents() {
   $('#chat-form').addEventListener('submit', sendChatMessage);
   $('#chat-reset').addEventListener('click', resetChat);
   $('#chat-stop').addEventListener('click', cancelChat);
+  $('#chat-model').addEventListener('change', (e) => saveChatConfig('model', e.target.value));
+  $('#chat-effort').addEventListener('change', (e) => saveChatConfig('reasoning_effort', e.target.value));
+
+  // Al volver a la pestaña (el móvil bloquea el SSE en segundo plano) se
+  // resincroniza: es la otra mitad de «si sales y vuelves, vuelve al origen».
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) resyncChat();
+  });
   const chatInput = $('#chat-input');
   chatInput.addEventListener('keydown', (event) => {
     // Enter envía; Shift+Enter hace salto de línea (como cualquier chat).

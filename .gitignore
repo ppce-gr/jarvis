@@ -18,3 +18,6 @@ Thumbs.db
 
 # DSH_HOME local de pruebas (contiene credenciales: NUNCA versionar)
 .dsh-home/
+
+# NOTA: chat-config.json NO se ignora a proposito: la preferencia de modelo es
+# parte de "como tengo el sistema" y debe sobrevivir a la muerte de la SD.
