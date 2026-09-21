@@ -24,6 +24,10 @@ export class JarvisWebServer {
     browseProjectFilesUseCase,
     getGitStatusUseCase,
     listOrchestratorTasksUseCase,
+    sendChatMessageUseCase,
+    getChatHistoryUseCase,
+    resetChatUseCase,
+    subscribeChatUseCase,
     publicDir,
     host = '0.0.0.0',
     port = 3081
@@ -36,6 +40,10 @@ export class JarvisWebServer {
     this.browseProjectFilesUseCase = browseProjectFilesUseCase;
     this.getGitStatusUseCase = getGitStatusUseCase;
     this.listOrchestratorTasksUseCase = listOrchestratorTasksUseCase;
+    this.sendChatMessageUseCase = sendChatMessageUseCase;
+    this.getChatHistoryUseCase = getChatHistoryUseCase;
+    this.resetChatUseCase = resetChatUseCase;
+    this.subscribeChatUseCase = subscribeChatUseCase;
     this.publicDir = publicDir || path.resolve(process.cwd(), 'public');
     this.host = host;
     this.port = port;
@@ -240,9 +248,86 @@ export class JarvisWebServer {
           return this._sendJson(res, 400, { error: error.message });
         }
       }
+      // GET /api/projects/:id/chat  (historial + estado)
+      if (req.method === 'GET' && segments[3] === 'chat' && !segments[4]) {
+        try {
+          const chat = await this.getChatHistoryUseCase.execute(projectId);
+          return this._sendJson(res, 200, { projectId, ...chat });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/chat  (envía mensaje; responde 202 y el resto llega por SSE)
+      if (req.method === 'POST' && segments[3] === 'chat' && !segments[4]) {
+        try {
+          const body = await this._readJsonBody(req);
+          const result = await this.sendChatMessageUseCase.execute(projectId, body.text);
+          return this._sendJson(res, 202, { result });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/chat/reset  (reinicia la conversación)
+      if (req.method === 'POST' && segments[3] === 'chat' && segments[4] === 'reset') {
+        try {
+          const result = await this.resetChatUseCase.execute(projectId);
+          return this._sendJson(res, 200, { projectId, ...result });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
     }
 
     return this._sendJson(res, 404, { error: 'ROUTE_NOT_FOUND', pathname });
+  }
+
+  /**
+   * Server-Sent Events del chat.
+   * ------------------------------------------------------------------
+   * SSE y no WebSocket a propósito: es una sola dirección (servidor →
+   * navegador), viaja sobre HTTP normal y el navegador lo reconecta solo.
+   * Implementarlo con el módulo `http` nativo son ~30 líneas, frente a
+   * arrastrar una librería de WebSocket en una Pi 3B.
+   */
+  _handleChatStream(req, res, projectId) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      // Evita que un proxy intermedio acumule la respuesta y la entregue de golpe.
+      'X-Accel-Buffering': 'no'
+    });
+    res.write(': stream abierto\n\n');
+
+    const send = (event) => {
+      // Un cliente que se fue no debe provocar un throw en el bucle de eventos.
+      if (res.writableEnded) return;
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    let unsubscribe = () => {};
+    try {
+      unsubscribe = this.subscribeChatUseCase.execute(projectId, send);
+    } catch (error) {
+      send({ type: 'error', text: error.message });
+      res.end();
+      return;
+    }
+
+    // Comentario periódico: mantiene viva la conexión en móviles y proxies.
+    const keepAlive = setInterval(() => {
+      if (!res.writableEnded) res.write(': ping\n\n');
+    }, 25000);
+
+    const cleanup = () => {
+      clearInterval(keepAlive);
+      unsubscribe();
+    };
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+    res.on('close', cleanup);
   }
 
   /**
@@ -253,13 +338,22 @@ export class JarvisWebServer {
     const pathname = decodeURIComponent(url.pathname);
 
     try {
+      // SSE se atiende antes del enrutado JSON: la respuesta queda abierta.
+      const streamMatch = pathname.match(/^\/api\/projects\/([^/]+)\/chat\/stream$/);
+      if (req.method === 'GET' && streamMatch) {
+        return this._handleChatStream(req, res, decodeURIComponent(streamMatch[1]));
+      }
+
       if (pathname.startsWith('/api/')) {
         return await this._handleApi(req, res, pathname, url);
       }
       return await this._serveStatic(res, pathname);
     } catch (error) {
       console.error('[WebServer] Error no controlado:', error);
-      return this._sendJson(res, 500, { error: 'INTERNAL_ERROR', message: error.message });
+      if (!res.headersSent) {
+        return this._sendJson(res, 500, { error: 'INTERNAL_ERROR', message: error.message });
+      }
+      res.end();
     }
   }
 
@@ -275,6 +369,10 @@ export class JarvisWebServer {
   stop() {
     return new Promise((resolve) => {
       if (!this.server) return resolve();
+      // Cierra también las conexiones SSE abiertas, o el cierre se queda colgado.
+      if (typeof this.server.closeAllConnections === 'function') {
+        this.server.closeAllConnections();
+      }
       this.server.close(() => resolve());
     });
   }

@@ -67,6 +67,7 @@ jarvis/
 | [`docs/arquitectura-jarvis-pi3.md`](docs/arquitectura-jarvis-pi3.md) | Visión, principios y flujo de trabajo del sistema. |
 | [`docs/arquitectura-software.md`](docs/arquitectura-software.md) | Diseño hexagonal, puertos, adaptadores y API REST. |
 | [`docs/integracion-dsh.md`](docs/integracion-dsh.md) | Cómo se conecta con DeepSeek Harness: alternativas, mediciones y decisión. |
+| [`docs/chat.md`](docs/chat.md) | El chat conversacional: cómo funciona y qué no se puede hacer. |
 | [`docs/manual-interfaz.md`](docs/manual-interfaz.md) | Cómo usar la interfaz web desde el móvil. |
 | [`docs/guia-migracion.md`](docs/guia-migracion.md) | Cómo llevarte Jarvis a otro hardware. |
 | [`deploy/README.md`](deploy/README.md) | Instalación de los servicios de sistema, zram y respaldo. |
@@ -106,12 +107,13 @@ Variables de entorno opcionales:
 - [x] Casos de uso de proyectos y notas
 - [x] Servidor HTTP sin dependencias
 - [x] Interfaz web unificada (árbol, conceptual/código/bitácora, órdenes)
+- [x] **Chat conversacional persistente** dentro de Jarvis (perfil `sdk`), con
+      streaming SSE, historial en disco y contexto del proyecto
 - [x] **Orquestación real con DSH** (`dsh --profile headless`), verificada end-to-end
       en la Pi 3B: cola de uno, bitácora en vivo, timeout y estados
 - [x] Respaldo Git y guía de migración
+- [ ] Retirar `dsh web` + `socat` + redirector Python (ya no hacen falta con el chat)
 - [ ] Capa de voz (Web Speech API / Alexa)
-- [ ] Adaptador SDK persistente (sólo si los 16-18 s por tarea llegan a molestar;
-      ver [`docs/integracion-dsh.md`](docs/integracion-dsh.md))
 
 ### Requisito para orquestar
 

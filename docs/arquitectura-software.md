@@ -51,6 +51,7 @@ Definidos en `src/domain/ports/`. Un puerto es una clase con métodos que lanzan
 | `ProjectRepositoryPort` | Listar/leer/guardar proyectos | `FileSystemProjectRepository` | SQLite, API remota |
 | `NoteRepositoryPort` | Notas Markdown (frontmatter + cuerpo) | `FileSystemNoteRepository` | Obsidian REST API, Postgres |
 | `OrchestratorPort` | Encolar trabajo de agentes y consultar tareas | `DshHeadlessOrchestratorAdapter` | SDK persistente, API directa |
+| `ConversationPort` | Chat persistente por proyecto | `DshSdkConversationAdapter` | ACP, API directa |
 | `FileBrowserPort` | Explorar `code/` y `logs/` | `FileSystemBrowserAdapter` | S3, Git remoto |
 | `GitSyncPort` | Respaldo y sincronización | `GitSyncAdapter` | Gitea API, rclone |
 
@@ -67,6 +68,10 @@ Definidos en `src/domain/ports/`. Un puerto es una clase con métodos que lanzan
 | `BrowseProjectFilesUseCase` | `projectId`, `zone` | Árbol de ficheros / contenido |
 | `RunOrchestratorTaskUseCase` | `projectId`, `instruction` | Acuse (encola, no espera) |
 | `ListOrchestratorTasksUseCase` | `projectId` | Estado de las tareas |
+| `SendChatMessageUseCase` | `projectId`, `text` | Acuse del chat |
+| `GetChatHistoryUseCase` | `projectId` | Mensajes + estado de sesión |
+| `SubscribeChatUseCase` | `projectId`, listener | Cancelar suscripción (SSE) |
+| `ResetChatUseCase` | `projectId` | Reinicia la conversación |
 | `GetGitStatusUseCase` | — | Estado del repositorio |
 
 ---
@@ -95,6 +100,10 @@ Definidos en `src/domain/ports/`. Un puerto es una clase con métodos que lanzan
 | `GET` | `/api/projects/:id/files/content?zone&path` | Contenido de un fichero |
 | `GET` | `/api/projects/:id/tasks` | Estado de las tareas del orquestador |
 | `POST` | `/api/projects/:id/orchestrate` | Encola orden (`{ instruction }`) → `202` |
+| `GET` | `/api/projects/:id/chat` | Historial + estado del chat |
+| `POST` | `/api/projects/:id/chat` | Envía mensaje (`{ text }`) → `202` |
+| `POST` | `/api/projects/:id/chat/reset` | Reinicia la conversación |
+| `GET` | `/api/projects/:id/chat/stream` | Server-Sent Events del chat |
 | `GET` | `/api/git/status` | Estado del respaldo Git |
 
 ---

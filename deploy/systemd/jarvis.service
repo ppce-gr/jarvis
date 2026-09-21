@@ -19,6 +19,16 @@ Environment=JARVIS_PORT=3081
 Environment=JARVIS_HOST=0.0.0.0
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 
+# --- Chat conversacional (proceso persistente de DSH por proyecto) ---
+# Perfil aparte del de orquestación: el chat necesita un proceso vivo con
+# memoria, la orquestación necesita uno que muera al terminar.
+Environment=JARVIS_CHAT_PROFILE=sdk
+Environment=JARVIS_CHAT_PROVIDER=deepseek-official
+Environment=JARVIS_CHAT_MODEL=deepseek-v4-flash
+Environment=JARVIS_CHAT_EFFORT=high
+# Apaga la conversación dormida tras 15 min sin uso para liberar memoria.
+Environment=JARVIS_CHAT_IDLE_MS=900000
+
 ExecStart=/usr/bin/node src/index.js
 
 Restart=on-failure

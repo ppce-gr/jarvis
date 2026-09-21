@@ -44,13 +44,34 @@
       <!-- Panel principal -->
       <main class="main">
         <div class="tabs" role="tablist">
-          <button class="tab active" data-tab="conceptual" role="tab">Conceptual</button>
+          <button class="tab active" data-tab="chat" role="tab">Chat</button>
+          <button class="tab" data-tab="conceptual" role="tab">Conceptual</button>
           <button class="tab" data-tab="code" role="tab">Código</button>
           <button class="tab" data-tab="logs" role="tab">Bitácora</button>
           <span class="tabs-spacer"></span>
           <button id="edit-toggle" class="btn btn-ghost btn-sm" title="Editar / Ver">✎ Editar</button>
           <button id="save-note-btn" class="btn btn-primary btn-sm hidden">💾 Guardar</button>
         </div>
+
+        <section id="pane-chat" class="pane pane-chat">
+          <div class="chat-shell">
+            <div class="chat-head">
+              <span id="chat-status" class="chat-status">—</span>
+              <button id="chat-reset" class="btn btn-ghost btn-sm" title="Reiniciar la conversación (el agente olvida lo hablado)">⟳ Reiniciar</button>
+            </div>
+            <div id="chat-messages" class="chat-messages">
+              <div class="chat-empty">
+                <h2>Conversemos sobre esta idea</h2>
+                <p class="muted">Aquí se desarrolla la parte conceptual. Cuando tengas claro el plan,
+                  usa la barra <strong>⌘</strong> de abajo para que Jarvis lo ejecute con agentes.</p>
+              </div>
+            </div>
+            <form id="chat-form" class="chat-form">
+              <textarea id="chat-input" rows="2" placeholder="Escribe a Jarvis… (Enter envía, Shift+Enter salto de línea)"></textarea>
+              <button type="submit" id="chat-send" class="btn btn-primary">Enviar</button>
+            </form>
+          </div>
+        </section>
 
         <section id="pane-conceptual" class="pane">
           <div id="note-header" class="note-header hidden">
@@ -90,7 +111,7 @@
       <input
         id="command-input"
         type="text"
-        placeholder="Dile a Jarvis qué hacer con la idea seleccionada…"
+        placeholder="Orden de ejecución para el orquestador (lanza agentes)…"
         autocomplete="off"
       />
       <button id="command-send" class="btn btn-primary">Enviar</button>

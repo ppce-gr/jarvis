@@ -13,7 +13,8 @@ const state = {
   currentNoteId: null,
   currentNote: null,
   zone: [],
-  editing: false
+  editing: false,
+  chat: { projectId: null, source: null, messages: [], busy: false }
 };
 
 /* ---------------- Utilidades DOM ---------------- */
@@ -156,9 +157,10 @@ async function selectProject(projectId) {
   closeMobileSidebar();
   await loadNotes();
   await Promise.all([loadZone('code'), loadZone('logs')]);
-  switchTab('conceptual');
+  switchTab('chat');
   showEmptyConceptual();
   await refreshTaskStatus();
+  openChat(projectId);
 }
 
 async function loadNotes() {
@@ -304,11 +306,212 @@ async function openZoneFile(zone, filePath, li) {
 /* ---------------- Pestañas ---------------- */
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
+  $('#pane-chat').classList.toggle('hidden', tab !== 'chat');
   $('#pane-conceptual').classList.toggle('hidden', tab !== 'conceptual');
   $('#pane-code').classList.toggle('hidden', tab !== 'code');
   $('#pane-logs').classList.toggle('hidden', tab !== 'logs');
   $('#edit-toggle').classList.toggle('hidden', tab !== 'conceptual' || !state.currentNoteId);
   if (tab === 'logs') refreshTaskStatus();
+  if (tab === 'chat') scrollChatToEnd();
+}
+
+/* ================================================================
+   Chat conversacional (fase conceptual)
+   ----------------------------------------------------------------
+   Transporte: Server-Sent Events. El servidor empuja lo que ocurre
+   en la conversación; aquí sólo pintamos. La memoria del agente vive
+   en el proceso de DSH; el historial que ves viene del disco.
+   ================================================================ */
+
+async function openChat(projectId) {
+  closeChat();
+  state.chat.projectId = projectId;
+  state.chat.messages = [];
+  renderChat();
+
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(projectId)}/chat`);
+    state.chat.messages = data.messages || [];
+    setChatStatus(data.status?.status || 'idle');
+    renderChat();
+  } catch (error) {
+    toast(`No se pudo cargar la conversación: ${error.message}`, 'err');
+  }
+
+  // Stream en vivo. EventSource reconecta solo si se cae la conexión.
+  const source = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/chat/stream`);
+  source.onmessage = (event) => {
+    let payload;
+    try {
+      payload = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    handleChatEvent(payload);
+  };
+  state.chat.source = source;
+}
+
+function closeChat() {
+  if (state.chat.source) {
+    state.chat.source.close();
+    state.chat.source = null;
+  }
+  state.chat.projectId = null;
+  state.chat.busy = false;
+}
+
+function setChatStatus(status) {
+  const el = $('#chat-status');
+  const labels = {
+    idle: 'en espera',
+    running: 'pensando…',
+    starting: 'arrancando…',
+    stopped: 'dormida (se reinicia al escribir)',
+    error: 'error'
+  };
+  el.textContent = labels[status] || status;
+  el.className = `chat-status ${status}`;
+  state.chat.busy = status === 'running' || status === 'starting';
+  $('#chat-input').disabled = false;   // el servidor encola; no bloqueamos al usuario
+  updateTyping();
+}
+
+function handleChatEvent(event) {
+  switch (event.type) {
+    case 'user':
+      // Eco del propio mensaje: ya lo pintamos al enviarlo.
+      break;
+    case 'assistant':
+      state.chat.messages.push({ role: 'assistant', text: event.text, at: event.at });
+      renderChat();
+      break;
+    case 'tool-call':
+      state.chat.messages.push({ role: 'tool', text: event.name, at: event.at });
+      renderChat();
+      break;
+    case 'status':
+      setChatStatus(event.status);
+      break;
+    case 'turn-end':
+      setChatStatus('idle');
+      break;
+    case 'reset':
+      state.chat.messages = [];
+      renderChat();
+      toast('Conversación reiniciada: el agente ha olvidado lo hablado', 'ok');
+      break;
+    case 'error':
+      state.chat.messages.push({ role: 'error', text: event.text, at: event.at });
+      setChatStatus('error');
+      renderChat();
+      break;
+    case 'log':
+      // Diagnóstico de DSH: no ensuciamos el chat con esto.
+      break;
+    default:
+      break;
+  }
+}
+
+function updateTyping() {
+  const existing = document.getElementById('chat-typing');
+  if (state.chat.busy && !existing) {
+    const el = document.createElement('div');
+    el.id = 'chat-typing';
+    el.className = 'msg msg-assistant';
+    el.innerHTML = '<div class="msg-bubble"><span class="typing"><span></span><span></span><span></span></span></div>';
+    $('#chat-messages').appendChild(el);
+    scrollChatToEnd();
+  } else if (!state.chat.busy && existing) {
+    existing.remove();
+  }
+}
+
+function renderChat() {
+  const box = $('#chat-messages');
+  const messages = state.chat.messages;
+  box.innerHTML = '';
+
+  if (!messages.length) {
+    box.innerHTML = `
+      <div class="chat-empty">
+        <h2>Conversemos sobre esta idea</h2>
+        <p class="muted">Aquí se desarrolla la parte conceptual. Cuando tengas claro el plan,
+          usa la barra <strong>⌘</strong> de abajo para que Jarvis lo ejecute con agentes.</p>
+      </div>`;
+    updateTyping();
+    return;
+  }
+
+  for (const msg of messages) {
+    const wrap = document.createElement('div');
+    const time = msg.at ? new Date(msg.at).toLocaleTimeString().slice(0, 5) : '';
+
+    if (msg.role === 'user') {
+      wrap.className = 'msg msg-user';
+      wrap.innerHTML = `<div class="msg-bubble">${escapeHtml(msg.text)}</div>`;
+    } else if (msg.role === 'assistant') {
+      wrap.className = 'msg msg-assistant';
+      wrap.innerHTML = `<div class="msg-bubble markdown">${renderMarkdown(msg.text || '')}</div>
+        <div class="msg-meta">Jarvis${time ? ` · ${time}` : ''}</div>`;
+    } else if (msg.role === 'tool') {
+      wrap.className = 'msg-tool';
+      wrap.textContent = `⚙ ${msg.text}`;
+    } else if (msg.role === 'error') {
+      wrap.className = 'msg-error';
+      wrap.textContent = msg.text;
+    } else {
+      wrap.className = 'msg-note';
+      wrap.textContent = msg.text;
+    }
+    box.appendChild(wrap);
+  }
+
+  updateTyping();
+  scrollChatToEnd();
+}
+
+function scrollChatToEnd() {
+  const box = $('#chat-messages');
+  if (box) box.scrollTop = box.scrollHeight;
+}
+
+async function sendChatMessage(event) {
+  if (event) event.preventDefault();
+  const input = $('#chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!state.chat.projectId) {
+    toast('Selecciona primero una idea', 'err');
+    return;
+  }
+
+  // Optimista: pintamos el mensaje ya mismo y vaciamos la caja.
+  state.chat.messages.push({ role: 'user', text, at: new Date().toISOString() });
+  input.value = '';
+  renderChat();
+  setChatStatus('running');
+
+  try {
+    await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ text })
+    });
+  } catch (error) {
+    state.chat.messages.push({ role: 'error', text: `No se pudo enviar: ${error.message}` });
+    setChatStatus('error');
+    renderChat();
+  }
+}
+
+async function resetChat() {
+  if (!state.chat.projectId) return;
+  try {
+    await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/reset`, { method: 'POST' });
+  } catch (error) {
+    toast(`Error al reiniciar: ${error.message}`, 'err');
+  }
 }
 
 /* ---------------- Git ---------------- */
@@ -489,6 +692,22 @@ function bindEvents() {
   $('#command-send').addEventListener('click', sendCommand);
   $('#command-input').addEventListener('keydown', (event) => {
     if (event.key === 'Enter') sendCommand();
+  });
+
+  // --- Chat ---
+  $('#chat-form').addEventListener('submit', sendChatMessage);
+  $('#chat-reset').addEventListener('click', resetChat);
+  const chatInput = $('#chat-input');
+  chatInput.addEventListener('keydown', (event) => {
+    // Enter envía; Shift+Enter hace salto de línea (como cualquier chat).
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendChatMessage(event);
+    }
+  });
+  chatInput.addEventListener('input', () => {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = `${Math.min(chatInput.scrollHeight, 200)}px`;
   });
 
   $('#menu-toggle').addEventListener('click', () => $('#sidebar').classList.toggle('open'));

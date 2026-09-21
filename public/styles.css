@@ -332,6 +332,153 @@ html, body {
 .task-status.failed,
 .task-status.timeout { border-color: #4a1f1c; color: #ffb4ae; background: #2a1513; }
 
+/* ---------- Chat conversacional ---------- */
+.pane-chat { padding: 0; display: flex; }
+
+.chat-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.chat-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+.chat-status {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.chat-status.running { color: #9ccbff; border-color: #23496f; }
+.chat-status.idle { color: var(--text-dim); }
+.chat-status.error { color: #ffb4ae; border-color: #4a1f1c; }
+.chat-head .btn { margin-left: auto; }
+
+.chat-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 18px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chat-empty { max-width: 620px; color: var(--text-dim); }
+.chat-empty h2 { color: var(--text); font-size: 19px; margin-bottom: 6px; }
+
+.msg { display: flex; flex-direction: column; max-width: 860px; }
+.msg-user { align-self: flex-end; align-items: flex-end; }
+.msg-assistant { align-self: flex-start; }
+
+.msg-bubble {
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.msg-user .msg-bubble {
+  background: #17324d;
+  border-color: #23496f;
+  color: #dcecff;
+}
+.msg-assistant .msg-bubble { background: var(--bg-soft); }
+
+/* El markdown dentro del chat no necesita tanto aire como en las notas */
+.msg-bubble.markdown > :first-child { margin-top: 0; }
+.msg-bubble.markdown > :last-child { margin-bottom: 0; }
+.msg-bubble.markdown { max-width: 100%; }
+.msg-bubble.markdown pre { margin: .5em 0; }
+.msg-bubble.markdown h1 { font-size: 19px; }
+.msg-bubble.markdown h2 { font-size: 17px; }
+
+.msg-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 4px 6px 0;
+}
+
+/* Progreso: herramientas y avisos, deliberadamente discretos */
+.msg-tool {
+  align-self: flex-start;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.msg-note {
+  align-self: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+.msg-error {
+  align-self: stretch;
+  font-size: 13px;
+  color: #ffb4ae;
+  background: #2a1513;
+  border: 1px solid #4a1f1c;
+  border-radius: var(--radius);
+  padding: 9px 13px;
+  white-space: pre-wrap;
+}
+
+/* Indicador de escritura */
+.typing { display: inline-flex; gap: 4px; align-items: center; height: 18px; }
+.typing span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-dim);
+  animation: bounce 1.3s infinite ease-in-out;
+}
+.typing span:nth-child(2) { animation-delay: .18s; }
+.typing span:nth-child(3) { animation-delay: .36s; }
+@keyframes bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+.chat-form {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+#chat-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  resize: none;
+  max-height: 30vh;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+}
+#chat-input:focus { outline: none; border-color: var(--accent-strong); }
+#chat-input:disabled { opacity: .6; }
+.chat-form .btn { height: 40px; }
+
 /* ---------- Botones ---------- */
 .btn {
   border: 1px solid var(--border);
@@ -415,7 +562,11 @@ html, body {
   }
   .sidebar.open { transform: translateX(0); }
   .pane { padding: 14px 14px 24px; }
+  .pane-chat { padding: 0; }
   .file-browser { grid-template-columns: 1fr; }
   .file-list { max-height: 34vh; }
   .brand-text small { display: none; }
+  .msg { max-width: 100%; }
+  .chat-messages { padding: 12px 12px 4px; }
+  .chat-form { padding: 10px 12px 14px; }
 }
