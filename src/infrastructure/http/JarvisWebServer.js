@@ -28,6 +28,7 @@ export class JarvisWebServer {
     getChatHistoryUseCase,
     resetChatUseCase,
     subscribeChatUseCase,
+    cancelChatTurnUseCase,
     publicDir,
     host = '0.0.0.0',
     port = 3081
@@ -44,6 +45,7 @@ export class JarvisWebServer {
     this.getChatHistoryUseCase = getChatHistoryUseCase;
     this.resetChatUseCase = resetChatUseCase;
     this.subscribeChatUseCase = subscribeChatUseCase;
+    this.cancelChatTurnUseCase = cancelChatTurnUseCase;
     this.publicDir = publicDir || path.resolve(process.cwd(), 'public');
     this.host = host;
     this.port = port;
@@ -273,6 +275,16 @@ export class JarvisWebServer {
       if (req.method === 'POST' && segments[3] === 'chat' && segments[4] === 'reset') {
         try {
           const result = await this.resetChatUseCase.execute(projectId);
+          return this._sendJson(res, 200, { projectId, ...result });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/chat/cancel  (detiene el turno en curso)
+      if (req.method === 'POST' && segments[3] === 'chat' && segments[4] === 'cancel') {
+        try {
+          const result = await this.cancelChatTurnUseCase.execute(projectId);
           return this._sendJson(res, 200, { projectId, ...result });
         } catch (error) {
           return this._sendJson(res, 400, { error: error.message });

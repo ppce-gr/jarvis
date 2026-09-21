@@ -14,7 +14,7 @@ const state = {
   currentNote: null,
   zone: [],
   editing: false,
-  chat: { projectId: null, source: null, messages: [], busy: false }
+  chat: { projectId: null, source: null, messages: [], busy: false, streaming: '' }
 };
 
 /* ---------------- Utilidades DOM ---------------- */
@@ -359,21 +359,25 @@ function closeChat() {
   }
   state.chat.projectId = null;
   state.chat.busy = false;
+  state.chat.streaming = '';
 }
 
 function setChatStatus(status) {
   const el = $('#chat-status');
   const labels = {
     idle: 'en espera',
-    running: 'pensando…',
+    running: 'escribiendo…',
     starting: 'arrancando…',
-    stopped: 'dormida (se reinicia al escribir)',
+    stopped: 'dormida (se reanuda al escribir)',
     error: 'error'
   };
   el.textContent = labels[status] || status;
   el.className = `chat-status ${status}`;
   state.chat.busy = status === 'running' || status === 'starting';
   $('#chat-input').disabled = false;   // el servidor encola; no bloqueamos al usuario
+  // El botón de detener sólo tiene sentido mientras el agente trabaja.
+  const stop = $('#chat-stop');
+  if (stop) stop.classList.toggle('hidden', !state.chat.busy);
   updateTyping();
 }
 
@@ -382,48 +386,122 @@ function handleChatEvent(event) {
     case 'user':
       // Eco del propio mensaje: ya lo pintamos al enviarlo.
       break;
-    case 'assistant':
+
+    // --- Streaming: ACP manda deltas de texto ---
+    case 'assistant-chunk': {
+      state.chat.streaming += event.text || '';
+      const bubble = ensureStreamingBubble();
+      bubble.textContent = state.chat.streaming;   // texto plano: rápido y sin parpadeo
+      scrollChatToEnd();
+      break;
+    }
+
+    // --- Mensaje cerrado: se pinta con Markdown y se fija en el hilo ---
+    case 'assistant': {
+      state.chat.streaming = '';
+      removeStreamingBubble();
       state.chat.messages.push({ role: 'assistant', text: event.text, at: event.at });
       renderChat();
       break;
+    }
+
+    case 'thought':
+      // El razonamiento no se pinta; está en la traza de la sesión de DSH.
+      break;
+
     case 'tool-call':
       state.chat.messages.push({ role: 'tool', text: event.name, at: event.at });
       renderChat();
       break;
+
+    case 'tool-done':
+      updateLastTool(event);
+      break;
+
+    case 'permission':
+      state.chat.messages.push({ role: 'note', text: `🔓 autorizado: ${event.text}`, at: event.at });
+      renderChat();
+      break;
+
     case 'status':
       setChatStatus(event.status);
       break;
+
     case 'turn-end':
+      state.chat.streaming = '';
+      removeStreamingBubble();
       setChatStatus('idle');
+      renderChat();
       break;
+
     case 'reset':
       state.chat.messages = [];
+      state.chat.streaming = '';
       renderChat();
-      toast('Conversación reiniciada: el agente ha olvidado lo hablado', 'ok');
+      toast('Conversación nueva: el agente ha olvidado lo hablado', 'ok');
       break;
+
     case 'error':
+      state.chat.streaming = '';
+      removeStreamingBubble();
       state.chat.messages.push({ role: 'error', text: event.text, at: event.at });
       setChatStatus('error');
       renderChat();
       break;
+
     case 'log':
       // Diagnóstico de DSH: no ensuciamos el chat con esto.
       break;
+
     default:
       break;
   }
 }
 
+/** Marca la última herramienta como terminada, sin duplicar entradas. */
+function updateLastTool(event) {
+  for (let i = state.chat.messages.length - 1; i >= 0; i -= 1) {
+    const msg = state.chat.messages[i];
+    if (msg.role === 'tool' && msg.name === event.name) return;  // ya está listada
+  }
+  state.chat.messages.push({ role: 'tool', text: event.name, at: event.at });
+  renderChat();
+}
+
+/** Burbuja donde va escribiéndose la respuesta en curso. */
+function ensureStreamingBubble() {
+  let el = document.getElementById('chat-streaming');
+  if (!el) {
+    const wrap = document.createElement('div');
+    wrap.id = 'chat-streaming';
+    wrap.className = 'msg msg-assistant';
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    wrap.appendChild(bubble);
+    $('#chat-messages').appendChild(wrap);
+    el = bubble;
+    updateTyping();
+  }
+  return el;
+}
+
+function removeStreamingBubble() {
+  const el = document.getElementById('chat-streaming');
+  if (el) el.remove();
+}
+
 function updateTyping() {
   const existing = document.getElementById('chat-typing');
-  if (state.chat.busy && !existing) {
+  // Con texto ya llegando no hacen falta los puntos suspensivos.
+  const shouldShow = state.chat.busy && !state.chat.streaming;
+  if (shouldShow && !existing) {
     const el = document.createElement('div');
     el.id = 'chat-typing';
     el.className = 'msg msg-assistant';
     el.innerHTML = '<div class="msg-bubble"><span class="typing"><span></span><span></span><span></span></span></div>';
     $('#chat-messages').appendChild(el);
     scrollChatToEnd();
-  } else if (!state.chat.busy && existing) {
+  } else if ((!shouldShow || state.chat.streaming) && existing) {
     existing.remove();
   }
 }
@@ -469,6 +547,10 @@ function renderChat() {
   }
 
   updateTyping();
+  // Si hay una respuesta en curso, se restaura tras el repintado.
+  if (state.chat.streaming) {
+    ensureStreamingBubble().textContent = state.chat.streaming;
+  }
   scrollChatToEnd();
 }
 
@@ -511,6 +593,24 @@ async function resetChat() {
     await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/reset`, { method: 'POST' });
   } catch (error) {
     toast(`Error al reiniciar: ${error.message}`, 'err');
+  }
+}
+
+/** Detiene el turno en curso sin perder la memoria del agente. */
+async function cancelChat() {
+  if (!state.chat.projectId) return;
+  try {
+    const { cancelled } = await api(
+      `/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/cancel`,
+      { method: 'POST' }
+    );
+    if (cancelled) {
+      toast('Respuesta detenida', 'ok');
+    } else {
+      toast('Este motor de chat no sabe cancelar; usa «Nueva»', 'err');
+    }
+  } catch (error) {
+    toast(`No se pudo detener: ${error.message}`, 'err');
   }
 }
 
@@ -697,6 +797,7 @@ function bindEvents() {
   // --- Chat ---
   $('#chat-form').addEventListener('submit', sendChatMessage);
   $('#chat-reset').addEventListener('click', resetChat);
+  $('#chat-stop').addEventListener('click', cancelChat);
   const chatInput = $('#chat-input');
   chatInput.addEventListener('keydown', (event) => {
     // Enter envía; Shift+Enter hace salto de línea (como cualquier chat).

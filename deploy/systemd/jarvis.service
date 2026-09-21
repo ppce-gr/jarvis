@@ -19,10 +19,12 @@ Environment=JARVIS_PORT=3081
 Environment=JARVIS_HOST=0.0.0.0
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 
-# --- Chat conversacional (proceso persistente de DSH por proyecto) ---
+# --- Chat conversacional (ACP, un proceso para todos los proyectos) ---
 # Perfil aparte del de orquestación: el chat necesita un proceso vivo con
 # memoria, la orquestación necesita uno que muera al terminar.
-Environment=JARVIS_CHAT_PROFILE=sdk
+# ACP aporta cancelacion real, reanudacion de la memoria y streaming por deltas.
+Environment=JARVIS_CHAT_PROTOCOL=acp
+Environment=JARVIS_CHAT_PROFILE=acp
 Environment=JARVIS_CHAT_PROVIDER=deepseek-official
 Environment=JARVIS_CHAT_MODEL=deepseek-v4-flash
 Environment=JARVIS_CHAT_EFFORT=high

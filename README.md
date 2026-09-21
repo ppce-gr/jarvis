@@ -95,6 +95,8 @@ Variables de entorno opcionales:
 | `JARVIS_HOST` | `0.0.0.0` | Interfaz de red a escuchar. |
 | `JARVIS_DSH_BIN` | `dsh` | Binario de DeepSeek Harness. |
 | `JARVIS_DSH_PROFILE` | `headless` | Perfil de DSH usado para orquestar. |
+| `JARVIS_CHAT_PROTOCOL` | `acp` | Protocolo del chat: `acp` o `sdk`. |
+| `JARVIS_CHAT_MODEL` | `deepseek-v4-flash` | Modelo del chat. |
 | `JARVIS_TASK_TIMEOUT_MS` | `900000` | Tope por tarea de agentes (15 min). |
 | `DSH_HOME` | el del entorno | Raíz de perfiles y sesiones de DSH. |
 
@@ -107,8 +109,9 @@ Variables de entorno opcionales:
 - [x] Casos de uso de proyectos y notas
 - [x] Servidor HTTP sin dependencias
 - [x] Interfaz web unificada (árbol, conceptual/código/bitácora, órdenes)
-- [x] **Chat conversacional persistente** dentro de Jarvis (perfil `sdk`), con
-      streaming SSE, historial en disco y contexto del proyecto
+- [x] **Chat conversacional persistente** dentro de Jarvis sobre **ACP**
+      (`dsh --profile acp`): streaming por deltas, cancelación real,
+      reanudación de la memoria y sin dependencias nuevas
 - [x] **Orquestación real con DSH** (`dsh --profile headless`), verificada end-to-end
       en la Pi 3B: cola de uno, bitácora en vivo, timeout y estados
 - [x] Respaldo Git y guía de migración

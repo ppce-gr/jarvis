@@ -51,7 +51,7 @@ Definidos en `src/domain/ports/`. Un puerto es una clase con métodos que lanzan
 | `ProjectRepositoryPort` | Listar/leer/guardar proyectos | `FileSystemProjectRepository` | SQLite, API remota |
 | `NoteRepositoryPort` | Notas Markdown (frontmatter + cuerpo) | `FileSystemNoteRepository` | Obsidian REST API, Postgres |
 | `OrchestratorPort` | Encolar trabajo de agentes y consultar tareas | `DshHeadlessOrchestratorAdapter` | SDK persistente, API directa |
-| `ConversationPort` | Chat persistente por proyecto | `DshSdkConversationAdapter` | ACP, API directa |
+| `ConversationPort` | Chat persistente por proyecto | `AcpConversationAdapter` | `DshSdkConversationAdapter`, API directa |
 | `FileBrowserPort` | Explorar `code/` y `logs/` | `FileSystemBrowserAdapter` | S3, Git remoto |
 | `GitSyncPort` | Respaldo y sincronización | `GitSyncAdapter` | Gitea API, rclone |
 
@@ -72,6 +72,7 @@ Definidos en `src/domain/ports/`. Un puerto es una clase con métodos que lanzan
 | `GetChatHistoryUseCase` | `projectId` | Mensajes + estado de sesión |
 | `SubscribeChatUseCase` | `projectId`, listener | Cancelar suscripción (SSE) |
 | `ResetChatUseCase` | `projectId` | Reinicia la conversación |
+| `CancelChatTurnUseCase` | `projectId` | Detiene el turno en curso |
 | `GetGitStatusUseCase` | — | Estado del repositorio |
 
 ---
@@ -102,6 +103,7 @@ Definidos en `src/domain/ports/`. Un puerto es una clase con métodos que lanzan
 | `POST` | `/api/projects/:id/orchestrate` | Encola orden (`{ instruction }`) → `202` |
 | `GET` | `/api/projects/:id/chat` | Historial + estado del chat |
 | `POST` | `/api/projects/:id/chat` | Envía mensaje (`{ text }`) → `202` |
+| `POST` | `/api/projects/:id/chat/cancel` | Detiene el turno en curso |
 | `POST` | `/api/projects/:id/chat/reset` | Reinicia la conversación |
 | `GET` | `/api/projects/:id/chat/stream` | Server-Sent Events del chat |
 | `GET` | `/api/git/status` | Estado del respaldo Git |

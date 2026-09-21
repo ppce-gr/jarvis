@@ -1,10 +1,10 @@
-# Chat conversacional
+# Chat conversacional (ACP)
 
 El chat es la **fase conceptual** del sistema: donde se habla de una idea antes
 de ejecutar nada. Vive dentro de Jarvis (pestaña **Chat**), así que no hace falta
 saltar a la interfaz de DSH.
 
-El diseño y las mediciones que llevaron hasta aquí están en
+El diseño y las mediciones están en
 `projects/sistema-jarvis/conceptual/adaptador-conversacional.md`.
 
 ---
@@ -12,50 +12,68 @@ El diseño y las mediciones que llevaron hasta aquí están en
 ## Cómo funciona
 
 ```text
-Navegador  ──POST /chat──────────▶  Jarvis  ──session/prompt──▶  dsh --profile sdk
-    ▲                                  │                              │
-    └──── SSE /chat/stream ◀───────────┘  ◀── session.event ──────────┘
+Navegador ──POST /chat────────▶ Jarvis ──session/prompt──▶ dsh --profile acp
+    ▲                              │                            │
+    └─── SSE /chat/stream ◀────────┘ ◀── session/update ────────┘
+                                        (deltas de texto, herramientas, permisos)
 ```
 
-- **Un proceso de DSH por proyecto.** El handshake `initialize` fija el `cwd`
-  para todas las sesiones de ese proceso, así que para que el agente trabaje
-  dentro de la carpeta del proyecto hace falta uno por proyecto. Se arranca
-  perezosamente al primer mensaje y se apaga solo tras 15 minutos de
-  inactividad (en una Pi de 905 MB, no podemos dejar procesos vivos).
-- **Transporte con el navegador: Server-Sent Events.** Una sola dirección
-  (servidor → navegador), sobre HTTP normal, con reconexión automática del
-  navegador. ~30 líneas con el módulo `http` nativo.
-- **El historial se lee del disco** (`projects/<id>/logs/conversacion.jsonl`),
-  así que sobrevive a reinicios de Jarvis.
-- **Contexto del proyecto en el primer mensaje:** el adaptador añade un
-  preámbulo que le dice al agente dónde está y que el diseño vive en
-  `conceptual/`. Sólo en el primero de cada sesión: repetirlo sería ruido.
+- **Un solo proceso de DSH para todos los proyectos.** A diferencia del protocolo
+  SDK (que fijaba el `cwd` en el handshake), ACP lo recibe **por sesión** en
+  `session/new`. Un proceso, una sesión por proyecto. En una Pi de 905 MB eso
+  ahorra mucha memoria.
+- **Streaming real:** ACP manda `agent_message_chunk` con deltas de texto, así
+  que la respuesta se ve escribirse, no aparece de golpe. También llegan
+  `tool_call` / `tool_call_update` (qué hace el agente) y `agent_thought_chunk`.
+- **Memoria que sobrevive:** al abrir un proyecto se busca su sesión persistida y
+  se hace `session/resume`. El agente recupera lo hablado aunque Jarvis o el
+  proceso de DSH se hayan reiniciado. El `sessionId` se guarda en
+  `projects/<id>/logs/acp-session.json`.
+- **El historial para la interfaz se lee del disco**
+  (`projects/<id>/logs/conversacion.jsonl`), así que se ve aunque el agente
+  empiece de cero.
 
-## Dos cosas que NO se pueden hacer (y por qué)
+## Por qué ACP y no el protocolo SDK de DSH
 
-Verificado leyendo el código de `dsh-sdk-jsonrpc-server`: el protocolo SDK
-expone **sólo** `initialize`, `session/prompt` y `shutdown`.
+DSH expone tres modos de pilotaje y elegimos mal al principio: el perfil `sdk`
+tiene sólo tres métodos y **no sabe cancelar ni reanudar**. ACP sí, y además es
+un estándar que hablan ~40 agentes.
 
-| Limitación | Consecuencia | Mitigación |
+| | Perfil `sdk` | Perfil `acp` (actual) |
 |---|---|---|
-| **No hay cancelación** | No se puede abortar una respuesta en curso | Botón **Reiniciar**: mata el proceso. El agente olvida lo hablado; el historial en disco se conserva |
-| **No hay reanudación** | `createSession` crea un agente **nuevo**; no recarga el transcript | El contexto **durable** vive en las notas de `conceptual/`, no en la memoria del chat |
+| Cancelar una respuesta | No | `session/cancel` |
+| Reanudar la memoria | No | `session/resume` |
+| Listar sesiones | No | `session/list` |
+| Cambiar de modelo en caliente | No | `session/set_config_option` |
+| Streaming | Por pasos | **Deltas de texto** |
+| `cwd` | Por proceso | **Por sesión** |
+| Interoperabilidad | Sólo DSH | ~40 agentes |
 
-Es decir: **la memoria del agente dura lo que dura el proceso.** Por eso el
-sistema insiste en que los acuerdos se escriban en las notas: eso sí es
-permanente, y el agente lo relee.
+El adaptador SDK sigue en el repositorio como alternativa sin dependencias: se
+elige con `JARVIS_CHAT_PROTOCOL=sdk`.
 
-Si algún día la cancelación fuera imprescindible, la vía sería el perfil `acp`
-(que sí tiene `session/cancel`), a cambio de añadir una dependencia.
+## Permisos: el detalle que bloquea si se ignora
 
-## Progreso por pasos, no por tokens
+ACP invierte una responsabilidad: el servidor **pide** permiso con
+`session/request_permission` y **espera respuesta**. Si el cliente no contesta,
+el agente se queda colgado para siempre.
 
-Los eventos de sesión se registran al cerrar cada paso (`assistant/message`,
-`tool/call`, `turn/end`), no token a token. Para un asistente agéntico esto es
-útil: se ve **qué hace** (lee un fichero, lanza tests) además de lo que dice.
+Este adaptador responde automáticamente, prefiriendo `allow_always`, y deja
+constancia en el chat («🔓 autorizado: …») para que se vea qué se permitió. Es el
+mismo nivel de confianza que ya tenía el modo headless, con el aislamiento de
+trabajar en la carpeta del proyecto.
 
-Observado en la Pi: respuesta simple en **~1 segundo** con el proceso caliente,
-frente a los 16-18 s del modo headless (que arranca un proceso por tarea).
+## Comportamiento observado en la Pi 3B
+
+Vale la pena distinguir **medido** de **esperado**:
+
+- Respuesta simple con el proceso caliente: **~1-2 s** (medido).
+- Reanudación de una conversación creada por el adaptador anterior: **verificada**
+  (`session/list` la encontró y `session/resume` la recuperó).
+- Memoria tras reiniciar Jarvis por completo: **verificada** — se mató el proceso,
+  se rearrancó y el agente recordó el mensaje previo.
+- Cancelación: **verificada** — `running` → `cancelled` → `idle` conservando la
+  memoria.
 
 ## API
 
@@ -63,22 +81,28 @@ frente a los 16-18 s del modo headless (que arranca un proceso por tarea).
 |---|---|---|
 | `GET` | `/api/projects/:id/chat` | Historial + estado de la sesión |
 | `POST` | `/api/projects/:id/chat` | Envía mensaje (`{ text }`) → `202` |
-| `POST` | `/api/projects/:id/chat/reset` | Reinicia la conversación |
+| `POST` | `/api/projects/:id/chat/cancel` | Detiene el turno en curso |
+| `POST` | `/api/projects/:id/chat/reset` | Empieza conversación nueva |
 | `GET` | `/api/projects/:id/chat/stream` | Server-Sent Events |
 
 ## Configuración
 
 | Variable | Por defecto | Descripción |
 |---|---|---|
-| `JARVIS_CHAT_PROFILE` | `sdk` | Perfil de DSH para el chat. |
+| `JARVIS_CHAT_PROTOCOL` | `acp` | `acp` o `sdk`. |
+| `JARVIS_CHAT_PROFILE` | `acp` | Perfil de DSH para el chat. |
 | `JARVIS_CHAT_PROVIDER` | `deepseek-official` | Proveedor del modelo. |
 | `JARVIS_CHAT_MODEL` | `deepseek-v4-flash` | Modelo. |
 | `JARVIS_CHAT_EFFORT` | `high` | Esfuerzo de razonamiento. |
-| `JARVIS_CHAT_IDLE_MS` | `900000` | Inactividad antes de dormir la sesión. |
+| `JARVIS_CHAT_IDLE_MS` | `900000` | Inactividad antes de dormir el proceso. |
+
+Al dormirse, el proceso se cierra por EOF de stdin (cierre limpio de ACP) y las
+sesiones quedan persistidas para reanudarse al siguiente mensaje.
 
 ## Pruebas
 
-`test/infrastructure/conversation.test.js` levanta un **servidor DSH falso**
-(`test/helpers/fake-dsh-sdk.js`) que habla el protocolo real por stdio. Se
-prueban el framing, las líneas malformadas, los errores, la persistencia, el
-preámbulo, el reinicio y el cierre **sin gastar tokens ni necesitar red**.
+`test/infrastructure/acp.test.js` levanta un **servidor ACP falso**
+(`test/helpers/fake-acp-server.js`) que habla el protocolo real: manda el texto
+en trozos, emite el ciclo de vida de las herramientas y —lo más importante—
+**pide permisos y espera respuesta**, que es donde un cliente mal hecho se
+bloquea. Se prueba sin gastar tokens ni necesitar red.

@@ -17,6 +17,7 @@ import { FileSystemNoteRepository } from './infrastructure/persistence/FileSyste
 import { FileSystemBrowserAdapter } from './infrastructure/persistence/FileSystemBrowserAdapter.js';
 import { DshHeadlessOrchestratorAdapter } from './infrastructure/orchestrator/DshHeadlessOrchestratorAdapter.js';
 import { DshSdkConversationAdapter } from './infrastructure/conversation/DshSdkConversationAdapter.js';
+import { AcpConversationAdapter } from './infrastructure/conversation/AcpConversationAdapter.js';
 import { GitSyncAdapter } from './infrastructure/git/GitSyncAdapter.js';
 import { JarvisWebServer } from './infrastructure/http/JarvisWebServer.js';
 
@@ -32,6 +33,7 @@ import { SendChatMessageUseCase } from './application/SendChatMessageUseCase.js'
 import { GetChatHistoryUseCase } from './application/GetChatHistoryUseCase.js';
 import { ResetChatUseCase } from './application/ResetChatUseCase.js';
 import { SubscribeChatUseCase } from './application/SubscribeChatUseCase.js';
+import { CancelChatTurnUseCase } from './application/CancelChatTurnUseCase.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(__dirname, '..');
@@ -58,17 +60,31 @@ const orchestratorAdapter = new DshHeadlessOrchestratorAdapter({
 });
 const gitSyncAdapter = new GitSyncAdapter(workspaceRoot);
 
-// Chat conversacional: proceso persistente por proyecto (dsh --profile sdk).
-const conversationAdapter = new DshSdkConversationAdapter({
-  workspaceRoot,
-  dshBin: process.env.JARVIS_DSH_BIN || 'dsh',
-  profile: process.env.JARVIS_CHAT_PROFILE || 'sdk',
-  dshHome: process.env.DSH_HOME,
-  provider: process.env.JARVIS_CHAT_PROVIDER || 'deepseek-official',
-  model: process.env.JARVIS_CHAT_MODEL || 'deepseek-v4-flash',
-  reasoningEffort: process.env.JARVIS_CHAT_EFFORT || 'high',
-  idleTimeoutMs: Number(process.env.JARVIS_CHAT_IDLE_MS || 15 * 60 * 1000)
-});
+// Chat conversacional. Por defecto ACP, que es un estándar y aporta
+// cancelación real, reanudación de la memoria y desacoplamiento de DSH.
+// El adaptador SDK sigue disponible por si se quiere cero dependencias.
+const chatProtocol = (process.env.JARVIS_CHAT_PROTOCOL || 'acp').toLowerCase();
+const conversationAdapter = chatProtocol === 'sdk'
+  ? new DshSdkConversationAdapter({
+      workspaceRoot,
+      dshBin: process.env.JARVIS_DSH_BIN || 'dsh',
+      profile: process.env.JARVIS_CHAT_PROFILE || 'sdk',
+      dshHome: process.env.DSH_HOME,
+      provider: process.env.JARVIS_CHAT_PROVIDER || 'deepseek-official',
+      model: process.env.JARVIS_CHAT_MODEL || 'deepseek-v4-flash',
+      reasoningEffort: process.env.JARVIS_CHAT_EFFORT || 'high',
+      idleTimeoutMs: Number(process.env.JARVIS_CHAT_IDLE_MS || 15 * 60 * 1000)
+    })
+  : new AcpConversationAdapter({
+      workspaceRoot,
+      dshBin: process.env.JARVIS_DSH_BIN || 'dsh',
+      profile: process.env.JARVIS_CHAT_PROFILE || 'acp',
+      dshHome: process.env.DSH_HOME,
+      provider: process.env.JARVIS_CHAT_PROVIDER || 'deepseek-official',
+      model: process.env.JARVIS_CHAT_MODEL || 'deepseek-v4-flash',
+      reasoningEffort: process.env.JARVIS_CHAT_EFFORT || 'high',
+      idleTimeoutMs: Number(process.env.JARVIS_CHAT_IDLE_MS || 15 * 60 * 1000)
+    });
 
 // --- Casos de uso (capa de aplicación) ---
 const getProjectsUseCase = new GetProjectsUseCase(projectRepository);
@@ -83,6 +99,7 @@ const sendChatMessageUseCase = new SendChatMessageUseCase(conversationAdapter);
 const getChatHistoryUseCase = new GetChatHistoryUseCase(conversationAdapter);
 const resetChatUseCase = new ResetChatUseCase(conversationAdapter);
 const subscribeChatUseCase = new SubscribeChatUseCase(conversationAdapter);
+const cancelChatTurnUseCase = new CancelChatTurnUseCase(conversationAdapter);
 
 // --- Servidor web (adaptador de entrada) ---
 const webServer = new JarvisWebServer({
@@ -98,6 +115,7 @@ const webServer = new JarvisWebServer({
   getChatHistoryUseCase,
   resetChatUseCase,
   subscribeChatUseCase,
+  cancelChatTurnUseCase,
   publicDir: path.join(workspaceRoot, 'public'),
   host: HOST,
   port: PORT

@@ -57,6 +57,16 @@ export class ConversationPort {
   }
 
   /**
+   * Detiene el turno en curso conservando la memoria del agente.
+   * Los adaptadores cuyo protocolo no sepa cancelar devolverán
+   * `{ cancelled: false }` sin lanzar.
+   * @returns {Promise<{cancelled: boolean}>}
+   */
+  async cancel(projectId) {
+    return { cancelled: false };
+  }
+
+  /**
    * Reinicia la conversación: descarta la memoria del agente.
    * El historial en disco se conserva.
    */

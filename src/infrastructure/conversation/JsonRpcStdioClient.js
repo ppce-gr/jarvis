@@ -33,6 +33,13 @@ export class JsonRpcStdioClient extends EventEmitter {
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk) => this._onData(chunk));
 
+    // Si el proceso muere, escribir en su stdin lanza EPIPE. Sin este manejador
+    // sería una excepción no capturada capaz de tumbar Jarvis entero: aquí se
+    // ignora, porque las peticiones pendientes ya se rechazan en 'close'.
+    child.stdin.on('error', (error) => {
+      if (error?.code !== 'EPIPE') this.emit('stdinError', error);
+    });
+
     child.on('error', (error) => this._failAll(error));
     child.on('close', (code, signal) => {
       this._closed = true;
@@ -124,5 +131,33 @@ export class JsonRpcStdioClient extends EventEmitter {
     try {
       this.child.stdin.end();
     } catch { /* ya cerrado */ }
+  }
+
+  /**
+   * Envía una notificación (sin `id`, sin respuesta).
+   * ACP usa esto para `session/cancel`.
+   */
+  notify(method, params = {}) {
+    if (this._closed) return;
+    try {
+      this.child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`, 'utf8');
+    } catch { /* el proceso ya no está */ }
+  }
+
+  /**
+   * Responde a una petición que el SERVIDOR nos hizo a nosotros.
+   *
+   * ACP lo necesita: el servidor pide permisos con `session/request_permission`
+   * y espera respuesta antes de continuar. Si no contestamos, el agente se
+   * queda bloqueado.
+   */
+  respond(id, result, error = null) {
+    if (this._closed) return;
+    const frame = error
+      ? { jsonrpc: '2.0', id, error }
+      : { jsonrpc: '2.0', id, result };
+    try {
+      this.child.stdin.write(`${JSON.stringify(frame)}\n`, 'utf8');
+    } catch { /* el proceso ya no está */ }
   }
 }
