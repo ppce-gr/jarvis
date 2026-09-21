@@ -63,7 +63,8 @@ jarvis/
 | Documento | Contenido |
 |---|---|
 | [`docs/arquitectura-jarvis-pi3.md`](docs/arquitectura-jarvis-pi3.md) | Visión, principios y flujo de trabajo del sistema. |
-| [`docs/arquitectura-software.md`](docs/arquitectura-software.md) | Diseño hexagonal, puertos, adaptadores y cómo sustituir DSH. |
+| [`docs/arquitectura-software.md`](docs/arquitectura-software.md) | Diseño hexagonal, puertos, adaptadores y API REST. |
+| [`docs/integracion-dsh.md`](docs/integracion-dsh.md) | Cómo se conecta con DeepSeek Harness: alternativas, mediciones y decisión. |
 | [`docs/manual-interfaz.md`](docs/manual-interfaz.md) | Cómo usar la interfaz web desde el móvil. |
 | [`docs/guia-migracion.md`](docs/guia-migracion.md) | Cómo llevarte Jarvis a otro hardware. |
 
@@ -84,6 +85,10 @@ Variables de entorno opcionales:
 |---|---|---|
 | `JARVIS_PORT` | `3081` | Puerto del servidor web. |
 | `JARVIS_HOST` | `0.0.0.0` | Interfaz de red a escuchar. |
+| `JARVIS_DSH_BIN` | `dsh` | Binario de DeepSeek Harness. |
+| `JARVIS_DSH_PROFILE` | `headless` | Perfil de DSH usado para orquestar. |
+| `JARVIS_TASK_TIMEOUT_MS` | `900000` | Tope por tarea de agentes (15 min). |
+| `DSH_HOME` | el del entorno | Raíz de perfiles y sesiones de DSH. |
 
 ---
 
@@ -94,6 +99,15 @@ Variables de entorno opcionales:
 - [x] Casos de uso de proyectos y notas
 - [x] Servidor HTTP sin dependencias
 - [x] Interfaz web unificada (árbol, conceptual/código/bitácora, órdenes)
+- [x] **Orquestación real con DSH** (`dsh --profile headless`), verificada end-to-end
+      en la Pi 3B: cola de uno, bitácora en vivo, timeout y estados
 - [x] Respaldo Git y guía de migración
-- [ ] Integración real de la orquestación con DSH (adaptador `DshOrchestratorAdapter`)
 - [ ] Capa de voz (Web Speech API / Alexa)
+- [ ] Adaptador SDK persistente (sólo si los 16-18 s por tarea llegan a molestar;
+      ver [`docs/integracion-dsh.md`](docs/integracion-dsh.md))
+
+### Requisito para orquestar
+
+El motor de agentes es el CLI `dsh`, que ya está instalado en la Pi. Jarvis lo
+invoca en modo `headless`; el perfil se auto-inicializa la primera vez **sin red
+y sin `pnpm install`**. No hay que configurar nada más.

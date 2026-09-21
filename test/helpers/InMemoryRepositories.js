@@ -35,9 +35,16 @@ export class InMemoryNoteRepository {
 }
 
 export class InMemoryOrchestratorAdapter {
-  constructor() { this.calls = []; }
+  constructor() { this.calls = []; this.tasks = new Map(); this._n = 0; }
   async executeTask(projectId, instruction) {
     this.calls.push({ projectId, instruction });
-    return { success: true, projectId, instruction };
+    const taskId = `fake-${++this._n}`;
+    const task = { taskId, projectId, instruction, status: 'queued' };
+    if (!this.tasks.has(projectId)) this.tasks.set(projectId, []);
+    this.tasks.get(projectId).unshift(task);
+    return { accepted: true, taskId, status: 'queued' };
+  }
+  async listTasks(projectId) {
+    return this.tasks.get(projectId) || [];
   }
 }

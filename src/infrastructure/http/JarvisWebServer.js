@@ -23,6 +23,7 @@ export class JarvisWebServer {
     saveNoteUseCase,
     browseProjectFilesUseCase,
     getGitStatusUseCase,
+    listOrchestratorTasksUseCase,
     publicDir,
     host = '0.0.0.0',
     port = 3081
@@ -34,6 +35,7 @@ export class JarvisWebServer {
     this.saveNoteUseCase = saveNoteUseCase;
     this.browseProjectFilesUseCase = browseProjectFilesUseCase;
     this.getGitStatusUseCase = getGitStatusUseCase;
+    this.listOrchestratorTasksUseCase = listOrchestratorTasksUseCase;
     this.publicDir = publicDir || path.resolve(process.cwd(), 'public');
     this.host = host;
     this.port = port;
@@ -218,12 +220,22 @@ export class JarvisWebServer {
         }
       }
 
-      // POST /api/projects/:id/orchestrate
+      // GET /api/projects/:id/tasks
+      if (req.method === 'GET' && segments[3] === 'tasks') {
+        try {
+          const tasks = await this.listOrchestratorTasksUseCase.execute(projectId);
+          return this._sendJson(res, 200, { projectId, tasks });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/orchestrate  (encola y devuelve acuse inmediato)
       if (req.method === 'POST' && segments[3] === 'orchestrate') {
         try {
           const body = await this._readJsonBody(req);
           const result = await this.runOrchestratorTaskUseCase.execute(projectId, body.instruction);
-          return this._sendJson(res, 200, { result });
+          return this._sendJson(res, 202, { result });
         } catch (error) {
           return this._sendJson(res, 400, { error: error.message });
         }

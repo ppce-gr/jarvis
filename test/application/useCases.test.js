@@ -87,17 +87,19 @@ test('SaveNoteUseCase exige projectId y noteId', async () => {
   await assert.rejects(() => ctx.saveNote.execute({ projectId: 'p' }), /NOTE_ID_REQUIRED/);
 });
 
-test('RunOrchestratorTaskUseCase delega en el puerto de orquestación', async () => {
+test('RunOrchestratorTaskUseCase encola a través del puerto de orquestación', async () => {
   const adapter = new InMemoryOrchestratorAdapter();
   const useCase = new RunOrchestratorTaskUseCase(adapter);
 
   const result = await useCase.execute('proyecto', 'genera los tests');
-  assert.equal(result.success, true);
+  assert.equal(result.accepted, true);
+  assert.equal(result.status, 'queued');
   assert.deepEqual(adapter.calls, [{ projectId: 'proyecto', instruction: 'genera los tests' }]);
 });
 
 test('RunOrchestratorTaskUseCase valida la entrada', async () => {
   const useCase = new RunOrchestratorTaskUseCase(new InMemoryOrchestratorAdapter());
-  await assert.rejects(() => useCase.execute('', 'algo'), /required/);
-  await assert.rejects(() => useCase.execute('p', ''), /required/);
+  await assert.rejects(() => useCase.execute('', 'algo'), /PROJECT_ID_REQUIRED/);
+  await assert.rejects(() => useCase.execute('p', ''), /INSTRUCTION_REQUIRED/);
+  await assert.rejects(() => useCase.execute('p', '   '), /INSTRUCTION_REQUIRED/);
 });

@@ -158,6 +158,7 @@ async function selectProject(projectId) {
   await Promise.all([loadZone('code'), loadZone('logs')]);
   switchTab('conceptual');
   showEmptyConceptual();
+  await refreshTaskStatus();
 }
 
 async function loadNotes() {
@@ -307,6 +308,7 @@ function switchTab(tab) {
   $('#pane-code').classList.toggle('hidden', tab !== 'code');
   $('#pane-logs').classList.toggle('hidden', tab !== 'logs');
   $('#edit-toggle').classList.toggle('hidden', tab !== 'conceptual' || !state.currentNoteId);
+  if (tab === 'logs') refreshTaskStatus();
 }
 
 /* ---------------- Git ---------------- */
@@ -340,15 +342,57 @@ async function sendCommand() {
       `/api/projects/${encodeURIComponent(state.currentProjectId)}/orchestrate`,
       { method: 'POST', body: JSON.stringify({ instruction }) }
     );
-    toast(result?.message || 'Orden enviada al orquestador', result?.success ? 'ok' : 'err');
+    toast(`Orden aceptada (${result.taskId}). Jarvis la ejecutará en breve.`, 'ok');
     input.value = '';
-    await Promise.all([loadZone('logs'), refreshGitStatus()]);
+    switchTab('logs');
+    await Promise.all([loadZone('logs'), refreshTaskStatus(), refreshGitStatus()]);
   } catch (error) {
     toast(`Error: ${error.message}`, 'err');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Enviar';
   }
+}
+
+/* ---------------- Estado de las tareas del orquestador ---------------- */
+let taskPollTimer = null;
+
+async function refreshTaskStatus() {
+  if (!state.currentProjectId) return null;
+  try {
+    const { tasks } = await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/tasks`);
+    const running = tasks.find((t) => t.status === 'running' || t.status === 'queued');
+    const el = $('#task-status');
+
+    if (el) {
+      if (!tasks.length) {
+        el.classList.add('hidden');
+      } else {
+        el.classList.remove('hidden');
+        const t = running || tasks[0];
+        const icon = { queued: '⏳', running: '⚙️', completed: '✅', failed: '❌', timeout: '⏰' }[t.status] || '•';
+        el.textContent = `${icon} ${t.status} · ${t.instruction.slice(0, 70)}`;
+        el.className = `task-status ${t.status}`;
+      }
+    }
+
+    // Mientras haya trabajo vivo, refrescamos la bitácora en vivo.
+    if (running) {
+      await loadZone('logs');
+      scheduleTaskPoll();
+    } else {
+      clearTimeout(taskPollTimer);
+      await loadZone('logs');
+    }
+    return tasks;
+  } catch {
+    return null;
+  }
+}
+
+function scheduleTaskPoll() {
+  clearTimeout(taskPollTimer);
+  taskPollTimer = setTimeout(refreshTaskStatus, 4000);
 }
 
 /* ---------------- Acciones de creación ---------------- */

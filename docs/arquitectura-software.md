@@ -50,7 +50,7 @@ Definidos en `src/domain/ports/`. Un puerto es una clase con métodos que lanzan
 |---|---|---|---|
 | `ProjectRepositoryPort` | Listar/leer/guardar proyectos | `FileSystemProjectRepository` | SQLite, API remota |
 | `NoteRepositoryPort` | Notas Markdown (frontmatter + cuerpo) | `FileSystemNoteRepository` | Obsidian REST API, Postgres |
-| `OrchestratorPort` | Ejecutar una orden sobre un proyecto | `DshOrchestratorAdapter` | API DeepSeek directa, LangGraph |
+| `OrchestratorPort` | Encolar trabajo de agentes y consultar tareas | `DshHeadlessOrchestratorAdapter` | SDK persistente, API directa |
 | `FileBrowserPort` | Explorar `code/` y `logs/` | `FileSystemBrowserAdapter` | S3, Git remoto |
 | `GitSyncPort` | Respaldo y sincronización | `GitSyncAdapter` | Gitea API, rclone |
 
@@ -65,7 +65,8 @@ Definidos en `src/domain/ports/`. Un puerto es una clase con métodos que lanzan
 | `CreateProjectUseCase` | `{ name, description }` | Proyecto con `_indice` y `qa-dudas` |
 | `SaveNoteUseCase` | `{ projectId, noteId, title, content }` | Nota persistida |
 | `BrowseProjectFilesUseCase` | `projectId`, `zone` | Árbol de ficheros / contenido |
-| `RunOrchestratorTaskUseCase` | `projectId`, `instruction` | Resultado del orquestador |
+| `RunOrchestratorTaskUseCase` | `projectId`, `instruction` | Acuse (encola, no espera) |
+| `ListOrchestratorTasksUseCase` | `projectId` | Estado de las tareas |
 | `GetGitStatusUseCase` | — | Estado del repositorio |
 
 ---
@@ -92,7 +93,8 @@ Definidos en `src/domain/ports/`. Un puerto es una clase con métodos que lanzan
 | `PUT` | `/api/projects/:id/conceptual/:noteId` | Guarda nota |
 | `GET` | `/api/projects/:id/files?zone=code\|logs` | Lista ficheros de la zona |
 | `GET` | `/api/projects/:id/files/content?zone&path` | Contenido de un fichero |
-| `POST` | `/api/projects/:id/orchestrate` | Orden al orquestador (`{ instruction }`) |
+| `GET` | `/api/projects/:id/tasks` | Estado de las tareas del orquestador |
+| `POST` | `/api/projects/:id/orchestrate` | Encola orden (`{ instruction }`) → `202` |
 | `GET` | `/api/git/status` | Estado del respaldo Git |
 
 ---
@@ -121,15 +123,19 @@ Enlaza con [[_indice]] y [[qa-dudas]].
 
 ---
 
-## 6. Cómo sustituir DeepSeek Harness por otro motor
+## 6. Cómo sustituir el motor de agentes
+
+El motor actual es DeepSeek Harness en modo `headless`; el análisis completo de
+las alternativas y las mediciones están en [`integracion-dsh.md`](integracion-dsh.md).
 
 1. Crea `src/infrastructure/orchestrator/MiNuevoAdapter.js` que extienda
-   `OrchestratorPort` e implemente `executeTask(projectId, instruction)`.
+   `OrchestratorPort` e implemente `executeTask(projectId, instruction)` y
+   `listTasks(projectId)`.
 2. En `src/index.js`, cambia una línea:
 
 ```js
 // antes
-const orchestratorAdapter = new DshOrchestratorAdapter(workspaceRoot);
+const orchestratorAdapter = new DshHeadlessOrchestratorAdapter({ workspaceRoot });
 // después
 const orchestratorAdapter = new MiNuevoAdapter(config);
 ```
@@ -151,5 +157,8 @@ npm test
   (`test/helpers/InMemoryRepositories.js`): sin disco, sin red, milisegundos.
 - **Infraestructura** se prueba contra directorios temporales reales
   (`fs.mkdtemp`), incluyendo los casos de seguridad (path traversal).
+- **El orquestador** se prueba con un `runner` inyectado
+  (`test/infrastructure/orchestrator.test.js`): verifica la cola de uno, la
+  bitácora, los estados y los timeouts **sin lanzar DSH ni gastar tokens**.
 
 Esto es posible *precisamente* porque el dominio no depende de la infraestructura.

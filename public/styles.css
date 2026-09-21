@@ -313,6 +313,25 @@ html, body {
 }
 #command-input:focus { outline: none; border-color: var(--accent-strong); }
 
+/* ---------- Estado de tareas del orquestador ---------- */
+.task-status {
+  margin-bottom: 12px;
+  padding: 9px 13px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  font-size: 13px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-status.running { border-color: #23496f; color: #9ccbff; background: #12233a; }
+.task-status.queued { border-color: #4a3a12; color: #e6c063; background: #241d0d; }
+.task-status.completed { border-color: #1c3a22; color: #a8e6b4; background: #102416; }
+.task-status.failed,
+.task-status.timeout { border-color: #4a1f1c; color: #ffb4ae; background: #2a1513; }
+
 /* ---------- Botones ---------- */
 .btn {
   border: 1px solid var(--border);

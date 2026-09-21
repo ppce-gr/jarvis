@@ -15,3 +15,6 @@ Thumbs.db
 # Temporales de la raíz (las bitácoras de projects/ SÍ se versionan)
 *.tmp
 /jarvis-core.log
+
+# DSH_HOME local de pruebas (contiene credenciales: NUNCA versionar)
+.dsh-home/

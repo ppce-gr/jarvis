@@ -8,8 +8,15 @@ Type=simple
 # Ajusta estas dos líneas a tu usuario y ruta reales:
 User=jarvis
 WorkingDirectory=/home/jarvis/jarvis
+# HOME es necesario para que el CLI dsh encuentre ~/.dsh (perfiles y credenciales)
+Environment=HOME=/home/jarvis
 Environment=JARVIS_PORT=3081
 Environment=JARVIS_HOST=0.0.0.0
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# Ruta al binario de DeepSeek Harness. Si instalas dsh globalmente
+# (npm install -g @deepseek-ai/dsh) basta con "dsh"; si no, pon la ruta
+# absoluta que devuelva `command -v dsh` en tu shell.
+Environment=JARVIS_DSH_BIN=/usr/local/bin/dsh
 
 ExecStart=/usr/bin/node src/index.js
 

@@ -27,7 +27,7 @@ git push -u origin main
 
 ## 2. En la máquina nueva
 
-Requisitos: **Node.js 20 o superior** y **Git**.
+Requisitos: **Node.js 20 o superior**, **Git** y el **CLI de DeepSeek Harness**.
 
 ```bash
 git clone <url-de-tu-repo> jarvis
@@ -39,15 +39,33 @@ npm start       # arranca la interfaz
 No hay `npm install` porque no hay dependencias de runtime. Si en el futuro se
 añaden, este paso aparecerá aquí y en `scripts/deploy.sh`.
 
+### El CLI `dsh` (imprescindible para orquestar)
+
+Jarvis usa `dsh` para lanzar a los agentes. La interfaz web funciona sin él, pero
+las órdenes de la barra ⌘ fallarán. Comprueba e instala:
+
+```bash
+command -v dsh || npm install -g @deepseek-ai/dsh
+dsh --profile headless "responde OK"   # prueba; la primera vez auto-inicializa el perfil
+```
+
+La primera ejecución crea `~/.dsh/profiles/headless` **sin red y sin
+`pnpm install`** (usa un symlink a la propia instalación de DSH).
+
+> **Ojo con el servicio systemd:** si `dsh` no está instalado globalmente, el
+> PATH del servicio no lo encontrará. Ajusta `Environment=JARVIS_DSH_BIN=` en
+> `scripts/jarvis.service` con la ruta absoluta que devuelva `command -v dsh`.
+
 ---
 
 ## 3. Qué NO viaja por Git (y por qué da igual)
 
 | Elemento | Motivo | Qué hacer |
 |---|---|---|
-| `projects/*/logs/*.log` | Ruido de ejecución | Se regeneran; opcional versionarlos |
+| `projects/*/logs/*.log` | Registro histórico de agentes | **Sí conviene versionarlos**: son la bitácora |
 | Ficheros temporales | Basura | Ignorados por `.gitignore` |
 | El propio `node_modules` | No existe (cero dependencias) | — |
+| `.dsh-home/` | DSH_HOME local de pruebas (contiene credenciales) | Nunca versionar; está en `.gitignore` |
 
 Todo lo que define el sistema (código, docs, ideas, servicios, scripts) **sí**
 viaja en el repositorio.

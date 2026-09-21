@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { FileSystemProjectRepository } from './infrastructure/persistence/FileSystemProjectRepository.js';
 import { FileSystemNoteRepository } from './infrastructure/persistence/FileSystemNoteRepository.js';
 import { FileSystemBrowserAdapter } from './infrastructure/persistence/FileSystemBrowserAdapter.js';
-import { DshOrchestratorAdapter } from './infrastructure/orchestrator/DshOrchestratorAdapter.js';
+import { DshHeadlessOrchestratorAdapter } from './infrastructure/orchestrator/DshHeadlessOrchestratorAdapter.js';
 import { GitSyncAdapter } from './infrastructure/git/GitSyncAdapter.js';
 import { JarvisWebServer } from './infrastructure/http/JarvisWebServer.js';
 
@@ -26,6 +26,7 @@ import { SaveNoteUseCase } from './application/SaveNoteUseCase.js';
 import { RunOrchestratorTaskUseCase } from './application/RunOrchestratorTaskUseCase.js';
 import { BrowseProjectFilesUseCase } from './application/BrowseProjectFilesUseCase.js';
 import { GetGitStatusUseCase } from './application/GetGitStatusUseCase.js';
+import { ListOrchestratorTasksUseCase } from './application/ListOrchestratorTasksUseCase.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(__dirname, '..');
@@ -43,7 +44,13 @@ const noteRepository = new FileSystemNoteRepository(
 const browserAdapter = new FileSystemBrowserAdapter(
   path.join(workspaceRoot, 'projects')
 );
-const orchestratorAdapter = new DshOrchestratorAdapter(workspaceRoot);
+const orchestratorAdapter = new DshHeadlessOrchestratorAdapter({
+  workspaceRoot,
+  dshBin: process.env.JARVIS_DSH_BIN || 'dsh',
+  profile: process.env.JARVIS_DSH_PROFILE || 'headless',
+  dshHome: process.env.DSH_HOME,
+  timeoutMs: Number(process.env.JARVIS_TASK_TIMEOUT_MS || 15 * 60 * 1000)
+});
 const gitSyncAdapter = new GitSyncAdapter(workspaceRoot);
 
 // --- Casos de uso (capa de aplicación) ---
@@ -54,6 +61,7 @@ const saveNoteUseCase = new SaveNoteUseCase(noteRepository);
 const runOrchestratorTaskUseCase = new RunOrchestratorTaskUseCase(orchestratorAdapter);
 const browseProjectFilesUseCase = new BrowseProjectFilesUseCase(browserAdapter);
 const getGitStatusUseCase = new GetGitStatusUseCase(gitSyncAdapter);
+const listOrchestratorTasksUseCase = new ListOrchestratorTasksUseCase(orchestratorAdapter);
 
 // --- Servidor web (adaptador de entrada) ---
 const webServer = new JarvisWebServer({
@@ -64,6 +72,7 @@ const webServer = new JarvisWebServer({
   runOrchestratorTaskUseCase,
   browseProjectFilesUseCase,
   getGitStatusUseCase,
+  listOrchestratorTasksUseCase,
   publicDir: path.join(workspaceRoot, 'public'),
   host: HOST,
   port: PORT

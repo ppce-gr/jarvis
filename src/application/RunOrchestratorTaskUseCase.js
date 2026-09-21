@@ -1,6 +1,11 @@
 /**
  * Capa de Aplicación: RunOrchestratorTaskUseCase
- * Orquesta la ejecución de una instrucción sobre un proyecto a través del puerto de orquestación.
+ * ------------------------------------------------------------------
+ * Encola una orden de trabajo sobre un proyecto.
+ *
+ * Semántica asíncrona: NO espera a que los agentes terminen. Devuelve
+ * un acuse con el identificador de tarea para que la interfaz pueda
+ * seguir el progreso por la bitácora sin bloquearse.
  */
 export class RunOrchestratorTaskUseCase {
   constructor(orchestratorAdapter) {
@@ -8,9 +13,10 @@ export class RunOrchestratorTaskUseCase {
   }
 
   async execute(projectId, instruction) {
-    if (!instruction || !projectId) {
-      throw new Error('Project ID and instruction are required');
+    if (!projectId) throw new Error('PROJECT_ID_REQUIRED');
+    if (!instruction || !String(instruction).trim()) {
+      throw new Error('INSTRUCTION_REQUIRED');
     }
-    return await this.orchestratorAdapter.executeTask(projectId, instruction);
+    return await this.orchestratorAdapter.executeTask(projectId, String(instruction).trim());
   }
 }
