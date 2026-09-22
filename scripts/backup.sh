@@ -27,6 +27,21 @@ if [ -z "$(git status --porcelain)" ]; then
 fi
 
 git add -A
+
+# --- Guarda de seguridad ---------------------------------------------
+# `git add -A` respeta .gitignore, pero si ese fichero se rompiera subiriamos
+# credenciales. Antes de commitear se comprueba que no haya nada sensible en
+# el area de staging; si lo hay, se aborta SIN subir nada.
+SENSIBLE=$(git diff --cached --name-only | grep -iE '(^|/)(\.dsh-home|\.git-credentials|\.env|.*\.key|.*\.pem|id_ed25519|id_rsa)' || true)
+if [ -n "$SENSIBLE" ]; then
+  echo "[backup] ABORTADO: se iban a versionar ficheros sensibles:" >&2
+  echo "$SENSIBLE" | sed 's/^/           /' >&2
+  echo "[backup] Revisa .gitignore. No se ha creado ningun commit." >&2
+  git reset >/dev/null
+  exit 1
+fi
+# ---------------------------------------------------------------------
+
 git commit -m "$MESSAGE" >/dev/null
 echo "[backup] Commit creado: $(git rev-parse --short HEAD)"
 
