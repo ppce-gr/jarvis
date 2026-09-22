@@ -56,7 +56,7 @@ async function crearEntorno() {
 }
 
 /** Lanza el actualizador contra el entorno, sin tocar el servicio real. */
-async function correr(entorno, args = []) {
+async function correr(entorno, args = [], envExtra = {}) {
   const opciones = {
     env: {
       ...process.env,
@@ -66,7 +66,8 @@ async function correr(entorno, args = []) {
       JARVIS_UPDATE_FLAG: path.join(entorno.dir, 'bandera'),
       // Un puerto muerto: así no se cree que hay un reinicio pendiente y el
       // script nunca intenta reiniciar nada durante las pruebas.
-      JARVIS_STATUS_URL: 'http://127.0.0.1:9/noexiste'
+      JARVIS_STATUS_URL: 'http://127.0.0.1:9/noexiste',
+      ...envExtra
     }
   };
   try {
@@ -169,4 +170,27 @@ test('rama por delante en modo real: respalda los commits locales', async (t) =>
   );
   assert.equal(await revList(entorno.code, 'origin/main..HEAD'), '0', 'no debe quedar nada sin subir');
   assert.equal(code, 0);
+});
+
+test('avisa si la copia instalada del actualizador está desfasada', async (t) => {
+  // Es lo único que no se actualiza solo, y durante un tiempo nada lo comparaba:
+  // la copia instalada se quedó vieja —con su bug— en silencio.
+  const entorno = await crearEntorno();
+  t.after(() => fs.rm(entorno.dir, { recursive: true, force: true }));
+
+  const delRepo = path.join(entorno.code, 'scripts', 'autoactualizar.sh');
+  const instalado = path.join(entorno.dir, 'jarvis-actualizar');
+  await fs.writeFile(delRepo, '#!/usr/bin/env bash\necho nueva\n');
+  await entorno.git(['add', '-A']);
+  await entorno.git(['commit', '-qm', 'actualizador']);
+  await fs.writeFile(instalado, '#!/usr/bin/env bash\necho vieja\n');
+
+  const primera = await correr(entorno, ['--check'], { JARVIS_UPDATER_INSTALLED: instalado });
+  assert.match(primera.salida, /ACTUALIZADOR INSTALADO/);
+  assert.match(primera.salida, /instalar\.sh --autoupdate/, 'debe decir cómo arreglarlo');
+
+  // Con las dos copias iguales no hay nada que avisar.
+  await fs.writeFile(instalado, '#!/usr/bin/env bash\necho nueva\n');
+  const segunda = await correr(entorno, ['--check'], { JARVIS_UPDATER_INSTALLED: instalado });
+  assert.doesNotMatch(segunda.salida, /ACTUALIZADOR INSTALADO/);
 });

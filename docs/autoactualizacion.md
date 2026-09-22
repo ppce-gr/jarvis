@@ -160,7 +160,12 @@ comodidad, y conviene saberlo.
 - **No toca la memoria.** El repositorio del cerebro es otro, así que una
   actualización de código no puede perder notas. Eso es por diseño.
 - **No reinstala el propio actualizador.** Si `scripts/autoactualizar.sh` cambia,
-  hay que volver a ejecutar `--autoupdate`.
+  hay que volver a ejecutar `--autoupdate`. Es deliberado: systemd ejecuta una
+  copia en `/usr/local/sbin` que es de **root**, así que el actualizador no puede
+  escribir ahí, y reescribirse a sí mismo mientras bash lo interpreta sería
+  peligroso. Para que no vuelva a pasar inadvertido, tanto el actualizador como
+  el panel **comparan la copia instalada con la del repositorio y avisan** si no
+  coinciden (campos `actualizadorComprobado` y `actualizadorDesfasado`).
 
 ## Cuando algo va mal
 
@@ -169,6 +174,7 @@ comodidad, y conviene saberlo.
 | «hay cambios sin commitear» | Commitea o descarta en el repositorio de código |
 | Commits locales sin subir | Nada: se respaldan solos antes de actualizar |
 | «las ramas han divergido DE VERDAD» | Hay commits en local **y** en el remoto que no están en el otro. No se toca nada: resuélvelo a mano |
+| «el ACTUALIZADOR INSTALADO no coincide con el del repositorio» | No se actualiza solo: `sudo bash deploy/instalar.sh --autoupdate` |
 | «el servicio no está instalado» | `sudo bash deploy/instalar.sh --jarvis` |
 | Se revirtió solo | Mira el registro: `.update-state/autoactualizacion.log` |
 | Ni con el commit probado arranca | Intervención manual: `journalctl -u jarvis` |

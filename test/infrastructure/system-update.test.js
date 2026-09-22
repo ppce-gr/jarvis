@@ -27,7 +27,10 @@ async function repoDePrueba() {
     codeDir: code,
     stateDir: path.join(dir, '.update-state'),
     flagFile: path.join(dir, '.update-request'),
-    branch: 'main'
+    branch: 'main',
+    // Ruta propia de la prueba: así no se compara con el actualizador real de la
+    // máquina, que no tiene nada que ver con estos repositorios temporales.
+    updaterFile: path.join(dir, 'jarvis-actualizar')
   });
   return { dir, code, git, adapter };
 }
@@ -180,6 +183,33 @@ test('checkForUpdates NO avisa de divergencia cuando lo local va por delante', a
   assert.equal(res.fastForward, false, 'no hay nada que traerse del remoto');
   assert.equal(res.hayNovedades, false, 'el remoto no trae nada nuevo');
   assert.equal(res.pendienteDeSubir, 1, 'hay un commit local sin subir');
+});
+
+test('getStatus avisa si la copia instalada del actualizador está desfasada', async () => {
+  // El actualizador no se actualiza solo: systemd ejecuta una copia de root, así
+  // que si nadie compara las dos versiones, la instalada se queda vieja —con sus
+  // bugs— en silencio. Eso fue justo lo que bloqueó la automodificación.
+  const { code, adapter } = await repoDePrueba();
+
+  await fs.mkdir(path.join(code, 'scripts'), { recursive: true });
+  await fs.writeFile(path.join(code, 'scripts', 'autoactualizar.sh'), 'versión nueva\n');
+  await fs.writeFile(adapter.updaterFile, 'versión vieja\n');
+
+  let estado = await adapter.getStatus();
+  assert.equal(estado.actualizadorComprobado, true);
+  assert.equal(estado.actualizadorDesfasado, true, 'debe avisar del desfase');
+
+  // Si coinciden, no hay nada que avisar.
+  await fs.writeFile(adapter.updaterFile, 'versión nueva\n');
+  estado = await adapter.getStatus();
+  assert.equal(estado.actualizadorComprobado, true);
+  assert.equal(estado.actualizadorDesfasado, false);
+
+  // Y si no se puede comparar, no se inventa un aviso.
+  await fs.rm(adapter.updaterFile);
+  estado = await adapter.getStatus();
+  assert.equal(estado.actualizadorComprobado, false);
+  assert.equal(estado.actualizadorDesfasado, false, 'no se avisa de lo que no se ha podido comprobar');
 });
 
 test('requestUpdate retira una bandera vieja antes de escribir la nueva', async () => {
