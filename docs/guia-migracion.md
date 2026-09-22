@@ -22,6 +22,21 @@ Cada uno usa su **propia deploy key con escritura** (`~/.ssh/jarvis_deploy` y
 repositorios**, y además conviene que no lo haga: así una filtración del vault no
 compromete el repo público.
 
+Hace falta un alias en `~/.ssh/config`; **es lo que le dice a git qué clave usar
+en cada repositorio**, y sin él el push de la memoria falla con «Could not
+resolve hostname github-vault»:
+
+```sshconfig
+Host github.com
+  IdentityFile ~/.ssh/jarvis_deploy
+  IdentitiesOnly yes
+
+Host github-vault
+  HostName github.com
+  IdentityFile ~/.ssh/vault_deploy
+  IdentitiesOnly yes
+```
+
 Se eligió SSH y no un token porque **las claves no caducan**: un token caducado
 pararía el respaldo automático **en silencio**, que es el peor fallo posible en
 un sistema de respaldo.
@@ -46,9 +61,18 @@ npm start
 
 No hace falta `npm install`: el proyecto no tiene dependencias de runtime.
 
-**Lo que NO viene en el clon** (y hay que recrear): `~/.dsh` con las credenciales
-de los modelos, y `~/.ssh/jarvis_deploy` con la clave. El resto —código, notas,
-configuración de modelo y bitácoras— está en el repositorio.
+**Lo que NO viene en el clon** (y hay que recrear a mano):
+
+| Qué | Dónde |
+|---|---|
+| Cuenta y repositorios en GitHub | — |
+| Clave SSH de cada repositorio | `~/.ssh/jarvis_deploy`, `~/.ssh/vault_deploy` |
+| Config SSH con los alias | `~/.ssh/config` |
+| Credenciales del modelo | `~/.dsh/.credentials.yaml` |
+
+Todo lo demás —código, notas, configuración de modelo y bitácoras— está en los
+repositorios. Si desplegaste el sistema en una máquina concreta, el manual de
+operación de esa máquina vive en el repositorio privado (`OPERACIONES.md`).
 
 ### Respaldo automático
 
