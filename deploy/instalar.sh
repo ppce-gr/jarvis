@@ -17,7 +17,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DSH_VERSION="${DSH_VERSION:-0.1.5-rc.2}"
+DSH_VERSION="${DSH_VERSION:-0.1.5-rc.3}"
 
 DRY_RUN=0
 DO_ZRAM=0
@@ -91,9 +91,28 @@ if [ "$DO_DSH_GLOBAL" -eq 1 ]; then
   if command -v dsh >/dev/null 2>&1 && [ "$DRY_RUN" -eq 0 ]; then
     echo "   Ya existe: $(command -v dsh)"
   fi
+  echo "   OJO con la versión: el paquete declara sus plugins con rangos ^, así"
+  echo "   que instalar una versión ANTIGUA del core hace que npm traiga plugins"
+  echo "   MÁS NUEVOS. Esa mezcla rompe el arranque con un error confuso"
+  echo "   ('cannot create effect on inactive context'). Instala SIEMPRE la más"
+  echo "   nueva de la familia, no una anterior."
   run npm install -g "@deepseek-ai/dsh@${DSH_VERSION}"
-  DSH_BIN_PATH="$(command -v dsh 2>/dev/null || echo "$(npm config get prefix 2>/dev/null || echo /usr/local)/bin/dsh")"
+  DSH_BIN_PATH="${JARVIS_DSH_BIN:-${DSH_BIN_PATH:-$(command -v dsh 2>/dev/null || echo "$(npm config get prefix 2>/dev/null || echo /usr/local)/bin/dsh")}}"
   echo "   Binario: $DSH_BIN_PATH"
+
+  # Verificación de verdad: que DSH arranque y responda. Habría detectado el
+  # desajuste de versiones en el acto en vez de dejar el servicio roto.
+  if [ "$DRY_RUN" -eq 0 ] && [ -x "$DSH_BIN_PATH" ]; then
+    echo "   Probando que DSH arranca y responde..."
+    if DSH_HOME="${DSH_HOME:-$HOME/.dsh}" timeout 180 "$DSH_BIN_PATH" --profile headless \
+         "Responde unicamente con OK" >/dev/null 2>&1; then
+      echo "   OK: DSH funciona."
+    else
+      echo "   ERROR: DSH no arranca o no responde." >&2
+      echo "   Suele ser un desajuste de versiones entre el core y sus plugins." >&2
+      echo "   Comprueba con:  dsh --profile headless \"OK\"" >&2
+    fi
+  fi
   echo
 fi
 

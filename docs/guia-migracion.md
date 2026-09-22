@@ -104,15 +104,44 @@ npm start       # arranca la interfaz
 No hay `npm install` porque no hay dependencias de runtime. Si en el futuro se
 añaden, este paso aparecerá aquí y en `scripts/deploy.sh`.
 
+**Y una comprobación que ahorra disgustos:** después de instalar `dsh`, ejecuta
+`dsh --profile headless "OK"` antes de dar nada por bueno. Un `dsh` mal instalado
+no falla al instalarse: falla al arrancar, y entonces el servicio queda muerto
+sin explicación evidente.
+
 ### El CLI `dsh` (imprescindible para orquestar)
 
 Jarvis usa `dsh` para lanzar a los agentes. La interfaz web funciona sin él, pero
-las órdenes de la barra ⌘ fallarán. Comprueba e instala:
+las conversaciones y las órdenes fallarán. Comprueba e instala:
 
 ```bash
-command -v dsh || npm install -g @deepseek-ai/dsh
+command -v dsh || npm install -g @deepseek-ai/dsh@0.1.5-rc.3
 dsh --profile headless "responde OK"   # prueba; la primera vez auto-inicializa el perfil
 ```
+
+#### ⚠️ Instala la versión más NUEVA de la familia, no una anterior
+
+`@deepseek-ai/dsh` declara sus plugins con rangos `^`, así que si instalas una
+versión **antigua** del core, npm trae plugins **más nuevos** que él. Esa mezcla
+rompe el arranque con un error que no dice nada de versiones:
+
+```text
+dsh: cannot create effect on inactive context
+Error: plugin(s) failed to load: @deepseek-ai/dsh-sandbox-local
+```
+
+Comprobado en la práctica: instalar `0.1.5-rc.2` trajo `dsh-base` y
+`dsh-tool-cordis` en `0.1.5-rc.3`, y no arrancaba. Con todo en `0.1.5-rc.3`
+funciona.
+
+Para verificar que una instalación es coherente, cuenta las versiones:
+
+```bash
+find "$(npm root -g)/@deepseek-ai/dsh" -name package.json \
+  -path "*/@deepseek-ai/*" -exec grep -h '"version"' {} \; | sort | uniq -c
+```
+
+Debe salir **una sola versión**. Si salen varias, el arranque fallará.
 
 La primera ejecución crea `~/.dsh/profiles/headless` **sin red y sin
 `pnpm install`** (usa un symlink a la propia instalación de DSH).
