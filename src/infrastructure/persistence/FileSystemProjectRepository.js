@@ -21,7 +21,9 @@ export class FileSystemProjectRepository extends ProjectRepositoryPort {
       const projects = [];
 
       for (const entry of entries) {
-        if (entry.isDirectory()) {
+        // Los directorios ocultos se ignoran: la carpeta de memoria es a su vez
+        // un repositorio Git, y su `.git` no es una idea del usuario.
+        if (entry.isDirectory() && !entry.name.startsWith('.')) {
           const projectId = entry.name;
           const project = await this.findById(projectId);
           if (project) {

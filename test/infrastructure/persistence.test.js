@@ -81,3 +81,16 @@ test('FileSystemBrowserAdapter bloquea zonas y path traversal', async () => {
     /PATH_NOT_ALLOWED/
   );
 });
+
+test('los directorios ocultos no cuentan como ideas', async () => {
+  // La carpeta de memoria es a su vez un repositorio Git: su `.git` no debe
+  // aparecer como si fuera un proyecto del usuario.
+  const dir = await tempDir();
+  const repo = new FileSystemProjectRepository(dir);
+  await fs.mkdir(path.join(dir, '.git'), { recursive: true });
+  await fs.mkdir(path.join(dir, '.oculto'), { recursive: true });
+  await repo.save({ id: 'idea-real', name: 'idea-real', description: '', status: 'activa' });
+
+  const all = await repo.findAll();
+  assert.deepEqual(all.map((p) => p.id), ['idea-real']);
+});
