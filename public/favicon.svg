@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Jarvis">
+  <!--
+    Favicon de Jarvis. Es SVG a propósito: pesa menos de 1 KB, se sirve con el
+    mismo `file` nativo que el resto de la interfaz (sin dependencias) y escala
+    nítido en cualquier tamaño. La "J" va dibujada como trazo, NO con un
+    elemento de texto: eso dependería de las fuentes del navegador y podría
+    salir distinta (o vacía) según el dispositivo.
+  -->
+  <defs>
+    <linearGradient id="jarvis-mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4da3ff" />
+      <stop offset="1" stop-color="#1f7ae0" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#jarvis-mark)" />
+  <path
+    d="M41 17 L41 39 A9 9 0 0 1 23 39 L23 33"
+    fill="none"
+    stroke="#04121f"
+    stroke-width="10"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
