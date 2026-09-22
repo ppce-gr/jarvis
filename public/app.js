@@ -38,6 +38,22 @@ async function api(path, options = {}) {
   return data;
 }
 
+/**
+ * Enlaza un evento SÓLO si el elemento existe. Si falta, avisa por consola y
+ * sigue con lo demás: antes, un elemento ausente lanzaba una excepción dentro
+ * de bindEvents y dejaba la aplicación ENTERA sin pintar (sin ideas, sin nada),
+ * que es el fallo más difícil de diagnosticar que puede haber.
+ */
+function on(selector, evento, manejador) {
+  const el = $(selector);
+  if (!el) {
+    console.warn(`[jarvis] elemento no encontrado, se omite: ${selector}`);
+    return null;
+  }
+  el.addEventListener(evento, manejador);
+  return el;
+}
+
 function escapeHtml(str = '') {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -132,7 +148,9 @@ async function loadProjects() {
 
 function renderProjectList() {
   const ul = $('#project-list');
+  if (!ul) return;
   ul.innerHTML = '';
+  if (!Array.isArray(state.projects)) state.projects = [];
   if (!state.projects.length) {
     ul.innerHTML = '<li class="muted" style="cursor:default">Sin ideas todavía</li>';
     return;
@@ -165,14 +183,18 @@ async function selectProject(projectId) {
 
 async function loadNotes() {
   if (!state.currentProjectId) return;
-  const { notes } = await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/conceptual`);
-  state.notes = notes;
+  const data = await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/conceptual`);
+  // Si el servidor devolviera algo inesperado, no se debe romper el render.
+  state.notes = Array.isArray(data.notes) ? data.notes : [];
+  if (data.error) toast(`No se pudieron leer las notas: ${data.error}`, 'err');
   renderNoteList();
 }
 
 function renderNoteList() {
   const ul = $('#note-list');
+  if (!ul) return;
   ul.innerHTML = '';
+  if (!Array.isArray(state.notes)) state.notes = [];
   if (!state.currentProjectId) {
     ul.innerHTML = '<li class="muted" style="cursor:default">Elige un proyecto</li>';
     return;
@@ -318,6 +340,105 @@ function switchTab(tab) {
   $('#edit-toggle').classList.toggle('hidden', tab !== 'conceptual' || !state.currentNoteId);
   if (tab === 'logs') refreshTaskStatus();
   if (tab === 'chat') scrollChatToEnd();
+}
+
+/* ================================================================
+   Panel de sistema: versión y actualización
+   ----------------------------------------------------------------
+   Aquí NO se actualiza nada. Se pide y se consulta; quien actualiza
+   es systemd desde fuera del proceso, para poder revertir si el
+   código nuevo no arranca.
+   ================================================================ */
+async function loadSystemStatus() {
+  try {
+    const st = await api('/api/system/status');
+    const pill = $('#system-pill');
+    // Se muestra la versión que el PROCESO tiene cargada, no la del
+    // repositorio: pueden no coincidir si hay un reinicio pendiente.
+    pill.textContent = st.runningCommitCorto || st.commitCorto || 'v?';
+    pill.title = `Ejecutando ${st.runningCommitCorto || '?'}`
+      + ` · repositorio ${st.commitCorto}`
+      + (st.dirty ? ' · cambios sin commitear' : '');
+    pill.classList.toggle('update', Boolean(st.updateRequested || st.dirty || st.reinicioPendiente));
+    return st;
+  } catch {
+    const pill = $('#system-pill');
+    if (pill) pill.textContent = 'v?';
+    return null;
+  }
+}
+
+function pintarSistema(st) {
+  const box = $('#system-info');
+  if (!st) { box.textContent = 'No se pudo leer el estado.'; return; }
+
+  const fila = (clave, valor, clase = '') =>
+    `<div class="fila"><span class="clave">${clave}</span><span class="valor ${clase}">${valor}</span></div>`;
+
+  let html = '';
+  html += fila('Ejecutando', st.runningCommitCorto || '(desconocido)');
+  html += fila('Repositorio', st.commitCorto || '—');
+  html += fila('Rama', st.branch || '—');
+  html += fila('Árbol de trabajo',
+    st.dirty ? 'con cambios sin commitear' : 'limpio',
+    st.dirty ? 'aviso' : 'bien');
+  html += fila('Último commit bueno', st.lastGoodCorto || '(aún ninguno)');
+  html += fila('Actualización pedida', st.updateRequested ? 'sí, en curso' : 'no',
+    st.updateRequested ? 'aviso' : '');
+
+  if (st.reinicioPendiente) {
+    html += `<div class="fila aviso">Hay código más nuevo en el repositorio
+      (${st.commitCorto}) pero este proceso sigue ejecutando
+      ${st.runningCommitCorto}. Reinicia el servicio para aplicarlo.</div>`;
+  }
+  if (st.dirty) {
+    html += `<div class="fila aviso">No se puede actualizar con cambios sin commitear:
+      el actualizador se negaría por seguridad.</div>`;
+  }
+  if (st.lastRun) {
+    html += `<div class="fila"><span class="clave">Última ejecución</span></div><pre>${escapeHtml(st.lastRun)}</pre>`;
+  }
+  box.innerHTML = html;
+}
+
+async function abrirSistema() {
+  $('#system-info').textContent = 'Cargando…';
+  $('#system-dialog').showModal();
+  pintarSistema(await loadSystemStatus());
+}
+
+async function pedirActualizacion() {
+  const boton = $('#system-update');
+  boton.disabled = true;
+  boton.textContent = 'Pidiendo…';
+  try {
+    await api('/api/system/update', { method: 'POST' });
+    toast('Actualización pedida. Systemd la ejecutará y, si algo falla, revertirá sola.', 'ok');
+    pintarSistema(await loadSystemStatus());
+  } catch (error) {
+    toast(`No se pudo pedir: ${error.message}`, 'err');
+  } finally {
+    boton.disabled = false;
+    boton.textContent = 'Actualizar';
+  }
+}
+
+async function buscarNovedades() {
+  const boton = $('#system-check');
+  boton.disabled = true;
+  boton.textContent = 'Buscando…';
+  try {
+    const r = await api('/api/system/check', { method: 'POST' });
+    if (r.error) toast(r.error, 'err');
+    else if (!r.hayNovedades) toast('Ya estás en la última versión', 'ok');
+    else if (r.fastForward) toast(`Hay novedades: ${r.actual} → ${r.remoto}`, 'ok');
+    else toast(`Aviso: ${r.aviso}`, 'err');
+  } catch (error) {
+    toast(`Error: ${error.message}`, 'err');
+  } finally {
+    boton.disabled = false;
+    boton.textContent = 'Buscar novedades';
+  }
 }
 
 /* ================================================================
@@ -883,13 +1004,13 @@ function bindEvents() {
   });
 
   // Enlaces internos de las notas renderizadas
-  $('#markdown-view').addEventListener('click', (event) => {
+  on('#markdown-view', 'click', (event) => {
     const link = event.target.closest('[data-note]');
     if (link) openNote(link.dataset.note);
   });
 
-  $('#edit-toggle').addEventListener('click', () => setEditing(!state.editing));
-  $('#save-note-btn').addEventListener('click', saveNote);
+  on('#edit-toggle', 'click', () => setEditing(!state.editing));
+  on('#save-note-btn', 'click', saveNote);
 
   // Atajo: Ctrl/Cmd + S guarda
   document.addEventListener('keydown', (event) => {
@@ -899,29 +1020,29 @@ function bindEvents() {
     }
   });
 
-  $('#new-project-btn').addEventListener('click', () => $('#new-project-dialog').showModal());
-  $('#new-note-btn').addEventListener('click', () => {
+  on('#new-project-btn', 'click', () => $('#new-project-dialog').showModal());
+  on('#new-note-btn', 'click', () => {
     if (!state.currentProjectId) return toast('Selecciona primero una idea', 'err');
     $('#new-note-dialog').showModal();
   });
-  $('#new-project-form').addEventListener('submit', createProject);
-  $('#new-note-form').addEventListener('submit', createNote);
+  on('#new-project-form', 'submit', createProject);
+  on('#new-note-form', 'submit', createNote);
 
   document.querySelectorAll('[data-close]').forEach((btn) => {
     btn.addEventListener('click', () => btn.closest('dialog').close());
   });
 
-  $('#command-send').addEventListener('click', sendCommand);
-  $('#command-input').addEventListener('keydown', (event) => {
+  on('#command-send', 'click', sendCommand);
+  on('#command-input', 'keydown', (event) => {
     if (event.key === 'Enter') sendCommand();
   });
 
   // --- Chat ---
-  $('#chat-form').addEventListener('submit', sendChatMessage);
-  $('#chat-reset').addEventListener('click', resetChat);
-  $('#chat-stop').addEventListener('click', cancelChat);
-  $('#chat-model').addEventListener('change', (e) => saveChatConfig('model', e.target.value));
-  $('#chat-effort').addEventListener('change', (e) => saveChatConfig('reasoning_effort', e.target.value));
+  on('#chat-form', 'submit', sendChatMessage);
+  on('#chat-reset', 'click', resetChat);
+  on('#chat-stop', 'click', cancelChat);
+  on('#chat-model', 'change', (e) => saveChatConfig('model', e.target.value));
+  on('#chat-effort', 'change', (e) => saveChatConfig('reasoning_effort', e.target.value));
 
   // Al volver a la pestaña (el móvil bloquea el SSE en segundo plano) se
   // resincroniza: es la otra mitad de «si sales y vuelves, vuelve al origen».
@@ -941,16 +1062,33 @@ function bindEvents() {
     chatInput.style.height = `${Math.min(chatInput.scrollHeight, 200)}px`;
   });
 
-  $('#menu-toggle').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
+  on('#menu-toggle', 'click', () => $('#sidebar').classList.toggle('open'));
 
   // --- Panel de sistema ---
-  $('#system-pill').addEventListener('click', abrirSistema);
-  $('#system-update').addEventListener('click', pedirActualizacion);
-  $('#system-check').addEventListener('click', buscarNovedades);
+  on('#system-pill', 'click', abrirSistema);
+  on('#system-update', 'click', pedirActualizacion);
+  on('#system-check', 'click', buscarNovedades);
 }
 
 async function boot() {
-  bindEvents();
+  // Si algo falla en el arranque, se muestra en pantalla. Antes el error se
+  // perdía en la consola y la interfaz quedaba muda sin ninguna pista.
+  window.addEventListener('error', (e) => {
+    console.error('[jarvis]', e.error || e.message);
+    const box = document.getElementById('toast');
+    if (box) {
+      box.textContent = `Error en la interfaz: ${e.message}`;
+      box.className = 'toast err';
+      box.classList.remove('hidden');
+    }
+  });
+
+  try {
+    bindEvents();
+  } catch (error) {
+    console.error('[jarvis] bindEvents falló:', error);
+    mostrarAvisoArranque(`No se pudieron enlazar los eventos: ${error.message}`);
+  }
 
   // En móvil el panel de ideas está detrás del ☰: la primera pista lo dice.
   if (window.matchMedia('(max-width: 820px)').matches) {
@@ -972,8 +1110,18 @@ async function boot() {
     setInterval(refreshGitStatus, 30000);
     setInterval(loadSystemStatus, 60000);
   } catch (error) {
-    toast(`No se pudo conectar con Jarvis Core: ${error.message}`, 'err');
+    console.error('[jarvis] arranque falló:', error);
+    mostrarAvisoArranque(`No se pudo conectar con Jarvis: ${error.message}`);
   }
+}
+
+/** Deja el fallo a la vista en el propio panel de ideas. */
+function mostrarAvisoArranque(mensaje) {
+  const ul = document.getElementById('project-list');
+  if (ul) {
+    ul.innerHTML = `<li style="cursor:default;color:#ffb4ae">⚠️ ${escapeHtml(mensaje)}</li>`;
+  }
+  toast(mensaje, 'err');
 }
 
 boot();
