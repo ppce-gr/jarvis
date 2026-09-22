@@ -189,9 +189,13 @@ log "Barrera 1 OK: árbol de trabajo limpio."
 # Consultar novedades
 # ---------------------------------------------------------------
 log "Consultando origin/$BRANCH..."
-if ! git fetch origin "$BRANCH" >/dev/null 2>&1; then
-  morir "no pude contactar con el remoto (¿sin red?)"
-fi
+ERROR_FETCH="$(git fetch origin "$BRANCH" 2>&1 >/dev/null)" || {
+  log "Detalle del error de git:"; echo "$ERROR_FETCH" | head -3 | while read -r l; do log "  $l"; done
+  if echo "$ERROR_FETCH" | grep -q "Host key verification failed"; then
+    morir "falta la clave de host en ~/.ssh/known_hosts. Arrégialo con: sudo bash deploy/instalar.sh --backup"
+  fi
+  morir "no pude contactar con el remoto"
+}
 REMOTE="$(git rev-parse "origin/$BRANCH")"
 
 if [ "$REMOTE" = "$PREV" ]; then

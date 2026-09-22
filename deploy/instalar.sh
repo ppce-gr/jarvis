@@ -71,6 +71,37 @@ run() {
   fi
 }
 
+# Sin la clave de host de GitHub en ~/.ssh/known_hosts, SSH falla con
+# "Host key verification failed" y TANTO el respaldo como la actualización
+# fallan en silencio. Se usa la clave publicada por GitHub en su documentación
+# oficial (no ssh-keyscan, que no verifica identidad).
+#   https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
+GITHUB_HOST_KEY='github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl'
+
+asegurar_known_hosts() {
+  local usuario="${1:-$USER}"
+  local home_dir
+  home_dir="$(getent passwd "$usuario" | cut -d: -f6)"
+  [ -n "$home_dir" ] || home_dir="$HOME"
+  local kh="$home_dir/.ssh/known_hosts"
+
+  if [ -f "$kh" ] && grep -q '^github\.com ' "$kh" 2>/dev/null; then
+    echo "   known_hosts ya tiene github.com."
+    return 0
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "  [dry-run] añadir la clave de host de GitHub a $kh"
+    return 0
+  fi
+
+  mkdir -p "$home_dir/.ssh"
+  printf '%s\n' "$GITHUB_HOST_KEY" >> "$kh"
+  chmod 600 "$kh"
+  chown "$usuario":"$usuario" "$kh" 2>/dev/null || true
+  echo "   + clave de host de GitHub añadida a $kh"
+}
+
 requiere_root() {
   if [ "$(id -u)" -ne 0 ] && [ "$DRY_RUN" -eq 0 ]; then
     echo "ERROR: ejecútame con sudo." >&2
@@ -190,6 +221,8 @@ fi
 # ------------------------------------------------------------
 if [ "$DO_BACKUP" -eq 1 ]; then
   echo "== 4/6 · respaldo Git automático cada 30 min =="
+  echo "   Comprobando el acceso SSH al remoto..."
+  asegurar_known_hosts "jarvis"
   run chmod +x "$REPO_DIR/scripts/backup.sh"
   run cp "$REPO_DIR/deploy/systemd/jarvis-backup.service" /etc/systemd/system/
   run cp "$REPO_DIR/deploy/systemd/jarvis-backup.timer" /etc/systemd/system/
@@ -202,6 +235,7 @@ fi
 # ------------------------------------------------------------
 if [ "$DO_AUTOUPDATE" -eq 1 ]; then
   echo "== 5/6 · autoactualización con reversión =="
+  asegurar_known_hosts "jarvis"
 
   # Sólo avisa si el servicio no existe NI se está instalando en esta misma
   # ejecución (el paso 3 va antes que este). Si no, el aviso confunde.

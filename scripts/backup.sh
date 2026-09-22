@@ -79,8 +79,15 @@ respaldar_repo() {
     return
   fi
 
-  if ! git -C "$dir" fetch origin "$rama" >/dev/null 2>&1; then
-    echo "[backup]    AVISO: no se pudo contactar con el remoto (¿sin red?)." >&2
+  local error_git
+  if ! error_git="$(git -C "$dir" fetch origin "$rama" 2>&1 >/dev/null)"; then
+    echo "[backup]    ERROR: no se pudo contactar con el remoto." >&2
+    echo "$error_git" | head -3 | sed 's/^/               /' >&2
+    # El fallo más habitual no es la red, sino la clave de host sin aceptar.
+    if echo "$error_git" | grep -q "Host key verification failed"; then
+      echo "[backup]    PISTA: falta la clave de host en ~/.ssh/known_hosts." >&2
+      echo "[backup]           Arréglalo con:  sudo bash deploy/instalar.sh --backup" >&2
+    fi
     FALLOS=$((FALLOS + 1))
     return
   fi
