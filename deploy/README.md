@@ -5,8 +5,8 @@ Todo lo de esta carpeta son **ficheros de sistema** que instala el usuario con
 el sistema de ficheros en solo lectura fuera del workspace y `sudo` está
 desactivado. **Nada de aquí se ha ejecutado todavía.**
 
-El análisis y las mediciones que justifican cada pieza están en el proyecto
-`projects/sistema-jarvis/` (nota `despliegue-raspberry.md`).
+El análisis y las mediciones que justifican cada pieza están resumidos en el
+propio fichero y en [`docs/arquitectura-jarvis-pi3.md`](../docs/arquitectura-jarvis-pi3.md).
 
 ---
 
@@ -145,7 +145,7 @@ systemctl list-timers jarvis-backup.timer
 `legacy/` contiene una versión corregida, pero **es temporal**: existe sólo
 mientras la conversación conceptual siga viviendo en `dsh web`. La decisión
 tomada es traer el chat dentro de Jarvis y **retirar** `dsh web`, `socat` y el
-redirector Python (ver `projects/sistema-jarvis/conceptual/adaptador-conversacional.md`).
+redirector Python (ver `docs/chat.md`).
 
 Si necesitas el servicio mientras tanto:
 

@@ -8,8 +8,7 @@ Wants=network-online.target
 #  TEMPORAL. Este servicio existe sólo mientras la conversación
 #  conceptual siga viviendo en `dsh web`.
 #
-#  Cuando el chat esté dentro de Jarvis (ver el proyecto
-#  `sistema-jarvis`), se apaga y se retiran con él:
+#  Cuando el chat esté dentro de Jarvis, se apaga y se retiran con él:
 #    systemctl disable --now dsh-web
 #  con lo que desaparecen los puertos 3080, 3085 y 8080, y se
 #  libera la mayor parte de la memoria del sistema.
