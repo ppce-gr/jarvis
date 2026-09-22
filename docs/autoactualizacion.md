@@ -167,10 +167,29 @@ comodidad, y conviene saberlo.
 | Síntoma | Qué hacer |
 |---|---|
 | «hay cambios sin commitear» | Commitea o descarta en el repositorio de código |
-| «las ramas han divergido» | Tienes commits locales sin subir: súbelos o descártalos |
+| Commits locales sin subir | Nada: se respaldan solos antes de actualizar |
+| «las ramas han divergido DE VERDAD» | Hay commits en local **y** en el remoto que no están en el otro. No se toca nada: resuélvelo a mano |
 | «el servicio no está instalado» | `sudo bash deploy/instalar.sh --jarvis` |
 | Se revirtió solo | Mira el registro: `.update-state/autoactualizacion.log` |
 | Ni con el commit probado arranca | Intervención manual: `journalctl -u jarvis` |
+
+### Las tres relaciones entre local y remoto
+
+Antes sólo se contemplaban dos, y eso era un fallo de diseño que bloqueaba la
+automodificación: en cuanto Jarvis commiteaba en esta misma máquina, el
+repositorio quedaba «por delante» y el actualizador lo confundía con una
+divergencia. Como el aborto ocurría **antes** del respaldo, esos commits tampoco
+se subían nunca: bloqueo definitivo, con trabajo real sin respaldar.
+
+| Relación | Qué significa | Qué hace el actualizador |
+|---|---|---|
+| **igual** | Local y remoto en el mismo commit | Sólo reinicia si el servicio va por detrás |
+| **detrás** | El remoto trae commits nuevos | Respalda, fast-forward, verifica y reinicia |
+| **delante** | Hay commits locales sin subir | **Los respalda** y, si procede, verifica y reinicia |
+| **divergido** | Cada lado tiene commits que el otro no tiene | Aborta sin tocar nada |
+
+Sólo el último caso es irresoluble de forma automática; los otros tres se
+resuelven sin intervención.
 
 El registro completo de cada intento está en
 `/home/jarvis/jarvis/.update-state/autoactualizacion.log`, y cada resultado se

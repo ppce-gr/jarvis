@@ -430,9 +430,15 @@ async function buscarNovedades() {
   try {
     const r = await api('/api/system/check', { method: 'POST' });
     if (r.error) toast(r.error, 'err');
+    // El orden importa: "por delante" NO es una divergencia, y decir "ya estás
+    // en la última versión" ocultaría que hay commits locales sin respaldar.
+    else if (r.relacion === 'divergido') toast(`Aviso: ${r.aviso}`, 'err');
+    else if (r.pendienteDeSubir > 0) {
+      toast(`${r.pendienteDeSubir} commit(s) locales sin subir: se respaldarán al actualizar`, 'warn');
+    }
     else if (!r.hayNovedades) toast('Ya estás en la última versión', 'ok');
     else if (r.fastForward) toast(`Hay novedades: ${r.actual} → ${r.remoto}`, 'ok');
-    else toast(`Aviso: ${r.aviso}`, 'err');
+    else toast(`Aviso: ${r.aviso || 'situación inesperada de las ramas'}`, 'err');
   } catch (error) {
     toast(`Error: ${error.message}`, 'err');
   } finally {

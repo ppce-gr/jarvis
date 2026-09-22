@@ -253,6 +253,50 @@ if echo "$ESTADO_API" | grep -q '"reinicioPendiente": *true'; then
   REINICIO_PENDIENTE=1
 fi
 
+# ---------------------------------------------------------------
+# Relación REAL entre lo local y el remoto
+# ---------------------------------------------------------------
+# Hay TRES relaciones, no dos, y confundir "por delante" con "divergido" fue un
+# fallo real: en cuanto se commiteaba desde esta máquina —justo lo que hace la
+# automodificación— el actualizador se negaba para siempre. Y como esta
+# comprobación estaba ANTES del respaldo, esos commits tampoco se subían nunca:
+# bloqueo definitivo, con trabajo real sin respaldar.
+if [ "$PREV" = "$REMOTE" ]; then
+  RELACION="igual"
+elif git merge-base --is-ancestor "$PREV" "$REMOTE" 2>/dev/null; then
+  RELACION="detras"      # el remoto trae commits nuevos: fast-forward limpio
+elif git merge-base --is-ancestor "$REMOTE" "$PREV" 2>/dev/null; then
+  RELACION="delante"     # commits locales sin subir: NO es una divergencia
+else
+  RELACION="divergido"   # cada lado tiene commits que el otro no tiene
+fi
+
+if [ "$RELACION" = "divergido" ]; then
+  morir "las ramas han divergido DE VERDAD: hay commits en local y en origin/$BRANCH que no están en el otro. No se toca nada para no perderlos; resuélvelo a mano."
+fi
+
+if [ "$RELACION" = "delante" ]; then
+  PENDIENTES="$(git rev-list --count "origin/$BRANCH..HEAD")"
+  log "Local va $PENDIENTES commit(s) por delante de origin/$BRANCH (no es divergencia: aquí está todo lo del remoto)."
+  if [ "$MODO" = "check" ]; then
+    log "(--check: hay $PENDIENTES commit(s) locales sin subir)"
+    exit 0
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log "(simulación) se subirían los $PENDIENTES commit(s) locales y, si procede, se reiniciaría."
+    exit 0
+  fi
+  # Se respaldan ANTES de nada más: son trabajo real, y el respaldo existe
+  # precisamente para que no dependan de esta tarjeta SD.
+  log "Respaldando los commits locales en origin/$BRANCH..."
+  if ! JARVIS_BRAIN_DIR="$BRAIN_DIR" bash "$CODE_DIR/scripts/backup.sh" \
+         "chore: respaldo de commits locales antes de actualizar" >>"$LOG_FICHERO" 2>&1; then
+    morir "no pude subir los commits locales. El servicio no se toca."
+  fi
+  REMOTE="$(git rev-parse "origin/$BRANCH")"
+  log "Commits locales respaldados; origin/$BRANCH en $(git rev-parse --short "$REMOTE")."
+fi
+
 if [ "$REMOTE" = "$PREV" ] && [ "$REINICIO_PENDIENTE" -eq 0 ]; then
   log "Ya está al día ($(git rev-parse --short "$PREV"))."
   exit 0
@@ -295,8 +339,11 @@ if [ "$REMOTE" = "$PREV" ]; then
   exit 1
 fi
 
-if ! git merge-base --is-ancestor "$PREV" "$REMOTE"; then
-  morir "las ramas han divergido: hay commits locales que no están en origin/$BRANCH. No se toca nada para no perderlos."
+# A estas alturas la relación sólo puede ser "detrás": "igual" y "por delante"
+# salen por arriba, y "divergido" aborta antes de tocar nada. Se deja como
+# guarda: es el fichero más delicado del proyecto.
+if [ "${RELACION:-}" != "detras" ]; then
+  morir "estado inesperado de las ramas ('${RELACION:-desconocido}'). No se toca nada."
 fi
 log "Hay novedades: $(git rev-parse --short "$PREV") → $(git rev-parse --short "$REMOTE")"
 [ "$MODO" = "check" ] && { log "(--check: no se aplica nada)"; exit 0; }

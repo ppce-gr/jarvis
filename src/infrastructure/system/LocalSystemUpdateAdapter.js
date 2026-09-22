@@ -157,22 +157,45 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
 
     const remoto = await this._git(['rev-parse', `origin/${this.branch}`]);
 
-    let esAvance = false;
-    try {
-      // ¿El actual es ancestro del remoto? Entonces es un fast-forward limpio.
-      await this._git(['merge-base', '--is-ancestor', actual, remoto]);
-      esAvance = true;
-    } catch {
-      esAvance = false;
+    // Hay TRES relaciones posibles entre lo local y el remoto, no dos. Tratar
+    // "local por delante" como una divergencia fue un fallo real: en cuanto se
+    // commiteaba desde esta máquina —justo lo que hace la automodificación— la
+    // actualización se bloqueaba para siempre, y como el aborto ocurría ANTES
+    // del respaldo, esos commits tampoco se subían nunca.
+    const esAncestro = async (a, b) => {
+      try {
+        await this._git(['merge-base', '--is-ancestor', a, b]);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    let relacion;
+    if (actual === remoto) relacion = 'igual';
+    else if (await esAncestro(actual, remoto)) relacion = 'detras';
+    else if (await esAncestro(remoto, actual)) relacion = 'delante';
+    else relacion = 'divergido';
+
+    // Commits locales que el remoto todavía no tiene. En "delante" es trabajo
+    // real pendiente de respaldar; en "divergido" es la mitad del problema.
+    let pendienteDeSubir = 0;
+    if (relacion === 'delante' || relacion === 'divergido') {
+      const cuenta = await this._git(['rev-list', '--count', `origin/${this.branch}..HEAD`]);
+      pendienteDeSubir = Number.parseInt(String(cuenta).trim(), 10) || 0;
     }
 
     return {
       actual: actual.slice(0, 7),
       remoto: remoto.slice(0, 7),
-      hayNovedades: actual !== remoto,
-      fastForward: esAvance,
-      aviso: actual !== remoto && !esAvance
-        ? 'las ramas han divergido: hay commits locales que no están en el remoto'
+      relacion,
+      // "Novedades" es lo que trae el REMOTO. En una divergencia de verdad
+      // también las hay: hay commits remotos que aquí no están.
+      hayNovedades: relacion === 'detras' || relacion === 'divergido',
+      fastForward: relacion === 'detras',
+      pendienteDeSubir,
+      aviso: relacion === 'divergido'
+        ? 'las ramas han divergido de verdad: hay commits en local y en el remoto que no están en el otro'
         : null
     };
   }

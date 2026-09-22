@@ -108,6 +108,7 @@ test('checkForUpdates detecta novedades y si son fast-forward', async () => {
 
   // Al día: no hay novedades.
   let res = await adapter.checkForUpdates();
+  assert.equal(res.relacion, 'igual');
   assert.equal(res.hayNovedades, false, 'recién empujado, no hay novedades');
 
   // Se añade un commit en el remoto (simulando que otro lo publica).
@@ -122,6 +123,7 @@ test('checkForUpdates detecta novedades y si son fast-forward', async () => {
 
   res = await adapter.checkForUpdates();
   assert.equal(res.hayNovedades, true);
+  assert.equal(res.relacion, 'detras');
   assert.equal(res.fastForward, true, 'un commit por delante es fast-forward limpio');
   assert.equal(res.aviso, null);
 });
@@ -152,6 +154,32 @@ test('checkForUpdates avisa si las ramas han divergido', async () => {
   assert.equal(res.hayNovedades, true);
   assert.equal(res.fastForward, false);
   assert.match(res.aviso, /divergido/);
+  assert.equal(res.relacion, 'divergido');
+  assert.equal(res.pendienteDeSubir, 1);
+});
+
+test('checkForUpdates NO avisa de divergencia cuando lo local va por delante', async () => {
+  // Éste es exactamente el caso que bloqueó la automodificación: un commit
+  // hecho en la propia máquina. NO es una divergencia —aquí está todo lo del
+  // remoto—, así que no debe haber aviso y el actualizador debe poder seguir
+  // para respaldarlo.
+  const { adapter, code, git } = await repoDePrueba();
+
+  const remoto = path.join(path.dirname(code), 'remoto.git');
+  await execFileAsync('git', ['init', '-q', '--bare', '-b', 'main', remoto]);
+  await git(['remote', 'add', 'origin', remoto]);
+  await git(['push', '-q', '-u', 'origin', 'main']);
+
+  await fs.writeFile(path.join(code, 'local.txt'), 'local');
+  await git(['add', '-A']);
+  await git(['commit', '-qm', 'commit local sin subir']);
+
+  const res = await adapter.checkForUpdates();
+  assert.equal(res.relacion, 'delante');
+  assert.equal(res.aviso, null, 'ir por delante NO es divergir');
+  assert.equal(res.fastForward, false, 'no hay nada que traerse del remoto');
+  assert.equal(res.hayNovedades, false, 'el remoto no trae nada nuevo');
+  assert.equal(res.pendienteDeSubir, 1, 'hay un commit local sin subir');
 });
 
 test('requestUpdate retira una bandera vieja antes de escribir la nueva', async () => {
