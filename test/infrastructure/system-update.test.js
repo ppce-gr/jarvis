@@ -153,3 +153,16 @@ test('checkForUpdates avisa si las ramas han divergido', async () => {
   assert.equal(res.fastForward, false);
   assert.match(res.aviso, /divergido/);
 });
+
+test('requestUpdate retira una bandera vieja antes de escribir la nueva', async () => {
+  const { adapter } = await repoDePrueba();
+
+  // Resto de un intento anterior: si no se quitara, el .path de systemd no
+  // volvería a disparar y la petición no haría nada.
+  await fs.mkdir(path.dirname(adapter.flagFile), { recursive: true });
+  await fs.writeFile(adapter.flagFile, '{"requestedAt":"vieja"}');
+
+  await adapter.requestUpdate();
+  const contenido = JSON.parse(await fs.readFile(adapter.flagFile, 'utf8'));
+  assert.notEqual(contenido.requestedAt, 'vieja', 'debe ser la petición nueva');
+});

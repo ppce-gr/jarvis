@@ -109,6 +109,10 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
       throw new Error('WORKING_TREE_DIRTY: hay cambios sin commitear; el actualizador se negaría por seguridad');
     }
     await fs.mkdir(path.dirname(this.flagFile), { recursive: true });
+    // Se retira una bandera vieja primero: `PathExists` sólo dispara cuando el
+    // fichero aparece, así que un resto de un intento anterior dejaría la
+    // petición sin efecto.
+    await fs.rm(this.flagFile, { force: true });
     await fs.writeFile(
       this.flagFile,
       JSON.stringify({ requestedAt: new Date().toISOString() }, null, 2)

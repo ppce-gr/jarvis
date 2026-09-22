@@ -53,6 +53,10 @@ HEALTH_TRIES="${JARVIS_HEALTH_TRIES:-30}"
 HEALTH_WAIT="${JARVIS_HEALTH_WAIT:-2}"
 BRANCH="${JARVIS_BRANCH:-main}"
 BITACORA="$BRAIN_DIR/sistema-jarvis/logs/orchestrator.log"
+# La bandera que vigila systemd. OJO: hay que BORRARLA al terminar. `PathExists`
+# sólo dispara cuando el fichero aparece, así que si se queda ahí la próxima
+# petición no haría nada: la actualización funcionaría una sola vez.
+BANDERA="${JARVIS_UPDATE_FLAG:-/home/jarvis/jarvis/.update-request}"
 
 MODO="actualizar"
 DRY_RUN=0
@@ -83,6 +87,15 @@ bitacora() {
 }
 
 morir() { log "ERROR: $*"; bitacora "FALLÓ: $*"; exit 1; }
+
+# Se quita la bandera al salir por cualquier vía, incluidos los errores. Si no,
+# systemd no volvería a disparar el .path nunca más.
+limpiar_bandera() {
+  if [ -e "$BANDERA" ]; then
+    rm -f "$BANDERA" && log "Bandera retirada; el .path queda armado de nuevo."
+  fi
+}
+trap limpiar_bandera EXIT
 
 # Reinicia el servicio y espera a que responda de verdad: no basta con que el
 # proceso exista, tiene que servir /api/health Y poder leer la memoria.
@@ -118,6 +131,9 @@ if ! flock -n 9; then
 fi
 
 log "════ Inicio ($MODO) ════"
+if [ "$MODO" = "actualizar" ] && [ ! -e "$BANDERA" ]; then
+  log "AVISO: no hay bandera en $BANDERA. Se continúa (ejecución manual)."
+fi
 
 # ---------------------------------------------------------------
 # Comprobaciones previas
