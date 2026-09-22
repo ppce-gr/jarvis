@@ -130,7 +130,13 @@ export class JarvisWebServer {
       const ext = path.extname(resolved).toLowerCase();
       res.writeHead(200, {
         'Content-Type': mimeTypes[ext] || 'application/octet-stream',
-        'Cache-Control': 'no-cache'
+        // SIN CACHÉ, a propósito. La interfaz entera pesa ~56 KB y se sirve por
+        // red local: cachearla no aporta nada y sí provoca el problema más
+        // confuso posible — que arregles algo y sigas viendo lo viejo.
+        // 'no-cache' no bastaba: algunos navegadores reutilizan la copia igual.
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        Pragma: 'no-cache',
+        Expires: '0'
       });
       res.end(content);
     } catch {
