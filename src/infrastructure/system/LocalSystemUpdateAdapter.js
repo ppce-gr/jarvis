@@ -32,6 +32,22 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
     this.stateDir = stateDir;
     this.flagFile = flagFile;
     this.branch = branch;
+    // El commit que este PROCESO cargó al arrancar. Ojo: no es lo mismo que el
+    // HEAD del repositorio. Como el código vive en el mismo directorio que se
+    // versiona, un commit nuevo cambia HEAD al instante, pero el proceso sigue
+    // ejecutando lo que leyó al arrancar. Sin esta distinción, la interfaz
+    // diría que corre una versión que en realidad no está en memoria.
+    this.runningCommit = null;
+  }
+
+  /** Se llama una vez al arrancar: fija la versión que realmente se ejecuta. */
+  async captureRunningCommit() {
+    try {
+      this.runningCommit = await this._git(['rev-parse', 'HEAD']);
+    } catch {
+      this.runningCommit = null;
+    }
+    return this.runningCommit;
   }
 
   async _git(args) {
@@ -54,6 +70,9 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
     const estado = {
       commit: null,
       commitCorto: null,
+      runningCommit: this.runningCommit,
+      runningCommitCorto: this.runningCommit ? this.runningCommit.slice(0, 7) : null,
+      reinicioPendiente: false,
       branch: this.branch,
       dirty: false,
       lastGood: null,
@@ -92,6 +111,12 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
     if (log) {
       estado.lastRun = log.trimEnd().split('\n').slice(-12).join('\n');
     }
+
+    // Si el repositorio va por delante de lo que corre el proceso, hay un
+    // reinicio pendiente: alguien ha traído código nuevo y aún no se aplicó.
+    estado.reinicioPendiente = Boolean(
+      this.runningCommit && estado.commit && this.runningCommit !== estado.commit
+    );
 
     // Sólo se puede actualizar con el árbol limpio: es la primera barrera del
     // actualizador, así que conviene saberlo antes de pedirlo.

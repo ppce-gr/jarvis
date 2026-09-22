@@ -124,6 +124,9 @@ const subscribeChatUseCase = new SubscribeChatUseCase(conversationAdapter);
 const cancelChatTurnUseCase = new CancelChatTurnUseCase(conversationAdapter);
 const getChatConfigUseCase = new GetChatConfigUseCase(conversationAdapter);
 const setChatConfigUseCase = new SetChatConfigUseCase(conversationAdapter);
+// Fija la versión que este proceso carga en memoria, antes de nada.
+await systemUpdateAdapter.captureRunningCommit();
+
 const getSystemStatusUseCase = new GetSystemStatusUseCase(systemUpdateAdapter);
 const requestSystemUpdateUseCase = new RequestSystemUpdateUseCase(systemUpdateAdapter);
 const checkForUpdatesUseCase = new CheckForUpdatesUseCase(systemUpdateAdapter);
