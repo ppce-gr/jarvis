@@ -101,6 +101,21 @@ npm test        # verifica que todo está sano
 npm start       # arranca la interfaz
 ```
 
+### Acepta la clave de host de GitHub antes de nada
+
+Sin `~/.ssh/known_hosts`, SSH corta con `Host key verification failed` y **tanto
+el respaldo como la actualización fallan en silencio**. Añade la clave publicada
+por GitHub (no un `ssh-keyscan`, que no verifica identidad):
+
+```bash
+mkdir -p ~/.ssh
+echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >> ~/.ssh/known_hosts
+chmod 600 ~/.ssh/known_hosts
+```
+
+Huella Ed25519 para comprobar: `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`.
+`deploy/instalar.sh` la añade sola al aplicar `--backup` o `--autoupdate`.
+
 No hay `npm install` porque no hay dependencias de runtime. Si en el futuro se
 añaden, este paso aparecerá aquí y en `scripts/deploy.sh`.
 
