@@ -16,8 +16,7 @@ propio fichero y en [`docs/arquitectura-jarvis-pi3.md`](../docs/arquitectura-jar
 |---|---|---|---|
 | 1 | **Cientos de MB de swap escribiéndose en la SD** (`/var/swap` en `/dev/mmcblk0p2`) | 🔴 Alta | `rpi-swap-jarvis.conf` + `sysctl-swappiness.conf` |
 | 2 | `npx @deepseek-ai/dsh@latest` en el arranque | 🟠 Media | `npm install -g @deepseek-ai/dsh@0.1.5-rc.2` |
-| 3 | `killall -9 node socat python3` mata también a Jarvis | 🟠 Media | `legacy/arrancar-dsh.sh` corregido |
-| 4 | Jarvis corre dentro del cgroup del servicio de DSH | 🟡 Baja | `systemd/jarvis.service` propio |
+| 3 | Jarvis corre dentro del cgroup del servicio de DSH | 🟡 Baja | `systemd/jarvis.service` propio |
 
 ---
 
@@ -33,9 +32,6 @@ deploy/
 │   ├── jarvis.service            → /etc/systemd/system/  (interfaz, puerto 3081)
 │   ├── jarvis-backup.service     → /etc/systemd/system/
 │   └── jarvis-backup.timer       → /etc/systemd/system/  (cada 30 min)
-└── legacy/
-    ├── dsh-web.service           → /etc/systemd/system/  (TEMPORAL)
-    └── arrancar-dsh.sh           → /home/jarvis/arrancar-dsh.sh
 ```
 
 ---
@@ -43,7 +39,7 @@ deploy/
 ## Paso 0 · Ver el plan sin tocar nada
 
 ```bash
-cd /home/jarvis/jarvis
+cd /home/jarvis/jarvis/jarvis
 sudo bash deploy/instalar.sh --dry-run --all
 ```
 
@@ -138,32 +134,12 @@ systemctl list-timers jarvis-backup.timer
 
 ---
 
-## Temas pendientes (deliberadamente NO incluidos)
+## El montaje antiguo de `dsh web`
 
-### El servicio `dsh web` antiguo
+Se ha retirado de este repositorio: era específico de una máquina concreta y hoy
+es historia. El chat vive dentro de Jarvis, así que ni `dsh web` ni su `socat` ni
+el redirector de Python hacen falta.
 
-`legacy/` contiene una versión corregida, pero **es temporal**: existe sólo
-mientras la conversación conceptual siga viviendo en `dsh web`. La decisión
-tomada es traer el chat dentro de Jarvis y **retirar** `dsh web`, `socat` y el
-redirector Python (ver `docs/chat.md`).
-
-Si necesitas el servicio mientras tanto:
-
-```bash
-sudo bash deploy/instalar.sh --legacy
-```
-
-Esto **desactiva** `init_deep_deep_seek.service` para que no choquen. No actives
-los dos a la vez.
-
-### El `killall` original
-
-Si prefieres no instalar el servicio legacy pero sí arreglar el script actual,
-el cambio mínimo es sustituir dentro de `/home/jarvis/arrancar-dsh.sh`:
-
-```bash
-killall -9 node socat python3 2>/dev/null     # ← bombardeo indiscriminado
-```
-
-por una gestión de PIDs concretos, como hace `legacy/arrancar-dsh.sh`. Mientras
-sigas usando el `killall`, **cada reinicio de DSH matará a Jarvis**.
+El registro de aquel montaje —con sus dos fallos: el `killall` indiscriminado y
+el `npx @latest`— vive en el repositorio privado, en
+`sistema-jarvis/legacy-dsh-web/`.

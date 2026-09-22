@@ -24,7 +24,6 @@ DO_ZRAM=0
 DO_JARVIS=0
 DO_BACKUP=0
 DO_DSH_GLOBAL=0
-DO_LEGACY=0
 DO_AUTOUPDATE=0
 
 uso() {
@@ -35,8 +34,6 @@ Opciones:
   --jarvis       Instala y arranca el servicio jarvis.service (puerto 3081).
   --backup       Instala el temporizador de respaldo Git cada 30 minutos.
   --dsh-global   Instala el CLI dsh global con versión fijada (recomendado).
-  --legacy       Instala la versión corregida del servicio dsh web temporal.
-                 NO lo actives junto a init_deep_deep_seek.service: chocan.
   --autoupdate   Instala la AUTOACTUALIZACIÓN con reversión: copia el
                  actualizador fuera del repositorio, las unidades systemd y la
                  regla de sudoers que le permite reiniciar sólo jarvis.
@@ -53,7 +50,6 @@ for arg in "$@"; do
     --jarvis)     DO_JARVIS=1 ;;
     --backup)     DO_BACKUP=1 ;;
     --dsh-global) DO_DSH_GLOBAL=1 ;;
-    --legacy)     DO_LEGACY=1 ;;
     --autoupdate) DO_AUTOUPDATE=1 ;;
     --all)        DO_ZRAM=1; DO_JARVIS=1; DO_BACKUP=1; DO_DSH_GLOBAL=1; DO_AUTOUPDATE=1 ;;
     --dry-run)    DRY_RUN=1 ;;
@@ -62,7 +58,7 @@ for arg in "$@"; do
   esac
 done
 
-if [ "$((DO_ZRAM + DO_JARVIS + DO_BACKUP + DO_DSH_GLOBAL + DO_LEGACY + DO_AUTOUPDATE))" -eq 0 ]; then
+if [ "$((DO_ZRAM + DO_JARVIS + DO_BACKUP + DO_DSH_GLOBAL + DO_AUTOUPDATE))" -eq 0 ]; then
   uso; exit 1
 fi
 
@@ -172,20 +168,6 @@ if [ "$DO_BACKUP" -eq 1 ]; then
   run systemctl daemon-reload
   run systemctl enable --now jarvis-backup.timer
   echo "   Próximas ejecuciones:  systemctl list-timers jarvis-backup.timer"
-  echo
-fi
-
-# ------------------------------------------------------------
-if [ "$DO_LEGACY" -eq 1 ]; then
-  echo "== 6/6 · dsh web corregido (TEMPORAL) =="
-  echo "   ATENCIÓN: sustituye a init_deep_deep_seek.service."
-  echo "   Se apaga el antiguo para que no choquen por los puertos."
-  run cp "$REPO_DIR/deploy/legacy/arrancar-dsh.sh" /home/jarvis/arrancar-dsh.sh
-  run chmod +x /home/jarvis/arrancar-dsh.sh
-  run cp "$REPO_DIR/deploy/legacy/dsh-web.service" /etc/systemd/system/dsh-web.service
-  run systemctl disable --now init_deep_deep_seek.service
-  run systemctl daemon-reload
-  run systemctl enable --now dsh-web
   echo
 fi
 
