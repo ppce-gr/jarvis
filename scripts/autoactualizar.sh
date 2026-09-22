@@ -48,6 +48,7 @@ STATE_DIR="${JARVIS_UPDATE_STATE:-/home/jarvis/jarvis/.update-state}"
 SERVICE="${JARVIS_SERVICE:-jarvis.service}"
 HEALTH_URL="${JARVIS_HEALTH_URL:-http://127.0.0.1:3081/api/health}"
 PROJECTS_URL="${JARVIS_PROJECTS_URL:-http://127.0.0.1:3081/api/projects}"
+STATUS_URL="${JARVIS_STATUS_URL:-http://127.0.0.1:3081/api/system/status}"
 SMOKE_PORT="${JARVIS_SMOKE_PORT:-3099}"
 HEALTH_TRIES="${JARVIS_HEALTH_TRIES:-30}"
 HEALTH_WAIT="${JARVIS_HEALTH_WAIT:-2}"
@@ -198,10 +199,47 @@ ERROR_FETCH="$(git fetch origin "$BRANCH" 2>&1 >/dev/null)" || {
 }
 REMOTE="$(git rev-parse "origin/$BRANCH")"
 
-if [ "$REMOTE" = "$PREV" ]; then
+# Hay un caso que "no hay nada que traer" no cubre: que el repositorio ya esté
+# al día pero el SERVICIO siga ejecutando código anterior. Pasa siempre que se
+# commitea desde la propia máquina (aquí el taller y el despliegue son el mismo
+# sitio), y sin esto el servicio se quedaría viejo para siempre.
+REINICIO_PENDIENTE=0
+ESTADO_API="$(curl -fsS --max-time 5 "$STATUS_URL" 2>/dev/null || true)"
+if echo "$ESTADO_API" | grep -q '"reinicioPendiente": *true'; then
+  REINICIO_PENDIENTE=1
+fi
+
+if [ "$REMOTE" = "$PREV" ] && [ "$REINICIO_PENDIENTE" -eq 0 ]; then
   log "Ya está al día ($(git rev-parse --short "$PREV"))."
-  [ "$MODO" = "check" ] && exit 0
   exit 0
+fi
+
+if [ "$REMOTE" = "$PREV" ]; then
+  log "El repositorio está al día, pero el servicio ejecuta código anterior."
+  log "Se reinicia para aplicarlo (no hay nada que traer ni que verificar)."
+  if [ "$MODO" = "check" ]; then
+    log "(--check: hay un reinicio pendiente)"
+    exit 0
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log "(simulación) se reiniciaría el servicio."
+    exit 0
+  fi
+
+  if reiniciar_y_verificar; then
+    echo "$(git rev-parse HEAD)" > "$LAST_GOOD_FILE"
+    log "✅ Servicio reiniciado con el código al día ($(git rev-parse --short HEAD))."
+    bitacora "OK · reinicio para aplicar $(git rev-parse --short HEAD)"
+    exit 0
+  fi
+  log "El servicio no responde tras el reinicio. Se intenta volver a $(git rev-parse --short "$LAST_GOOD")..."
+  revertir_codigo "$LAST_GOOD"
+  if reiniciar_y_verificar; then
+    log "Revertido a $(git rev-parse --short "$LAST_GOOD") y funcionando."
+  else
+    log "🚨 CRÍTICO: ni con el commit probado arranca. Intervención manual."
+  fi
+  exit 1
 fi
 
 if ! git merge-base --is-ancestor "$PREV" "$REMOTE"; then
