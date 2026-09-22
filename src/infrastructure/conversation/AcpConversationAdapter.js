@@ -124,6 +124,36 @@ export class AcpConversationAdapter extends ConversationPort {
     return path.join(this.brainDir, projectId);
   }
 
+  /**
+   * Dónde TRABAJA el agente de este proyecto.
+   * ------------------------------------------------------------------
+   * Por defecto, su carpeta dentro de la memoria. Pero un proyecto puede
+   * declarar otro sitio en `workspace.json`, y eso es lo que permite que un
+   * agente trabaje sobre el propio código de Jarvis (proyecto de
+   * automodificación) sin sacarlo de su sandbox: el sandbox confina la
+   * escritura a este directorio, así que darle el repositorio del código es
+   * exactamente lo que le da acceso —y sólo a él—.
+   *
+   * El `workspace.json` vive junto a las notas, pero apunta a otro sitio.
+   * Así la documentación del proyecto sigue en la memoria y las manos del
+   * agente van donde haga falta.
+   */
+  async _workspaceFor(projectId) {
+    const porDefecto = this._projectDir(projectId);
+    try {
+      const raw = await fs.readFile(path.join(porDefecto, 'workspace.json'), 'utf8');
+      const { workspace } = JSON.parse(raw);
+      if (typeof workspace !== 'string' || !path.isAbsolute(workspace)) {
+        return porDefecto;
+      }
+      await fs.access(workspace);            // tiene que existir
+      return workspace;
+    } catch {
+      return porDefecto;                      // sin declaración: su carpeta
+    }
+  }
+
+
   _transcriptPath(projectId) {
     return path.join(this._projectDir(projectId), 'logs', 'conversacion.jsonl');
   }
@@ -266,7 +296,9 @@ export class AcpConversationAdapter extends ConversationPort {
     }
 
     const client = await this._ensureClient();
-    const projectDir = this._projectDir(projectId);
+    // El cwd del agente puede no ser su carpeta de notas: un proyecto
+    // puede declarar otro workspace (ver _workspaceFor).
+    const projectDir = await this._workspaceFor(projectId);
     const record = session || {
       projectId,
       sessionId: null,

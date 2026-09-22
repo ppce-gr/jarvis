@@ -102,6 +102,26 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
     return path.join(this.brainDir, projectId);
   }
 
+  /**
+   * Dónde TRABAJA el agente. Por defecto, la carpeta del proyecto; un proyecto
+   * puede declarar otro sitio en `workspace.json` (por ejemplo el repositorio
+   * del código, para el proyecto de automodificación). El sandbox confina la
+   * escritura a este directorio, así que es lo que decide a qué alcanza.
+   */
+  async _workspaceFor(projectId) {
+    const porDefecto = this._projectDir(projectId);
+    try {
+      const raw = await fs.readFile(path.join(porDefecto, 'workspace.json'), 'utf8');
+      const { workspace } = JSON.parse(raw);
+      if (typeof workspace !== 'string' || !path.isAbsolute(workspace)) return porDefecto;
+      await fs.access(workspace);
+      return workspace;
+    } catch {
+      return porDefecto;
+    }
+  }
+
+
   _logsDir(projectId) {
     return path.join(this._projectDir(projectId), 'logs');
   }
@@ -216,7 +236,7 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
       result = await this.runner({
         bin: this.dshBin,
         args: ['--profile', this.profile, this._buildPrompt(task.projectId, task.instruction)],
-        cwd: this._projectDir(task.projectId),
+        cwd: await this._workspaceFor(task.projectId),
         env,
         timeoutMs: this.timeoutMs,
         onStderr: (text) => { appendLog(text); }
