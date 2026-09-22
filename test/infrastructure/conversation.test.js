@@ -22,7 +22,7 @@ function fakeSpawn(extraEnv = {}) {
 
 async function tempWorkspace() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'jarvis-chat-'));
-  await fs.mkdir(path.join(dir, 'projects', 'demo', 'logs'), { recursive: true });
+  await fs.mkdir(path.join(dir, 'demo', 'logs'), { recursive: true });
   return dir;
 }
 
@@ -121,7 +121,7 @@ test('el contexto del proyecto se inyecta sólo en el primer turno', async () =>
   const ws = await tempWorkspace();
   const record = path.join(ws, 'record.jsonl');
   const adapter = new DshSdkConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn({ FAKE_DSH_RECORD: record })
   });
 
@@ -160,7 +160,7 @@ test('send inicializa la sesión con el cwd del proyecto y el modelo', async () 
   const ws = await tempWorkspace();
   const record = path.join(ws, 'record.jsonl');
   const adapter = new DshSdkConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     provider: 'deepseek-official',
     model: 'deepseek-v4-flash',
     reasoningEffort: 'high',
@@ -177,7 +177,7 @@ test('send inicializa la sesión con el cwd del proyecto y el modelo', async () 
   const calls = (await fs.readFile(record, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
   const init = calls.find((c) => c.method === 'initialize');
 
-  assert.equal(init.params.cwd, path.join(ws, 'projects', 'demo'));
+  assert.equal(init.params.cwd, path.join(ws, 'demo'));
   assert.equal(init.params.provider, 'deepseek-official');
   assert.equal(init.params.model, 'deepseek-v4-flash');
   assert.equal(init.params.reasoningEffort, 'high');
@@ -196,7 +196,7 @@ test('send inicializa la sesión con el cwd del proyecto y el modelo', async () 
 test('los eventos del agente se emiten y se persisten en el transcript', async () => {
   const ws = await tempWorkspace();
   const adapter = new DshSdkConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn()
   });
 
@@ -227,14 +227,14 @@ test('los eventos del agente se emiten y se persisten en el transcript', async (
 
 test('history devuelve lista vacía sin conversación previa', async () => {
   const ws = await tempWorkspace();
-  const adapter = new DshSdkConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new DshSdkConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
   assert.deepEqual(await adapter.history('demo'), []);
 });
 
 test('un fallo de initialize se reporta con las últimas líneas de DSH', async () => {
   const ws = await tempWorkspace();
   const adapter = new DshSdkConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn({ FAKE_DSH_FAIL_INIT: '1' })
   });
 
@@ -247,7 +247,7 @@ test('un fallo de initialize se reporta con las últimas líneas de DSH', async 
 
 test('reset reinicia la conversación y permite volver a hablar', async () => {
   const ws = await tempWorkspace();
-  const adapter = new DshSdkConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new DshSdkConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
 
   await adapter.send('demo', 'primer mensaje');
   const before = await adapter.status('demo');
@@ -269,7 +269,7 @@ test('reset reinicia la conversación y permite volver a hablar', async () => {
 
 test('subscribe antes del primer mensaje no falla', async () => {
   const ws = await tempWorkspace();
-  const adapter = new DshSdkConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new DshSdkConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
 
   const events = [];
   const unsubscribe = adapter.subscribe('demo', (e) => events.push(e));
@@ -284,13 +284,13 @@ test('subscribe antes del primer mensaje no falla', async () => {
 
 test('el estado es stopped cuando no hay sesión', async () => {
   const ws = await tempWorkspace();
-  const adapter = new DshSdkConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new DshSdkConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
   assert.deepEqual(await adapter.status('demo'), { sessionId: null, status: 'stopped', busy: false });
 });
 
 test('closeAll termina los procesos vivos', async () => {
   const ws = await tempWorkspace();
-  const adapter = new DshSdkConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new DshSdkConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
 
   await adapter.send('demo', 'hola');
   const session = adapter._sessions.get('demo');

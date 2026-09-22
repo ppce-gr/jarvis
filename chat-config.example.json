@@ -1,0 +1,5 @@
+{
+  "model": "[\"deepseek-official\",\"deepseek-v4-flash\"]",
+  "reasoning_effort": "high",
+  "_comentario": "Copia este fichero a <JARVIS_BRAIN_DIR>/chat-config.json y ajusta. El modelo también se cambia desde la interfaz."
+}

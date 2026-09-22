@@ -8,8 +8,10 @@ Type=simple
 
 # --- Ajusta estas tres líneas a tu usuario y rutas reales ---
 User=jarvis
-WorkingDirectory=/home/jarvis/jarvis
+WorkingDirectory=/home/jarvis/jarvis/jarvis
 Environment=HOME=/home/jarvis
+# La memoria vive en un repositorio aparte, fuera del codigo.
+Environment=JARVIS_BRAIN_DIR=/home/jarvis/jarvis/jarvis-vault
 
 # El CLI dsh vive aquí tras 'npm install -g @deepseek-ai/dsh@<version fijada>'.
 # Un `command -v dsh` en tu shell te da la ruta exacta.

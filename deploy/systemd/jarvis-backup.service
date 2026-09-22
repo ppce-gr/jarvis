@@ -5,7 +5,8 @@ After=network-online.target
 [Service]
 Type=oneshot
 User=jarvis
-WorkingDirectory=/home/jarvis/jarvis
+WorkingDirectory=/home/jarvis/jarvis/jarvis
 Environment=HOME=/home/jarvis
+Environment=JARVIS_BRAIN_DIR=/home/jarvis/jarvis/jarvis-vault
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-ExecStart=/home/jarvis/jarvis/scripts/backup.sh
+ExecStart=/home/jarvis/jarvis/jarvis/scripts/backup.sh

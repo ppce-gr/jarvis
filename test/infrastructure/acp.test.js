@@ -20,7 +20,7 @@ function fakeSpawn(extraEnv = {}) {
 
 async function tempWorkspace() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'jarvis-acp-'));
-  await fs.mkdir(path.join(dir, 'projects', 'demo', 'logs'), { recursive: true });
+  await fs.mkdir(path.join(dir, 'demo', 'logs'), { recursive: true });
   return dir;
 }
 
@@ -63,7 +63,7 @@ test('initialize usa el protocolo 1 y session/new recibe el cwd del proyecto', a
   const ws = await tempWorkspace();
   const record = path.join(ws, 'record.jsonl');
   const adapter = new AcpConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn({ FAKE_ACP_RECORD: record })
   });
 
@@ -78,7 +78,7 @@ test('initialize usa el protocolo 1 y session/new recibe el cwd del proyecto', a
   assert.equal(init.params.clientInfo.name, 'jarvis-core');
 
   const created = calls.find((c) => c.method === 'session/new');
-  assert.equal(created.params.cwd, path.join(ws, 'projects', 'demo'));
+  assert.equal(created.params.cwd, path.join(ws, 'demo'));
   assert.deepEqual(created.params.mcpServers, []);
 
   await adapter.closeAll();
@@ -86,10 +86,10 @@ test('initialize usa el protocolo 1 y session/new recibe el cwd del proyecto', a
 
 test('un proceso sirve a varios proyectos, cada uno con su cwd', async () => {
   const ws = await tempWorkspace();
-  await fs.mkdir(path.join(ws, 'projects', 'otro', 'logs'), { recursive: true });
+  await fs.mkdir(path.join(ws, 'otro', 'logs'), { recursive: true });
   const record = path.join(ws, 'record.jsonl');
   const adapter = new AcpConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn({ FAKE_ACP_RECORD: record })
   });
 
@@ -104,8 +104,8 @@ test('un proceso sirve a varios proyectos, cada uno con su cwd', async () => {
 
   const calls = (await fs.readFile(record, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
   const creadas = calls.filter((c) => c.method === 'session/new').map((c) => c.params.cwd);
-  assert.ok(creadas.includes(path.join(ws, 'projects', 'demo')));
-  assert.ok(creadas.includes(path.join(ws, 'projects', 'otro')));
+  assert.ok(creadas.includes(path.join(ws, 'demo')));
+  assert.ok(creadas.includes(path.join(ws, 'otro')));
 
   // Un único initialize: un solo proceso para todo.
   assert.equal(calls.filter((c) => c.method === 'initialize').length, 1);
@@ -116,7 +116,7 @@ test('un proceso sirve a varios proyectos, cada uno con su cwd', async () => {
 test('los deltas del agente se emiten en vivo y el mensaje final se persiste', async () => {
   const ws = await tempWorkspace();
   const adapter = new AcpConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn()
   });
 
@@ -147,7 +147,7 @@ test('el servidor pide permisos y el adaptador responde (allow_always)', async (
   const ws = await tempWorkspace();
   const record = path.join(ws, 'record.jsonl');
   const adapter = new AcpConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn({ FAKE_ACP_RECORD: record })
   });
 
@@ -171,7 +171,7 @@ test('el servidor pide permisos y el adaptador responde (allow_always)', async (
 
 test('las herramientas se anuncian y se cierran', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
 
   const events = [];
   adapter.subscribe('demo', (e) => events.push(e));
@@ -190,10 +190,10 @@ test('las herramientas se anuncian y se cierran', async () => {
 
 test('reanuda una sesión persistida en lugar de crear una nueva', async () => {
   const ws = await tempWorkspace();
-  const cwd = path.join(ws, 'projects', 'demo');
+  const cwd = path.join(ws, 'demo');
   const record = path.join(ws, 'record.jsonl');
   const adapter = new AcpConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn({
       FAKE_ACP_RECORD: record,
       FAKE_ACP_SESSIONS: JSON.stringify([
@@ -220,14 +220,14 @@ test('reanuda una sesión persistida en lugar de crear una nueva', async () => {
 
 test('guarda el identificador de sesión para reanudar tras reiniciar Jarvis', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
   const events = [];
   adapter.subscribe('demo', (e) => events.push(e));
   await adapter.send('demo', 'hola');
   await waitFor(() => events.some((e) => e.type === 'turn-end'));
 
   const guardado = JSON.parse(
-    await fs.readFile(path.join(ws, 'projects', 'demo', 'logs', 'acp-session.json'), 'utf8')
+    await fs.readFile(path.join(ws, 'demo', 'logs', 'acp-session.json'), 'utf8')
   );
   assert.ok(guardado.sessionId, 'debe persistir el sessionId');
   await adapter.closeAll();
@@ -237,7 +237,7 @@ test('cancel envía la notificación session/cancel', async () => {
   const ws = await tempWorkspace();
   const record = path.join(ws, 'record.jsonl');
   const adapter = new AcpConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn({ FAKE_ACP_RECORD: record })
   });
 
@@ -253,13 +253,13 @@ test('cancel envía la notificación session/cancel', async () => {
 
 test('cancel sin sesión no falla', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
   assert.deepEqual(await adapter.cancel('demo'), { cancelled: false });
 });
 
 test('reset cierra la sesión y olvida su identificador, conservando el historial', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
   const events = [];
   adapter.subscribe('demo', (e) => events.push(e));
   await adapter.send('demo', 'primer mensaje');
@@ -270,7 +270,7 @@ test('reset cierra la sesión y olvida su identificador, conservando el historia
   const st = await adapter.status('demo');
   assert.equal(st.status, 'stopped');
   await assert.rejects(
-    () => fs.readFile(path.join(ws, 'projects', 'demo', 'logs', 'acp-session.json'), 'utf8'),
+    () => fs.readFile(path.join(ws, 'demo', 'logs', 'acp-session.json'), 'utf8'),
     'el fichero de sesión debe borrarse'
   );
 
@@ -286,19 +286,19 @@ test('reset cierra la sesión y olvida su identificador, conservando el historia
 
 test('status es stopped sin sesión', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
   assert.deepEqual(await adapter.status('demo'), { sessionId: null, status: 'stopped', busy: false });
 });
 
 test('history devuelve lista vacía sin conversación', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
   assert.deepEqual(await adapter.history('demo'), []);
 });
 
 test('closeAll termina el proceso compartido', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
   await adapter.send('demo', 'hola');
   const child = adapter._client.child;
   const exited = new Promise((resolve) => child.on('close', resolve));
@@ -309,7 +309,7 @@ test('closeAll termina el proceso compartido', async () => {
 
 test('subscribe antes del primer mensaje no falla', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
   const events = [];
   const unsub = adapter.subscribe('demo', (e) => events.push(e));
   await adapter.send('demo', 'hola');
@@ -322,7 +322,7 @@ test('un fallo de initialize se reporta con las últimas líneas de DSH', async 
   const ws = await tempWorkspace();
   // Un binario inexistente provoca ENOENT al arrancar.
   const adapter = new AcpConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: () => {
       const child = spawn('/bin/false', [], { stdio: ['pipe', 'pipe', 'pipe'] });
       return child;
@@ -342,7 +342,7 @@ test('un permiso sin opciones se rechaza y el turno termina igual', async () => 
   const ws = await tempWorkspace();
   const record = path.join(ws, 'record.jsonl');
   const adapter = new AcpConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn({ FAKE_ACP_RECORD: record })
   });
 
@@ -360,7 +360,7 @@ test('un permiso sin opciones se rechaza y el turno termina igual', async () => 
 
 test('closeAll contesta los permisos que quedaran pendientes', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
 
   // Se simula un permiso sin contestar con un cliente espía: es la vía por la
   // que el servidor se quedaría esperando para siempre.
@@ -396,7 +396,7 @@ test('closeAll contesta los permisos que quedaran pendientes', async () => {
 
 test('getConfig devuelve el catálogo que publica el motor', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
 
   const eventos = [];
   adapter.subscribe('demo', (e) => eventos.push(e));
@@ -416,7 +416,7 @@ test('setConfig persiste la elección y la aplica a la sesión viva', async () =
   const ws = await tempWorkspace();
   const record = path.join(ws, 'record.jsonl');
   const adapter = new AcpConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn({ FAKE_ACP_RECORD: record })
   });
 
@@ -441,7 +441,7 @@ test('setConfig persiste la elección y la aplica a la sesión viva', async () =
 
 test('setConfig rechaza opciones no soportadas', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
   await assert.rejects(() => adapter.setConfig('temperatura', '0.5'), /CONFIG_ID_NOT_SUPPORTED/);
   await assert.rejects(() => adapter.setConfig('model', ''), /CONFIG_VALUE_REQUIRED/);
 });
@@ -455,7 +455,7 @@ test('la preferencia guardada se usa al arrancar una sesión nueva', async () =>
 
   const record = path.join(ws, 'record.jsonl');
   const adapter = new AcpConversationAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     spawnFn: fakeSpawn({ FAKE_ACP_RECORD: record })
   });
 
@@ -474,7 +474,7 @@ test('la preferencia guardada se usa al arrancar una sesión nueva', async () =>
 
 test('rechaza un segundo turno simultáneo en la misma sesión', async () => {
   const ws = await tempWorkspace();
-  const adapter = new AcpConversationAdapter({ workspaceRoot: ws, spawnFn: fakeSpawn() });
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
 
   const eventos = [];
   adapter.subscribe('demo', (e) => eventos.push(e));

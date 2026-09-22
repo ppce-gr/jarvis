@@ -60,7 +60,7 @@ Prueba end-to-end completa (orden real desde la interfaz de Jarvis):
 Orden:    "Escribe code/resumen.md con una línea que resuma el proyecto"
 Duración: 18,5 s
 Exit:     0
-Efecto:   creó projects/ejemplo-proyecto/code/resumen.md
+Efecto:   creó `<memoria>/ejemplo-proyecto/code/resumen.md`
           leyó antes conceptual/_indice.md y qa-dudas.md   ← contexto respetado
 Bitácora: logs/t1-….log + logs/orchestrator.log
 ```

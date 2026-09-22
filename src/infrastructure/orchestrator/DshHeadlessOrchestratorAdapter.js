@@ -31,7 +31,7 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
   static MAX_LOG_BYTES = 1024 * 1024; // 1 MB por tarea: protección de la SD
 
   constructor({
-    workspaceRoot = process.cwd(),
+    brainDir = process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault'),
     dshBin = process.env.JARVIS_DSH_BIN || 'dsh',
     profile = process.env.JARVIS_DSH_PROFILE || 'headless',
     dshHome = process.env.DSH_HOME || undefined,
@@ -39,7 +39,7 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
     runner = null
   } = {}) {
     super();
-    this.workspaceRoot = workspaceRoot;
+    this.brainDir = brainDir;
     this.dshBin = dshBin;
     this.profile = profile;
     this.dshHome = dshHome;
@@ -99,7 +99,7 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
    * Utilidades internas
    * ------------------------------------------------------------------ */
   _projectDir(projectId) {
-    return path.join(this.workspaceRoot, 'projects', projectId);
+    return path.join(this.brainDir, projectId);
   }
 
   _logsDir(projectId) {

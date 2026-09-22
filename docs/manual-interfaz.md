@@ -34,15 +34,15 @@ ocurre en **tu navegador** (móvil o PC), así que la Pi no sufre.
 ```
 
 ### Panel izquierdo
-- **Proyectos / Ideas:** cada carpeta de `projects/` es una idea.
+- **Proyectos / Ideas:** cada carpeta de la carpeta de memoria es una idea.
 - **Notas:** las notas conceptuales de la idea seleccionada.
 - **＋** junto a "Notas" crea una nota nueva.
 
 ### Pestañas centrales
 - **Conceptual:** tus notas Markdown. Los `[[enlaces]]` son clicables para saltar
   entre ideas hermanas. Los que no existen aparecen en rojo.
-- **Código:** explora `projects/<idea>/code/`.
-- **Bitácora:** explora `projects/<idea>/logs/` (registro del orquestador).
+- **Código:** explora `<memoria>/<idea>/code/`.
+- **Bitácora:** explora `<memoria>/<idea>/logs/` (registro del orquestador).
 
 ### Edición
 - Botón **✎ Editar** para escribir Markdown en crudo.

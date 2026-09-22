@@ -5,7 +5,7 @@ de ejecutar nada. Vive dentro de Jarvis (pestaña **Chat**), así que no hace fa
 saltar a la interfaz de DSH.
 
 El diseño y las mediciones están en
-`projects/sistema-jarvis/conceptual/adaptador-conversacional.md`.
+las notas de diseño del proyecto (en la memoria).
 
 ---
 
@@ -28,9 +28,9 @@ Navegador ──POST /chat────────▶ Jarvis ──session/promp
 - **Memoria que sobrevive:** al abrir un proyecto se busca su sesión persistida y
   se hace `session/resume`. El agente recupera lo hablado aunque Jarvis o el
   proceso de DSH se hayan reiniciado. El `sessionId` se guarda en
-  `projects/<id>/logs/acp-session.json`.
+  `<memoria>/<id>/logs/acp-session.json`.
 - **El historial para la interfaz se lee del disco**
-  (`projects/<id>/logs/conversacion.jsonl`), así que se ve aunque el agente
+  (`<memoria>/<id>/logs/conversacion.jsonl`), así que se ve aunque el agente
   empiece de cero.
 
 ## Por qué ACP y no el protocolo SDK de DSH

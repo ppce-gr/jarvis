@@ -9,15 +9,15 @@ import { ProjectRepositoryPort } from '../../domain/ports/ProjectRepositoryPort.
  * Lee directamente de la carpeta `projects/` sin bases de datos pesadas.
  */
 export class FileSystemProjectRepository extends ProjectRepositoryPort {
-  constructor(baseProjectsDir = path.resolve(process.cwd(), 'projects')) {
+  constructor(brainDir = process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault')) {
     super();
-    this.baseProjectsDir = baseProjectsDir;
+    this.brainDir = brainDir;
   }
 
   async findAll() {
     try {
-      await fs.mkdir(this.baseProjectsDir, { recursive: true });
-      const entries = await fs.readdir(this.baseProjectsDir, { withFileTypes: true });
+      await fs.mkdir(this.brainDir, { recursive: true });
+      const entries = await fs.readdir(this.brainDir, { withFileTypes: true });
       const projects = [];
 
       for (const entry of entries) {
@@ -37,7 +37,7 @@ export class FileSystemProjectRepository extends ProjectRepositoryPort {
   }
 
   async findById(projectId) {
-    const projectDir = path.join(this.baseProjectsDir, projectId);
+    const projectDir = path.join(this.brainDir, projectId);
     const readmePath = path.join(projectDir, 'README.md');
 
     try {
@@ -63,7 +63,7 @@ export class FileSystemProjectRepository extends ProjectRepositoryPort {
   }
 
   async save(project) {
-    const projectDir = path.join(this.baseProjectsDir, project.id);
+    const projectDir = path.join(this.brainDir, project.id);
     await fs.mkdir(path.join(projectDir, 'conceptual'), { recursive: true });
     await fs.mkdir(path.join(projectDir, 'code'), { recursive: true });
     await fs.mkdir(path.join(projectDir, 'logs'), { recursive: true });

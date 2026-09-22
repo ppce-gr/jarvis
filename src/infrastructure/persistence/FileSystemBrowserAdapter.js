@@ -16,16 +16,16 @@ export class FileSystemBrowserAdapter extends FileBrowserPort {
   static MAX_FILE_BYTES = 256 * 1024; // 256 KB: suficiente para texto, seguro para la Pi 3B
   static MAX_DEPTH = 4;
 
-  constructor(baseProjectsDir = path.resolve(process.cwd(), 'projects')) {
+  constructor(brainDir = process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault')) {
     super();
-    this.baseProjectsDir = baseProjectsDir;
+    this.brainDir = brainDir;
   }
 
   _zoneDir(projectId, zone) {
     if (!FileSystemBrowserAdapter.ALLOWED_ZONES.has(zone)) {
       throw new Error('ZONE_NOT_ALLOWED');
     }
-    return path.join(this.baseProjectsDir, projectId, zone);
+    return path.join(this.brainDir, projectId, zone);
   }
 
   async listFiles(projectId, zone) {

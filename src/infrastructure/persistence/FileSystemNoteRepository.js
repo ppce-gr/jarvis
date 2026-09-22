@@ -9,13 +9,13 @@ import { NoteRepositoryPort } from '../../domain/ports/NoteRepositoryPort.js';
  * cumpliendo con los estándares de Obsidian y nuestro motor de indexación sin base de datos.
  */
 export class FileSystemNoteRepository extends NoteRepositoryPort {
-  constructor(baseProjectsDir = path.resolve(process.cwd(), 'projects')) {
+  constructor(brainDir = process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault')) {
     super();
-    this.baseProjectsDir = baseProjectsDir;
+    this.brainDir = brainDir;
   }
 
   _getConceptualDir(projectId) {
-    return path.join(this.baseProjectsDir, projectId, 'conceptual');
+    return path.join(this.brainDir, projectId, 'conceptual');
   }
 
   /**

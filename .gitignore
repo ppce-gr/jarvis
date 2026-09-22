@@ -2,22 +2,20 @@
 node_modules/
 npm-debug.log*
 
-# Entorno y secretos
+# Configuración local del usuario. El modelo elegido vive con la memoria,
+# no en el repositorio público; aquí sólo se versiona el ejemplo.
+chat-config.json
+
+# Credenciales y secretos: NUNCA
 .env
 .env.local
 *.key
 *.pem
+id_rsa
+id_ed25519
+.dsh-home/
+.git-credentials
 
-# Sistema operativo
-.DS_Store
-Thumbs.db
-
-# Temporales de la raíz (las bitácoras de projects/ SÍ se versionan)
+# Estado local
 *.tmp
 /jarvis-core.log
-
-# DSH_HOME local de pruebas (contiene credenciales: NUNCA versionar)
-.dsh-home/
-
-# NOTA: chat-config.json NO se ignora a proposito: la preferencia de modelo es
-# parte de "como tengo el sistema" y debe sobrevivir a la muerte de la SD.

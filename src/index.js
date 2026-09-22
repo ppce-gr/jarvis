@@ -38,23 +38,25 @@ import { GetChatConfigUseCase } from './application/GetChatConfigUseCase.js';
 import { SetChatConfigUseCase } from './application/SetChatConfigUseCase.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Raíz del CÓDIGO: este repositorio, que es público.
 const workspaceRoot = path.resolve(__dirname, '..');
+
+// Raíz de la MEMORIA: un repositorio aparte, privado. Por defecto una carpeta
+// hermana (`../jarvis-vault`), para que código y datos no compartan árbol: así
+// es imposible que un fallo de .gitignore publique las notas.
+const brainDir = process.env.JARVIS_BRAIN_DIR
+  || path.resolve(workspaceRoot, '..', 'jarvis-vault');
 
 const PORT = Number(process.env.JARVIS_PORT || 3081);
 const HOST = process.env.JARVIS_HOST || '0.0.0.0';
 
 // --- Adaptadores de infraestructura (los "conectores") ---
-const projectRepository = new FileSystemProjectRepository(
-  path.join(workspaceRoot, 'projects')
-);
-const noteRepository = new FileSystemNoteRepository(
-  path.join(workspaceRoot, 'projects')
-);
-const browserAdapter = new FileSystemBrowserAdapter(
-  path.join(workspaceRoot, 'projects')
-);
+const projectRepository = new FileSystemProjectRepository(brainDir);
+const noteRepository = new FileSystemNoteRepository(brainDir);
+const browserAdapter = new FileSystemBrowserAdapter(brainDir);
 const orchestratorAdapter = new DshHeadlessOrchestratorAdapter({
-  workspaceRoot,
+  brainDir,
   dshBin: process.env.JARVIS_DSH_BIN || 'dsh',
   profile: process.env.JARVIS_DSH_PROFILE || 'headless',
   dshHome: process.env.DSH_HOME,
@@ -62,30 +64,35 @@ const orchestratorAdapter = new DshHeadlessOrchestratorAdapter({
 });
 const gitSyncAdapter = new GitSyncAdapter(workspaceRoot);
 
+// La preferencia de modelo se guarda junto a la memoria, no en el repo público.
+const chatConfigFile = path.join(brainDir, 'chat-config.json');
+
 // Chat conversacional. Por defecto ACP, que es un estándar y aporta
 // cancelación real, reanudación de la memoria y desacoplamiento de DSH.
 // El adaptador SDK sigue disponible por si se quiere cero dependencias.
 const chatProtocol = (process.env.JARVIS_CHAT_PROTOCOL || 'acp').toLowerCase();
 const conversationAdapter = chatProtocol === 'sdk'
   ? new DshSdkConversationAdapter({
-      workspaceRoot,
+      brainDir,
       dshBin: process.env.JARVIS_DSH_BIN || 'dsh',
       profile: process.env.JARVIS_CHAT_PROFILE || 'sdk',
       dshHome: process.env.DSH_HOME,
       provider: process.env.JARVIS_CHAT_PROVIDER || 'deepseek-official',
       model: process.env.JARVIS_CHAT_MODEL || 'deepseek-v4-flash',
       reasoningEffort: process.env.JARVIS_CHAT_EFFORT || 'high',
-      idleTimeoutMs: Number(process.env.JARVIS_CHAT_IDLE_MS || 15 * 60 * 1000)
+      idleTimeoutMs: Number(process.env.JARVIS_CHAT_IDLE_MS || 15 * 60 * 1000),
+      configFile: chatConfigFile
     })
   : new AcpConversationAdapter({
-      workspaceRoot,
+      brainDir,
       dshBin: process.env.JARVIS_DSH_BIN || 'dsh',
       profile: process.env.JARVIS_CHAT_PROFILE || 'acp',
       dshHome: process.env.DSH_HOME,
       provider: process.env.JARVIS_CHAT_PROVIDER || 'deepseek-official',
       model: process.env.JARVIS_CHAT_MODEL || 'deepseek-v4-flash',
       reasoningEffort: process.env.JARVIS_CHAT_EFFORT || 'high',
-      idleTimeoutMs: Number(process.env.JARVIS_CHAT_IDLE_MS || 15 * 60 * 1000)
+      idleTimeoutMs: Number(process.env.JARVIS_CHAT_IDLE_MS || 15 * 60 * 1000),
+      configFile: chatConfigFile
     });
 
 // --- Casos de uso (capa de aplicación) ---
@@ -138,7 +145,8 @@ console.log('  │              J A R V I S   C O R E           │');
 console.log('  ╰──────────────────────────────────────────────╯');
 console.log(`   Interfaz web :  http://<ip-raspberry>:${port}`);
 console.log(`   Local        :  http://127.0.0.1:${port}`);
-console.log(`   Workspace    :  ${workspaceRoot}`);
+console.log(`   Codigo       :  ${workspaceRoot}`);
+console.log(`   Memoria      :  ${brainDir}`);
 console.log('');
 console.log('   Ctrl+C para detener el servicio.');
 console.log('');

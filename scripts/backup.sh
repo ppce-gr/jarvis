@@ -1,89 +1,105 @@
 #!/usr/bin/env bash
 # ============================================================
-#  Jarvis · Respaldo en Git
+#  Jarvis · Respaldo en Git de los DOS repositorios
 # ------------------------------------------------------------
-#  Hace commit de los cambios del workspace y SIEMPRE empuja lo que
-#  quede pendiente. Pensado para un temporizador cada 30 minutos: si
-#  la SD muere, el trabajo está a salvo en el remoto.
+#  El proyecto vive en dos repositorios separados:
+#
+#    · código  → este repositorio (público)
+#    · memoria → $JARVIS_BRAIN_DIR (privado)
+#
+#  Este script respalda AMBOS. Un respaldo que sólo cubriera el
+#  código dejaría fuera precisamente lo irremplazable: las notas.
 #
 #  Uso:
 #     bash scripts/backup.sh ["mensaje opcional"]
 #
-#  Importante: el commit local NO es un respaldo. Vive en la misma
-#  tarjeta que queremos proteger. Por eso este script falla con
-#  código 1 si no consigue empujar, para que el fallo se note en vez
-#  de pasar desapercibido durante semanas.
+#  Importante: un commit local NO es un respaldo, vive en la misma
+#  tarjeta que queremos proteger. Por eso el script falla con código
+#  1 si no consigue empujar, para que el fallo se note.
 # ============================================================
-set -euo pipefail
+set -uo pipefail
 
-WORKSPACE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$WORKSPACE"
-
+CODE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BRAIN_DIR="${JARVIS_BRAIN_DIR:-$(cd "$CODE_DIR/.." && pwd)/jarvis-vault}"
 MESSAGE="${1:-chore(jarvis): autosave $(date '+%Y-%m-%d %H:%M:%S')}"
 
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "[backup] No es un repositorio Git. Ejecuta 'git init' primero." >&2
-  exit 1
-fi
+FALLOS=0
 
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+# Respalda un repositorio: commit de lo que haya y push de lo pendiente.
+respaldar_repo() {
+  local dir="$1" etiqueta="$2"
+  echo "[backup] ── ${etiqueta}: ${dir}"
 
-# ------------------------------------------------------------
-# 1. Commitear lo que haya en el árbol de trabajo
-# ------------------------------------------------------------
-if [ -n "$(git status --porcelain)" ]; then
-  git add -A
-
-  # --- Guarda de seguridad -------------------------------------------
-  # `git add -A` respeta .gitignore, pero si ese fichero se rompiera
-  # subiriamos credenciales. Si aparece algo sensible en el staging se
-  # aborta SIN crear commit.
-  SENSIBLE=$(git diff --cached --name-only | grep -iE '(^|/)(\.dsh-home|\.git-credentials|\.env|.*\.key|.*\.pem|id_ed25519|id_rsa)' || true)
-  if [ -n "$SENSIBLE" ]; then
-    echo "[backup] ABORTADO: se iban a versionar ficheros sensibles:" >&2
-    echo "$SENSIBLE" | sed 's/^/           /' >&2
-    echo "[backup] Revisa .gitignore. No se ha creado ningun commit." >&2
-    git reset >/dev/null
-    exit 1
+  if [ ! -d "$dir/.git" ]; then
+    echo "[backup]    no es un repositorio Git; se omite." >&2
+    FALLOS=$((FALLOS + 1))
+    return
   fi
-  # -------------------------------------------------------------------
 
-  git commit -m "$MESSAGE" >/dev/null
-  echo "[backup] Commit creado: $(git rev-parse --short HEAD)"
-else
-  echo "[backup] Sin cambios en el arbol de trabajo."
-fi
+  local rama
+  rama="$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)" || {
+    echo "[backup]    repositorio inválido; se omite." >&2
+    FALLOS=$((FALLOS + 1))
+    return
+  }
 
-# ------------------------------------------------------------
-# 2. Empujar SIEMPRE que quede algo pendiente
-#
-# El bug que esto arregla: antes, si no habia cambios en el arbol de
-# trabajo, el script salia sin mirar si habia commits locales sin subir
-# (por ejemplo, hechos a mano). El respaldo se quedaba en la SD y nadie
-# se enteraba.
-# ------------------------------------------------------------
-if ! git remote get-url origin >/dev/null 2>&1; then
-  echo "[backup] Sin remoto 'origin' configurado: solo hay respaldo local."
-  exit 0
-fi
+  # --- Commit de los cambios pendientes ---
+  if [ -n "$(git -C "$dir" status --porcelain)" ]; then
+    git -C "$dir" add -A
 
-git fetch origin "$BRANCH" >/dev/null 2>&1 || {
-  echo "[backup] AVISO: no se pudo contactar con el remoto (¿sin red?)." >&2
-  echo "[backup] Los commits siguen SOLO en la SD. Se reintentara." >&2
-  exit 1
+    # Guarda: si se cuela algo sensible, se aborta SIN commitear.
+    local sensible
+    sensible="$(git -C "$dir" diff --cached --name-only \
+      | grep -iE '(^|/)(\.dsh-home|\.git-credentials|\.env|.*\.key|.*\.pem|id_ed25519|id_rsa)' || true)"
+    if [ -n "$sensible" ]; then
+      echo "[backup]    ABORTADO: ficheros sensibles en el staging:" >&2
+      echo "$sensible" | sed 's/^/               /' >&2
+      git -C "$dir" reset >/dev/null
+      FALLOS=$((FALLOS + 1))
+      return
+    fi
+
+    git -C "$dir" commit -m "$MESSAGE" >/dev/null
+    echo "[backup]    commit $(git -C "$dir" rev-parse --short HEAD)"
+  else
+    echo "[backup]    sin cambios en el árbol de trabajo"
+  fi
+
+  # --- Push de lo pendiente (aunque no haya cambios nuevos) ---
+  if ! git -C "$dir" remote get-url origin >/dev/null 2>&1; then
+    echo "[backup]    sin remoto 'origin': sólo respaldo local." >&2
+    FALLOS=$((FALLOS + 1))
+    return
+  fi
+
+  if ! git -C "$dir" fetch origin "$rama" >/dev/null 2>&1; then
+    echo "[backup]    AVISO: no se pudo contactar con el remoto (¿sin red?)." >&2
+    FALLOS=$((FALLOS + 1))
+    return
+  fi
+
+  local pendientes
+  pendientes="$(git -C "$dir" rev-list --count "origin/${rama}..HEAD" 2>/dev/null || echo 0)"
+  if [ "$pendientes" -eq 0 ]; then
+    echo "[backup]    sincronizado con origin/${rama}"
+    return
+  fi
+
+  echo "[backup]    ${pendientes} commit(s) pendientes de subir..."
+  if git -C "$dir" push origin "$rama" >/dev/null 2>&1; then
+    echo "[backup]    subido a origin/${rama}"
+  else
+    echo "[backup]    ERROR: no se pudo subir; sigue sólo en la SD." >&2
+    FALLOS=$((FALLOS + 1))
+  fi
 }
 
-PENDIENTES=$(git rev-list --count "origin/${BRANCH}..HEAD" 2>/dev/null || echo 0)
-if [ "$PENDIENTES" -eq 0 ]; then
-  echo "[backup] Todo sincronizado con origin/${BRANCH}."
-  exit 0
-fi
+respaldar_repo "$CODE_DIR"  "código (público)"
+respaldar_repo "$BRAIN_DIR" "memoria (privada)"
 
-echo "[backup] ${PENDIENTES} commit(s) pendientes de subir..."
-
-if git push origin "$BRANCH" >/dev/null 2>&1; then
-  echo "[backup] Subido al remoto (origin/${BRANCH})."
-else
-  echo "[backup] ERROR: no se pudo subir. Los commits siguen SOLO en la SD." >&2
+echo
+if [ "$FALLOS" -gt 0 ]; then
+  echo "[backup] TERMINADO CON ${FALLOS} PROBLEMA(S). Revisa los avisos de arriba." >&2
   exit 1
 fi
+echo "[backup] Los dos repositorios están respaldados y sincronizados."

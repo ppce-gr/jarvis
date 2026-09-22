@@ -40,7 +40,7 @@ export class DshSdkConversationAdapter extends ConversationPort {
   static DEFAULT_IDLE_MS = 15 * 60 * 1000;
 
   constructor({
-    workspaceRoot = process.cwd(),
+    brainDir = process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault'),
     dshBin = process.env.JARVIS_DSH_BIN || 'dsh',
     profile = process.env.JARVIS_CHAT_PROFILE || 'sdk',
     dshHome = process.env.DSH_HOME || undefined,
@@ -51,7 +51,7 @@ export class DshSdkConversationAdapter extends ConversationPort {
     spawnFn = nodeSpawn
   } = {}) {
     super();
-    this.workspaceRoot = workspaceRoot;
+    this.brainDir = brainDir;
     this.dshBin = dshBin;
     this.profile = profile;
     this.dshHome = dshHome;
@@ -69,7 +69,7 @@ export class DshSdkConversationAdapter extends ConversationPort {
    * Rutas
    * ------------------------------------------------------------------ */
   _projectDir(projectId) {
-    return path.join(this.workspaceRoot, 'projects', projectId);
+    return path.join(this.brainDir, projectId);
   }
 
   _transcriptPath(projectId) {

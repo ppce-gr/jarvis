@@ -12,11 +12,15 @@ absolutas grabadas a fuego, ni dependencias compiladas.
 
 **Ya está configurado y verificado:**
 
-| Dato | Valor |
-|---|---|
-| Remoto | `git@github.com:ppce-gr/jarvis.git` (privado) |
-| Propiedad | Cuenta del usuario |
-| Credencial | Clave SSH dedicada `~/.ssh/jarvis_deploy`, como **deploy key con escritura** |
+| Repositorio | Remoto | Visibilidad |
+|---|---|---|
+| Código | `git@github.com:<usuario>/jarvis.git` | Público |
+| Memoria | `git@github-vault:<usuario>/jarvis-vault.git` | **Privado** |
+
+Cada uno usa su **propia deploy key con escritura** (`~/.ssh/jarvis_deploy` y
+`~/.ssh/vault_deploy`). GitHub **no permite reutilizar una deploy key en dos
+repositorios**, y además conviene que no lo haga: así una filtración del vault no
+compromete el repo público.
 
 Se eligió SSH y no un token porque **las claves no caducan**: un token caducado
 pararía el respaldo automático **en silencio**, que es el peor fallo posible en
@@ -32,8 +36,10 @@ git log --oneline -1 origin/main
 ### Restauración desde cero (procedimiento probado)
 
 ```bash
-git clone git@github.com:ppce-gr/jarvis.git jarvis
+git clone git@github.com:<usuario>/jarvis.git jarvis        # código
+git clone git@github-vault:<usuario>/jarvis-vault.git jarvis-vault   # memoria
 cd jarvis
+export JARVIS_BRAIN_DIR="$(cd ../jarvis-vault && pwd)"
 npm test        # 66 pruebas: confirma que el sistema revivió
 npm start
 ```
@@ -98,7 +104,7 @@ La primera ejecución crea `~/.dsh/profiles/headless` **sin red y sin
 
 | Elemento | Motivo | Qué hacer |
 |---|---|---|
-| `projects/*/logs/*.log` | Registro histórico de agentes | **Sí conviene versionarlos**: son la bitácora |
+| `<memoria>/*/logs/*.log` | Registro histórico de agentes | **Sí conviene versionarlos**: son la bitácora |
 | Ficheros temporales | Basura | Ignorados por `.gitignore` |
 | El propio `node_modules` | No existe (cero dependencias) | — |
 | `.dsh-home/` | DSH_HOME local de pruebas (contiene credenciales) | Nunca versionar; está en `.gitignore` |

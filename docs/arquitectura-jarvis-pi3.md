@@ -34,7 +34,7 @@ pero la interfaz de uso diario es la web propia de Jarvis.
 ```text
 /home/jarvis/jarvis/
 ├── docs/                               # Documentación y arquitectura general
-├── projects/                           # Espacio aislado por proyecto/idea
+│   (la memoria vive en OTRO repositorio: $JARVIS_BRAIN_DIR)
 │   └── <nombre-proyecto>/
 │       ├── README.md                   # Resumen ejecutivo del proyecto
 │       ├── conceptual/                 # Fase de diseño y notas (Markdown)

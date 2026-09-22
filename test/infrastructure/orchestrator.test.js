@@ -8,7 +8,7 @@ import { DshHeadlessOrchestratorAdapter } from '../../src/infrastructure/orchest
 
 async function tempWorkspace() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'jarvis-orch-'));
-  await fs.mkdir(path.join(dir, 'projects', 'demo', 'conceptual'), { recursive: true });
+  await fs.mkdir(path.join(dir, 'demo', 'conceptual'), { recursive: true });
   return dir;
 }
 
@@ -20,7 +20,7 @@ async function drain(adapter) {
 test('executeTask valida la entrada', async () => {
   const ws = await tempWorkspace();
   const adapter = new DshHeadlessOrchestratorAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     runner: async () => ({ code: 0, stdout: '' })
   });
   await assert.rejects(() => adapter.executeTask('', 'algo'), /PROJECT_ID_REQUIRED/);
@@ -33,7 +33,7 @@ test('executeTask devuelve acuse inmediato sin esperar al agente', async () => {
   let release;
   const gate = new Promise((r) => { release = r; });
   const adapter = new DshHeadlessOrchestratorAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     runner: async () => { await gate; return { code: 0, stdout: 'hecho' }; }
   });
 
@@ -53,7 +53,7 @@ test('executeTask devuelve acuse inmediato sin esperar al agente', async () => {
 test('una tarea completada escribe bitácora y respuesta final', async () => {
   const ws = await tempWorkspace();
   const adapter = new DshHeadlessOrchestratorAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     runner: async ({ onStderr }) => {
       onStderr('pensando...\n');
       return { code: 0, stdout: 'Tarea completada con éxito' };
@@ -70,7 +70,7 @@ test('una tarea completada escribe bitácora y respuesta final', async () => {
   assert.equal(task.answer, 'Tarea completada con éxito');
 
   const log = await fs.readFile(
-    path.join(ws, 'projects', 'demo', task.logFile),
+    path.join(ws, 'demo', task.logFile),
     'utf8'
   );
   assert.match(log, /## Orden/);
@@ -79,7 +79,7 @@ test('una tarea completada escribe bitácora y respuesta final', async () => {
   assert.match(log, /Tarea completada con éxito/);
 
   const summary = await fs.readFile(
-    path.join(ws, 'projects', 'demo', 'logs', 'orchestrator.log'),
+    path.join(ws, 'demo', 'logs', 'orchestrator.log'),
     'utf8'
   );
   assert.match(summary, /COMPLETED/);
@@ -88,7 +88,7 @@ test('una tarea completada escribe bitácora y respuesta final', async () => {
 test('un fallo del agente se registra como failed con su exit code', async () => {
   const ws = await tempWorkspace();
   const adapter = new DshHeadlessOrchestratorAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     runner: async () => ({ code: 1, stdout: '', stderr: 'boom' })
   });
 
@@ -103,7 +103,7 @@ test('un fallo del agente se registra como failed con su exit code', async () =>
 test('un timeout se registra como timeout', async () => {
   const ws = await tempWorkspace();
   const adapter = new DshHeadlessOrchestratorAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     runner: async () => ({ code: -1, stdout: '', stderr: '', timedOut: true })
   });
 
@@ -118,7 +118,7 @@ test('el runner recibe cwd del proyecto y el perfil configurado', async () => {
   const ws = await tempWorkspace();
   let seen = null;
   const adapter = new DshHeadlessOrchestratorAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     profile: 'headless',
     dshHome: '/tmp/fake-home',
     runner: async (opts) => { seen = opts; return { code: 0, stdout: 'ok' }; }
@@ -127,7 +127,7 @@ test('el runner recibe cwd del proyecto y el perfil configurado', async () => {
   await adapter.executeTask('demo', 'revisa esto');
   await drain(adapter);
 
-  assert.equal(seen.cwd, path.join(ws, 'projects', 'demo'));
+  assert.equal(seen.cwd, path.join(ws, 'demo'));
   assert.deepEqual(seen.args.slice(0, 2), ['--profile', 'headless']);
   assert.match(seen.args[2], /revisa esto/);
   assert.equal(seen.env.DSH_HOME, '/tmp/fake-home');
@@ -138,7 +138,7 @@ test('las tareas se ejecutan en serie (cola de uno)', async () => {
   let active = 0;
   let maxActive = 0;
   const adapter = new DshHeadlessOrchestratorAdapter({
-    workspaceRoot: ws,
+    brainDir: ws,
     runner: async () => {
       active += 1;
       maxActive = Math.max(maxActive, active);

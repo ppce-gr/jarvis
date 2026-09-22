@@ -42,7 +42,7 @@ export class AcpConversationAdapter extends ConversationPort {
   static DEFAULT_STALL_MS = 10 * 60 * 1000;
 
   constructor({
-    workspaceRoot = process.cwd(),
+    brainDir = process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault'),
     dshBin = process.env.JARVIS_DSH_BIN || 'dsh',
     profile = process.env.JARVIS_CHAT_PROFILE || 'acp',
     dshHome = process.env.DSH_HOME || undefined,
@@ -58,7 +58,7 @@ export class AcpConversationAdapter extends ConversationPort {
     spawnFn = nodeSpawn
   } = {}) {
     super();
-    this.workspaceRoot = workspaceRoot;
+    this.brainDir = brainDir;
     this.dshBin = dshBin;
     this.profile = profile;
     this.dshHome = dshHome;
@@ -69,7 +69,7 @@ export class AcpConversationAdapter extends ConversationPort {
 
     // Preferencia de modelo y esfuerzo. Se carga de disco si existe; los
     // valores de entorno son sólo el punto de partida.
-    this.configFile = configFile || path.join(workspaceRoot, 'chat-config.json');
+    this.configFile = configFile || path.join(brainDir, 'chat-config.json');
     this.preferred = {
       model: JSON.stringify([provider, model]),
       reasoning_effort: reasoningEffort
@@ -121,7 +121,7 @@ export class AcpConversationAdapter extends ConversationPort {
    * Rutas
    * ------------------------------------------------------------------ */
   _projectDir(projectId) {
-    return path.join(this.workspaceRoot, 'projects', projectId);
+    return path.join(this.brainDir, projectId);
   }
 
   _transcriptPath(projectId) {
@@ -147,7 +147,7 @@ export class AcpConversationAdapter extends ConversationPort {
       if (this.dshHome) env.DSH_HOME = this.dshHome;
 
       const child = this.spawnFn(this.dshBin, ['--profile', this.profile], {
-        cwd: this.workspaceRoot,
+        cwd: this.brainDir,
         env,
         stdio: ['pipe', 'pipe', 'pipe']
       });
