@@ -201,9 +201,14 @@ function showEmptyConceptual() {
   $('#save-note-btn').classList.add('hidden');
   $('#edit-toggle').classList.remove('hidden');
   $('#edit-toggle').textContent = '✎ Editar';
+  const pista = window.matchMedia('(max-width: 820px)').matches
+    ? 'Pulsa <strong>☰</strong> arriba a la izquierda para ver tus ideas.'
+    : 'Selecciona una idea en el panel izquierdo.';
   $('#markdown-view').innerHTML = state.currentProjectId
     ? `<h2>${escapeHtml(state.currentProjectId)}</h2><p class="muted">Selecciona una nota conceptual o crea una nueva.</p>`
-    : `<div class="empty-state"><h2>Bienvenido a Jarvis</h2><p>Selecciona una idea en el panel izquierdo o crea una nueva con <strong>+ Idea</strong>.</p></div>`;
+    : state.projects.length
+      ? `<div class="empty-state"><h2>Elige una idea</h2><p>${pista}</p></div>`
+      : `<div class="empty-state"><h2>Bienvenido a Jarvis</h2><p>Todavía no hay ideas. Crea la primera con <strong>+ Idea</strong>, arriba a la derecha.</p></div>`;
   renderNoteList();
 }
 
@@ -631,6 +636,9 @@ function renderChat() {
         <h2>Conversemos sobre esta idea</h2>
         <p class="muted">Aquí se desarrolla la parte conceptual. Cuando tengas claro el plan,
           usa la barra <strong>⌘</strong> de abajo para que Jarvis lo ejecute con agentes.</p>
+        <p class="muted">${window.matchMedia('(max-width: 820px)').matches
+          ? 'Tus ideas están en el menú <strong>☰</strong>, arriba a la izquierda.'
+          : 'Tus ideas están en el panel de la izquierda.'}</p>
       </div>`;
     updateTyping();
     return;
@@ -943,8 +951,23 @@ function bindEvents() {
 
 async function boot() {
   bindEvents();
+
+  // En móvil el panel de ideas está detrás del ☰: la primera pista lo dice.
+  if (window.matchMedia('(max-width: 820px)').matches) {
+    const hint = document.getElementById('hint-ideas');
+    if (hint) hint.innerHTML = 'Pulsa <strong>☰</strong> arriba a la izquierda para ver tus ideas, o crea una con <strong>+ Idea</strong>.';
+  }
+
   try {
     await loadProjects();
+
+    // En móvil (≤820px) el panel de ideas vive detrás del botón ☰. Sin nada
+    // seleccionado la pantalla queda vacía y parece que Jarvis no tiene ideas.
+    // Se abre la primera sola para que siempre haya algo que ver.
+    if (!state.currentProjectId && state.projects.length) {
+      await selectProject(state.projects[0].id);
+    }
+
     await Promise.all([refreshGitStatus(), loadSystemStatus()]);
     setInterval(refreshGitStatus, 30000);
     setInterval(loadSystemStatus, 60000);
