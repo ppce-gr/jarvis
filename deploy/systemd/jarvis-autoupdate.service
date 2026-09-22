@@ -1,0 +1,29 @@
+[Unit]
+Description=Jarvis · actualización del código con reversión automática
+Documentation=file:/home/jarvis/jarvis/jarvis/docs/autoactualizacion.md
+# No es parte de jarvis.service: debe SOBREVIVIR a su reinicio para poder
+# comprobar si el arranque ha funcionado.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jarvis
+WorkingDirectory=/home/jarvis/jarvis/jarvis
+Environment=HOME=/home/jarvis
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=JARVIS_BRAIN_DIR=/home/jarvis/jarvis/jarvis-vault
+Environment=JARVIS_CODE_DIR=/home/jarvis/jarvis/jarvis
+
+# Se ejecuta la COPIA INSTALADA, no la del repositorio: una actualización no
+# debe modificar el script que la está ejecutando.
+ExecStart=/usr/local/sbin/jarvis-actualizar
+
+# Una actualización no debe repetirse sin control: si falla, se avisa y se
+# espera a una intervención.
+Restart=no
+TimeoutStartSec=900
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jarvis-update

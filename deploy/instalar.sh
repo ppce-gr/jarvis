@@ -25,6 +25,7 @@ DO_JARVIS=0
 DO_BACKUP=0
 DO_DSH_GLOBAL=0
 DO_LEGACY=0
+DO_AUTOUPDATE=0
 
 uso() {
   cat <<'EOF'
@@ -36,7 +37,11 @@ Opciones:
   --dsh-global   Instala el CLI dsh global con versión fijada (recomendado).
   --legacy       Instala la versión corregida del servicio dsh web temporal.
                  NO lo actives junto a init_deep_deep_seek.service: chocan.
-  --all          Equivale a --zram --jarvis --backup --dsh-global
+  --autoupdate   Instala la AUTOACTUALIZACIÓN con reversión: copia el
+                 actualizador fuera del repositorio, las unidades systemd y la
+                 regla de sudoers que le permite reiniciar sólo jarvis.
+                 REQUIERE que --jarvis esté aplicado.
+  --all          Equivale a --zram --jarvis --backup --dsh-global --autoupdate
   --dry-run      Muestra los comandos sin ejecutarlos.
   -h, --help     Esta ayuda.
 EOF
@@ -49,14 +54,15 @@ for arg in "$@"; do
     --backup)     DO_BACKUP=1 ;;
     --dsh-global) DO_DSH_GLOBAL=1 ;;
     --legacy)     DO_LEGACY=1 ;;
-    --all)        DO_ZRAM=1; DO_JARVIS=1; DO_BACKUP=1; DO_DSH_GLOBAL=1 ;;
+    --autoupdate) DO_AUTOUPDATE=1 ;;
+    --all)        DO_ZRAM=1; DO_JARVIS=1; DO_BACKUP=1; DO_DSH_GLOBAL=1; DO_AUTOUPDATE=1 ;;
     --dry-run)    DRY_RUN=1 ;;
     -h|--help)    uso; exit 0 ;;
     *) echo "Opción desconocida: $arg" >&2; uso; exit 1 ;;
   esac
 done
 
-if [ "$((DO_ZRAM + DO_JARVIS + DO_BACKUP + DO_DSH_GLOBAL + DO_LEGACY))" -eq 0 ]; then
+if [ "$((DO_ZRAM + DO_JARVIS + DO_BACKUP + DO_DSH_GLOBAL + DO_LEGACY + DO_AUTOUPDATE))" -eq 0 ]; then
   uso; exit 1
 fi
 
@@ -83,7 +89,7 @@ echo
 
 # ------------------------------------------------------------
 if [ "$DO_DSH_GLOBAL" -eq 1 ]; then
-  echo "== 1/5 · CLI dsh global con versión fijada =="
+  echo "== 1/6 · CLI dsh global con versión fijada =="
   echo "   Motivo: 'npx @latest' consulta el registro en cada arranque,"
   echo "   puede actualizarse solo y rompe rutas al cambiar de versión."
   if command -v dsh >/dev/null 2>&1 && [ "$DRY_RUN" -eq 0 ]; then
@@ -97,7 +103,7 @@ fi
 
 # ------------------------------------------------------------
 if [ "$DO_ZRAM" -eq 1 ]; then
-  echo "== 2/5 · zram con el gestor NATIVO de Raspberry Pi OS =="
+  echo "== 2/6 · zram con el gestor NATIVO de Raspberry Pi OS =="
   echo "   Motivo: cientos de MB de swap escribiendose en la SD."
   echo
   echo "   NO se usa systemd-zram-generator. Raspberry Pi OS ya trae"
@@ -131,7 +137,7 @@ fi
 
 # ------------------------------------------------------------
 if [ "$DO_JARVIS" -eq 1 ]; then
-  echo "== 3/5 · servicio Jarvis (puerto 3081) =="
+  echo "== 3/6 · servicio Jarvis (puerto 3081) =="
   # La ruta del binario dsh se inyecta en la unidad, para no depender de que
   # coincida con la que viene por defecto en el fichero del repositorio.
   DSH_BIN_PATH="${DSH_BIN_PATH:-$(command -v dsh 2>/dev/null || echo /usr/local/bin/dsh)}"
@@ -159,7 +165,7 @@ fi
 
 # ------------------------------------------------------------
 if [ "$DO_BACKUP" -eq 1 ]; then
-  echo "== 4/5 · respaldo Git automático cada 30 min =="
+  echo "== 4/6 · respaldo Git automático cada 30 min =="
   run chmod +x "$REPO_DIR/scripts/backup.sh"
   run cp "$REPO_DIR/deploy/systemd/jarvis-backup.service" /etc/systemd/system/
   run cp "$REPO_DIR/deploy/systemd/jarvis-backup.timer" /etc/systemd/system/
@@ -171,7 +177,7 @@ fi
 
 # ------------------------------------------------------------
 if [ "$DO_LEGACY" -eq 1 ]; then
-  echo "== 5/5 · dsh web corregido (TEMPORAL) =="
+  echo "== 6/6 · dsh web corregido (TEMPORAL) =="
   echo "   ATENCIÓN: sustituye a init_deep_deep_seek.service."
   echo "   Se apaga el antiguo para que no choquen por los puertos."
   run cp "$REPO_DIR/deploy/legacy/arrancar-dsh.sh" /home/jarvis/arrancar-dsh.sh
@@ -180,6 +186,53 @@ if [ "$DO_LEGACY" -eq 1 ]; then
   run systemctl disable --now init_deep_deep_seek.service
   run systemctl daemon-reload
   run systemctl enable --now dsh-web
+  echo
+fi
+
+# ------------------------------------------------------------
+if [ "$DO_AUTOUPDATE" -eq 1 ]; then
+  echo "== 5/6 · autoactualización con reversión =="
+
+  if [ ! -f /etc/systemd/system/jarvis.service ]; then
+    echo "   AVISO: jarvis.service no está instalado."
+    echo "   La autoactualización lo necesita para reiniciarlo y comprobar su"
+    echo "   salud. Ejecuta antes:  sudo bash deploy/instalar.sh --jarvis"
+    echo
+  fi
+
+  # El actualizador se COPIA fuera del repositorio: así una actualización no
+  # modifica el script que la está ejecutando (bash lo lee mientras lo ejecuta).
+  run install -m 0755 -o root -g root \
+      "$REPO_DIR/scripts/autoactualizar.sh" /usr/local/sbin/jarvis-actualizar
+
+  run cp "$REPO_DIR/deploy/systemd/jarvis-autoupdate.service" /etc/systemd/system/
+  run cp "$REPO_DIR/deploy/systemd/jarvis-autoupdate.path" /etc/systemd/system/
+  run cp "$REPO_DIR/deploy/systemd/jarvis-autoupdate.timer" /etc/systemd/system/
+
+  # La regla de sudoers se valida ANTES de instalarla: un fichero mal formado
+  # en /etc/sudoers.d rompe sudo por completo, y en una Pi sin pantalla eso
+  # es quedarse fuera del sistema.
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "  [dry-run] visudo -cf $REPO_DIR/deploy/sudoers-jarvis-update"
+    echo "  [dry-run] install -m 0440 -o root -g root $REPO_DIR/deploy/sudoers-jarvis-update /etc/sudoers.d/jarvis-update"
+  else
+    if visudo -cf "$REPO_DIR/deploy/sudoers-jarvis-update" >/dev/null 2>&1; then
+      install -m 0440 -o root -g root \
+        "$REPO_DIR/deploy/sudoers-jarvis-update" /etc/sudoers.d/jarvis-update
+      echo "  + regla de sudoers validada e instalada"
+    else
+      echo "  ERROR: la regla de sudoers no es válida. NO se instala." >&2
+      visudo -cf "$REPO_DIR/deploy/sudoers-jarvis-update" >&2 || true
+    fi
+  fi
+
+  run systemctl daemon-reload
+  run systemctl enable --now jarvis-autoupdate.path
+  run systemctl enable --now jarvis-autoupdate.timer
+  echo
+  echo "   Comprobar:   systemctl status jarvis-autoupdate.path"
+  echo "   Actualizar:  touch /home/jarvis/jarvis/.update-request"
+  echo "   Sólo mirar:  sudo -u jarvis /usr/local/sbin/jarvis-actualizar --check"
   echo
 fi
 

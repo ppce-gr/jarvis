@@ -934,14 +934,20 @@ function bindEvents() {
   });
 
   $('#menu-toggle').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
+
+  // --- Panel de sistema ---
+  $('#system-pill').addEventListener('click', abrirSistema);
+  $('#system-update').addEventListener('click', pedirActualizacion);
+  $('#system-check').addEventListener('click', buscarNovedades);
 }
 
 async function boot() {
   bindEvents();
   try {
     await loadProjects();
-    await refreshGitStatus();
+    await Promise.all([refreshGitStatus(), loadSystemStatus()]);
     setInterval(refreshGitStatus, 30000);
+    setInterval(loadSystemStatus, 60000);
   } catch (error) {
     toast(`No se pudo conectar con Jarvis Core: ${error.message}`, 'err');
   }

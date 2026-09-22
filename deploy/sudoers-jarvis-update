@@ -1,0 +1,6 @@
+# Permite al actualizador reiniciar EXCLUSIVAMENTE el servicio de Jarvis.
+# Se instala en /etc/sudoers.d/jarvis-update con permisos 0440.
+#
+# Es lo unico que necesita privilegios: el resto (git, npm, curl) corre como
+# el usuario normal, para que los ficheros del repositorio no pasen a ser de root.
+jarvis ALL=(root) NOPASSWD: /usr/bin/systemctl restart jarvis.service, /usr/bin/systemctl is-active jarvis.service

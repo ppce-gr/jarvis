@@ -19,3 +19,7 @@ id_ed25519
 # Estado local
 *.tmp
 /jarvis-core.log
+
+# Estado local de la autoactualización (ancla y registro)
+.update-state/
+.update-request

@@ -31,6 +31,9 @@ export class JarvisWebServer {
     cancelChatTurnUseCase,
     getChatConfigUseCase,
     setChatConfigUseCase,
+    getSystemStatusUseCase,
+    requestSystemUpdateUseCase,
+    checkForUpdatesUseCase,
     publicDir,
     host = '0.0.0.0',
     port = 3081
@@ -50,6 +53,9 @@ export class JarvisWebServer {
     this.cancelChatTurnUseCase = cancelChatTurnUseCase;
     this.getChatConfigUseCase = getChatConfigUseCase;
     this.setChatConfigUseCase = setChatConfigUseCase;
+    this.getSystemStatusUseCase = getSystemStatusUseCase;
+    this.requestSystemUpdateUseCase = requestSystemUpdateUseCase;
+    this.checkForUpdatesUseCase = checkForUpdatesUseCase;
     this.publicDir = publicDir || path.resolve(process.cwd(), 'public');
     this.host = host;
     this.port = port;
@@ -151,6 +157,33 @@ export class JarvisWebServer {
     // GET /api/health
     if (req.method === 'GET' && pathname === '/api/health') {
       return this._sendJson(res, 200, { status: 'ok', service: 'jarvis-core' });
+    }
+
+    // --- Sistema: actualización de Jarvis ---
+    // Ojo: aquí NO se actualiza nada. Se pide y se consulta; quien actualiza
+    // es systemd, desde fuera del proceso, para poder revertir si falla.
+    if (req.method === 'GET' && pathname === '/api/system/status') {
+      try {
+        return this._sendJson(res, 200, await this.getSystemStatusUseCase.execute());
+      } catch (error) {
+        return this._sendJson(res, 500, { error: error.message });
+      }
+    }
+
+    if (req.method === 'POST' && pathname === '/api/system/update') {
+      try {
+        return this._sendJson(res, 202, await this.requestSystemUpdateUseCase.execute());
+      } catch (error) {
+        return this._sendJson(res, 400, { error: error.message });
+      }
+    }
+
+    if (req.method === 'POST' && pathname === '/api/system/check') {
+      try {
+        return this._sendJson(res, 200, await this.checkForUpdatesUseCase.execute());
+      } catch (error) {
+        return this._sendJson(res, 500, { error: error.message });
+      }
     }
 
     // GET /api/git/status

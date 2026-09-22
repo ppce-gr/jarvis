@@ -19,6 +19,7 @@ import { DshHeadlessOrchestratorAdapter } from './infrastructure/orchestrator/Ds
 import { DshSdkConversationAdapter } from './infrastructure/conversation/DshSdkConversationAdapter.js';
 import { AcpConversationAdapter } from './infrastructure/conversation/AcpConversationAdapter.js';
 import { GitSyncAdapter } from './infrastructure/git/GitSyncAdapter.js';
+import { LocalSystemUpdateAdapter } from './infrastructure/system/LocalSystemUpdateAdapter.js';
 import { JarvisWebServer } from './infrastructure/http/JarvisWebServer.js';
 
 import { GetProjectsUseCase } from './application/GetProjectsUseCase.js';
@@ -36,6 +37,9 @@ import { SubscribeChatUseCase } from './application/SubscribeChatUseCase.js';
 import { CancelChatTurnUseCase } from './application/CancelChatTurnUseCase.js';
 import { GetChatConfigUseCase } from './application/GetChatConfigUseCase.js';
 import { SetChatConfigUseCase } from './application/SetChatConfigUseCase.js';
+import { GetSystemStatusUseCase } from './application/GetSystemStatusUseCase.js';
+import { RequestSystemUpdateUseCase } from './application/RequestSystemUpdateUseCase.js';
+import { CheckForUpdatesUseCase } from './application/CheckForUpdatesUseCase.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -66,6 +70,15 @@ const gitSyncAdapter = new GitSyncAdapter(workspaceRoot);
 
 // La preferencia de modelo se guarda junto a la memoria, no en el repo público.
 const chatConfigFile = path.join(brainDir, 'chat-config.json');
+
+// Actualización del propio Jarvis. El adaptador sólo consulta y deja la
+// bandera; quien actualiza es systemd desde fuera (ver docs/autoactualizacion.md).
+const containerDir = path.dirname(workspaceRoot);
+const systemUpdateAdapter = new LocalSystemUpdateAdapter({
+  codeDir: workspaceRoot,
+  stateDir: path.join(containerDir, '.update-state'),
+  flagFile: path.join(containerDir, '.update-request')
+});
 
 // Chat conversacional. Por defecto ACP, que es un estándar y aporta
 // cancelación real, reanudación de la memoria y desacoplamiento de DSH.
@@ -111,6 +124,9 @@ const subscribeChatUseCase = new SubscribeChatUseCase(conversationAdapter);
 const cancelChatTurnUseCase = new CancelChatTurnUseCase(conversationAdapter);
 const getChatConfigUseCase = new GetChatConfigUseCase(conversationAdapter);
 const setChatConfigUseCase = new SetChatConfigUseCase(conversationAdapter);
+const getSystemStatusUseCase = new GetSystemStatusUseCase(systemUpdateAdapter);
+const requestSystemUpdateUseCase = new RequestSystemUpdateUseCase(systemUpdateAdapter);
+const checkForUpdatesUseCase = new CheckForUpdatesUseCase(systemUpdateAdapter);
 
 // --- Servidor web (adaptador de entrada) ---
 const webServer = new JarvisWebServer({
@@ -129,6 +145,9 @@ const webServer = new JarvisWebServer({
   cancelChatTurnUseCase,
   getChatConfigUseCase,
   setChatConfigUseCase,
+  getSystemStatusUseCase,
+  requestSystemUpdateUseCase,
+  checkForUpdatesUseCase,
   publicDir: path.join(workspaceRoot, 'public'),
   host: HOST,
   port: PORT

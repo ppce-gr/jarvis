@@ -21,6 +21,7 @@
       </div>
       <div class="topbar-actions">
         <span id="git-status" class="pill" title="Estado del respaldo Git">git · …</span>
+        <button id="system-pill" class="pill pill-btn" title="Versión y actualización de Jarvis">v…</button>
         <button id="new-project-btn" class="btn btn-primary btn-sm">+ Idea</button>
       </div>
     </header>
@@ -157,6 +158,18 @@
         <button type="submit" class="btn btn-primary">Crear nota</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="system-dialog" class="dialog">
+    <div class="dialog-body">
+      <h2>Versión de Jarvis</h2>
+      <div id="system-info" class="system-info">Cargando…</div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
+        <button type="button" id="system-check" class="btn">Buscar novedades</button>
+        <button type="button" id="system-update" class="btn btn-primary">Actualizar</button>
+      </div>
+    </div>
   </dialog>
 
   <div id="toast" class="toast hidden"></div>

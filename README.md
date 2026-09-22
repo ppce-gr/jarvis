@@ -107,6 +107,7 @@ test/                  pruebas (node:test), 66 en verde
 | [`docs/chat.md`](docs/chat.md) | El chat: ACP, streaming, permisos y límites. |
 | [`docs/integracion-dsh.md`](docs/integracion-dsh.md) | Cómo se conecta con DSH, con mediciones reales. |
 | [`docs/manual-interfaz.md`](docs/manual-interfaz.md) | Uso desde el móvil. |
+| [`docs/autoactualizacion.md`](docs/autoactualizacion.md) | **Autoactualización con reversión**: método, barreras y riesgos. |
 | [`docs/guia-migracion.md`](docs/guia-migracion.md) | Llevarlo a otro hardware y restaurarlo. |
 | [`deploy/README.md`](deploy/README.md) | Instalación de servicios y zram. |
 
@@ -134,7 +135,7 @@ test/                  pruebas (node:test), 66 en verde
 - [x] Selector de modelo alimentado por el catálogo que publica el motor
 - [x] Orquestación con agentes, cola de uno y bitácora en vivo
 - [x] Respaldo automático de los dos repositorios
-- [ ] Autoactualización con reversión
+- [x] **Autoactualización con reversión**: cinco barreras, verificación de arranque y reversión automática
 - [ ] Capa de voz
 
 ## Licencia

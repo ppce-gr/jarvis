@@ -1,0 +1,13 @@
+[Unit]
+Description=Jarvis · comprobación diaria de actualizaciones
+Documentation=file:/home/jarvis/jarvis/jarvis/docs/autoactualizacion.md
+
+[Timer]
+# De madrugada y con holgura tras el arranque: una actualización reinicia
+# el servicio, mejor que no coincida con el uso.
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

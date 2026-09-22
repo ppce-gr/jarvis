@@ -1,0 +1,13 @@
+[Unit]
+Description=Jarvis · vigila la petición de actualización
+Documentation=file:/home/jarvis/jarvis/jarvis/docs/autoactualizacion.md
+
+[Path]
+# Jarvis (o tú) sólo tiene que tocar este fichero: no necesita privilegios.
+# systemd detecta el cambio y lanza el servicio, que sí corre fuera del
+# árbol de procesos de Jarvis.
+PathExists=/home/jarvis/jarvis/.update-request
+Unit=jarvis-autoupdate.service
+
+[Install]
+WantedBy=paths.target
