@@ -10,13 +10,48 @@ absolutas grabadas a fuego, ni dependencias compiladas.
 
 ## 1. Antes de migrar: sube todo a Git
 
-En la Raspberry actual:
+**Ya está configurado y verificado:**
+
+| Dato | Valor |
+|---|---|
+| Remoto | `git@github.com:ppce-gr/jarvis.git` (privado) |
+| Propiedad | Cuenta del usuario |
+| Credencial | Clave SSH dedicada `~/.ssh/jarvis_deploy`, como **deploy key con escritura** |
+
+Se eligió SSH y no un token porque **las claves no caducan**: un token caducado
+pararía el respaldo automático **en silencio**, que es el peor fallo posible en
+un sistema de respaldo.
+
+Comprobar el estado en cualquier momento:
 
 ```bash
-bash scripts/backup.sh "chore: estado antes de migrar"
-git remote add origin <url-de-tu-repo>   # sólo la primera vez
-git push -u origin main
+bash scripts/backup.sh     # commit + push si hay cambios
+git log --oneline -1 origin/main
 ```
+
+### Restauración desde cero (procedimiento probado)
+
+```bash
+git clone git@github.com:ppce-gr/jarvis.git jarvis
+cd jarvis
+npm test        # 66 pruebas: confirma que el sistema revivió
+npm start
+```
+
+No hace falta `npm install`: el proyecto no tiene dependencias de runtime.
+
+**Lo que NO viene en el clon** (y hay que recrear): `~/.dsh` con las credenciales
+de los modelos, y `~/.ssh/jarvis_deploy` con la clave. El resto —código, notas,
+configuración de modelo y bitácoras— está en el repositorio.
+
+### Respaldo automático
+
+```bash
+sudo bash deploy/instalar.sh --backup
+systemctl list-timers jarvis-backup.timer
+```
+
+Commitea y sube cada 30 minutos.`
 
 > **¿Un repo o varios?** Uno solo. Este repositorio contiene el programa, la
 > documentación y tus ideas. Un único `git clone` te devuelve el sistema entero.
