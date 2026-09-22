@@ -359,7 +359,9 @@ async function loadSystemStatus() {
     pill.title = `Ejecutando ${st.runningCommitCorto || '?'}`
       + ` · repositorio ${st.commitCorto}`
       + (st.dirty ? ' · cambios sin commitear' : '');
-    pill.classList.toggle('update', Boolean(st.updateRequested || st.dirty || st.reinicioPendiente));
+    pill.classList.toggle('update', Boolean(
+      st.updateRequested || st.dirty || st.reinicioPendiente || st.actualizadorDesfasado
+    ));
     return st;
   } catch {
     const pill = $('#system-pill');
@@ -385,6 +387,17 @@ function pintarSistema(st) {
   html += fila('Último commit bueno', st.lastGoodCorto || '(aún ninguno)');
   html += fila('Actualización pedida', st.updateRequested ? 'sí, en curso' : 'no',
     st.updateRequested ? 'aviso' : '');
+  if (st.actualizadorComprobado) {
+    html += fila('Actualizador instalado',
+      st.actualizadorDesfasado ? 'desfasado' : 'al día',
+      st.actualizadorDesfasado ? 'aviso' : 'bien');
+  }
+
+  if (st.actualizadorDesfasado) {
+    html += `<div class="fila aviso">El actualizador instalado no coincide con el del
+      repositorio. No puede actualizarse solo, porque systemd ejecuta una copia de root.
+      Ponlo al día con <code>sudo bash deploy/instalar.sh --autoupdate</code>.</div>`;
+  }
 
   if (st.reinicioPendiente) {
     html += `<div class="fila aviso">Hay código más nuevo en el repositorio

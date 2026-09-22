@@ -58,6 +58,9 @@ BITACORA="$BRAIN_DIR/sistema-jarvis/logs/orchestrator.log"
 # sólo dispara cuando el fichero aparece, así que si se queda ahí la próxima
 # petición no haría nada: la actualización funcionaría una sola vez.
 BANDERA="${JARVIS_UPDATE_FLAG:-/home/jarvis/jarvis/.update-request}"
+# La COPIA INSTALADA de este mismo script. systemd ejecuta ÉSTA (ver ExecStart
+# en deploy/systemd/jarvis-autoupdate.service), no la del repositorio.
+INSTALADO="${JARVIS_UPDATER_INSTALLED:-/usr/local/sbin/jarvis-actualizar}"
 
 MODO="actualizar"
 DRY_RUN=0
@@ -167,6 +170,38 @@ reiniciar_y_verificar() {
 
 
 # ---------------------------------------------------------------
+# ¿Está al día la COPIA INSTALADA del actualizador?
+# ---------------------------------------------------------------
+# Este script no puede actualizarse a sí mismo: systemd ejecuta la copia de
+# /usr/local/sbin, que es de root, y aquí se corre como usuario normal. Un cambio
+# en este fichero NO llega solo: hay que reinstalarlo.
+#
+# Y como nada lo comprobaba, la copia instalada podía quedarse vieja —con sus
+# bugs incluidos— sin que nadie se enterara. Se AVISA, pero no se aborta:
+# negarse a actualizar dejaría el sistema congelado, que es peor que hacerlo con
+# una versión antigua del actualizador.
+avisar_si_actualizador_desfasado() {
+  local origen="$CODE_DIR/scripts/autoactualizar.sh"
+  [ -f "$origen" ] || return 0
+  [ -f "$INSTALADO" ] || return 0
+  # Si resulta que se está ejecutando justo esta copia, no hay nada que comparar.
+  if [ "$(readlink -f "$origen" 2>/dev/null)" = "$(readlink -f "$INSTALADO" 2>/dev/null)" ]; then
+    return 0
+  fi
+  if cmp -s "$origen" "$INSTALADO"; then
+    return 0
+  fi
+
+  log "⚠️  AVISO: el ACTUALIZADOR INSTALADO no coincide con el del repositorio."
+  log "    instalado   : $INSTALADO"
+  log "    repositorio : $origen"
+  log "    No se actualiza solo (es una copia de root, y a propósito)."
+  log "    Para ponerlo al día:  sudo bash $CODE_DIR/deploy/instalar.sh --autoupdate"
+  bitacora "AVISO: el actualizador instalado está desfasado. Hace falta: sudo bash deploy/instalar.sh --autoupdate"
+  return 0
+}
+
+# ---------------------------------------------------------------
 # 0. Cerrojo: dos actualizaciones a la vez se pisarían
 # ---------------------------------------------------------------
 exec 9>"$STATE_DIR/lock"
@@ -209,6 +244,10 @@ else
   log "Sin ancla previa; se toma el commit actual como último bueno."
 fi
 log "Actual: $(git rev-parse --short "$PREV") · último bueno: $(git rev-parse --short "$LAST_GOOD")"
+
+# Se comprueba en TODOS los modos, también en --check y --rollback: es
+# precisamente lo que antes nadie miraba.
+avisar_si_actualizador_desfasado
 
 # ---------------------------------------------------------------
 # Modo rollback manual

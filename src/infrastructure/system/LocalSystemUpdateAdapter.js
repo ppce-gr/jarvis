@@ -25,13 +25,18 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
     codeDir = process.cwd(),
     stateDir = path.resolve(process.cwd(), '..', '.update-state'),
     flagFile = path.resolve(process.cwd(), '..', '.update-request'),
-    branch = 'main'
+    branch = 'main',
+    updaterFile = '/usr/local/sbin/jarvis-actualizar'
   } = {}) {
     super();
     this.codeDir = codeDir;
     this.stateDir = stateDir;
     this.flagFile = flagFile;
     this.branch = branch;
+    // La COPIA INSTALADA del actualizador. systemd ejecuta ésta, no la del
+    // repositorio, y es de root: por eso el actualizador no puede actualizarse
+    // a sí mismo y hay que reinstalarlo a mano.
+    this.updaterFile = updaterFile;
     // El commit que este PROCESO cargó al arrancar. Ojo: no es lo mismo que el
     // HEAD del repositorio. Como el código vive en el mismo directorio que se
     // versiona, un commit nuevo cambia HEAD al instante, pero el proceso sigue
@@ -66,6 +71,33 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
     }
   }
 
+  /**
+   * ¿Coincide el actualizador INSTALADO con el del repositorio?
+   *
+   * El actualizador no puede actualizarse a sí mismo: systemd ejecuta una copia
+   * en /usr/local/sbin, que es de root, y este proceso no puede escribir ahí.
+   * Eso significa que un cambio en `scripts/autoactualizar.sh` NO llega solo.
+   *
+   * Y como nada lo comprobaba, la copia instalada podía quedarse vieja —con sus
+   * bugs incluidos— sin que nadie se enterara. Se compara byte a byte y se
+   * informa; no se aborta nada, porque negarse dejaría el sistema sin
+   * actualizaciones, que es peor.
+   */
+  async _comprobarActualizador() {
+    const origen = path.join(this.codeDir, 'scripts', 'autoactualizar.sh');
+    try {
+      const [delRepo, instalado] = await Promise.all([
+        fs.readFile(origen),
+        fs.readFile(this.updaterFile)
+      ]);
+      return { comprobado: true, desfasado: !delRepo.equals(instalado) };
+    } catch {
+      // Si falta cualquiera de los dos no se puede comparar. Mejor no avisar de
+      // algo que no se ha podido comprobar que de dar una falsa alarma.
+      return { comprobado: false, desfasado: false };
+    }
+  }
+
   async getStatus() {
     const estado = {
       commit: null,
@@ -79,6 +111,8 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
       lastGoodCorto: null,
       updateRequested: false,
       lastRun: null,
+      actualizadorComprobado: false,
+      actualizadorDesfasado: false,
       canUpdate: false
     };
 
@@ -117,6 +151,12 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
     estado.reinicioPendiente = Boolean(
       this.runningCommit && estado.commit && this.runningCommit !== estado.commit
     );
+
+    // ¿Está al día la copia instalada del propio actualizador? Es lo único que
+    // no se actualiza solo, así que conviene que se vea.
+    const actualizador = await this._comprobarActualizador();
+    estado.actualizadorComprobado = actualizador.comprobado;
+    estado.actualizadorDesfasado = actualizador.desfasado;
 
     // Sólo se puede actualizar con el árbol limpio: es la primera barrera del
     // actualizador, así que conviene saberlo antes de pedirlo.
