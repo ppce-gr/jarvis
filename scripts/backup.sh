@@ -59,7 +59,14 @@ respaldar_repo() {
       return
     fi
 
-    git -C "$dir" commit -m "$MESSAGE" >/dev/null
+    # Sin esta comprobación, un commit fallido (por ejemplo, sin identidad de
+    # Git configurada) se reportaba como éxito y el respaldo mentía.
+    if ! git -C "$dir" commit -m "$MESSAGE" >/dev/null 2>&1; then
+      echo "[backup]    ERROR: no se pudo crear el commit." >&2
+      echo "[backup]    Comprueba 'git -C $dir config user.name/user.email'." >&2
+      FALLOS=$((FALLOS + 1))
+      return
+    fi
     echo "[backup]    commit $(git -C "$dir" rev-parse --short HEAD)"
   else
     echo "[backup]    sin cambios en el árbol de trabajo"
