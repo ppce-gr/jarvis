@@ -89,6 +89,50 @@ bitacora() {
 
 morir() { log "ERROR: $*"; bitacora "FALLÓ: $*"; exit 1; }
 
+# ---------------------------------------------------------------
+# Barreras 4a y 4b: pruebas y arranque REAL, antes de tocar el servicio.
+# Se usan en los DOS caminos: cuando hay código nuevo que traer y cuando el
+# servicio simplemente va por detrás del repositorio. En el segundo caso es
+# fácil pensar que "no hay nada que verificar", pero es justo al contrario:
+# un cambio hecho a mano puede romper la interfaz sin romper la API, y un
+# health check no lo detectaría. Por eso se verifican siempre.
+# ---------------------------------------------------------------
+verificar_codigo() {
+  log "Barrera 4a: ejecutando la suite de pruebas..."
+  if ! timeout 300 npm test >>"$LOG_FICHERO" 2>&1; then
+    log "Las pruebas FALLAN con este código."
+    return 1
+  fi
+  log "Barrera 4a OK: pruebas en verde."
+
+  log "Barrera 4b: comprobando que el servidor arranca de verdad..."
+  local brain_temporal smoke_pid arranca
+  brain_temporal="$(mktemp -d)"
+  JARVIS_PORT="$SMOKE_PORT" JARVIS_BRAIN_DIR="$brain_temporal" \
+    node src/index.js >>"$LOG_FICHERO" 2>&1 &
+  smoke_pid=$!
+
+  arranca=0
+  for _ in $(seq 1 15); do
+    sleep 1
+    if curl -fsS --max-time 2 "http://127.0.0.1:$SMOKE_PORT/api/health" >/dev/null 2>&1; then
+      arranca=1
+      break
+    fi
+    kill -0 "$smoke_pid" 2>/dev/null || break
+  done
+  kill "$smoke_pid" 2>/dev/null
+  wait "$smoke_pid" 2>/dev/null
+  rm -rf "$brain_temporal"
+
+  if [ "$arranca" -ne 1 ]; then
+    log "El servidor NO arranca con este código."
+    return 1
+  fi
+  log "Barrera 4b OK: el servidor arranca y responde."
+  return 0
+}
+
 # Se quita la bandera al salir por cualquier vía, incluidos los errores. Si no,
 # systemd no volvería a disparar el .path nunca más.
 limpiar_bandera() {
@@ -216,7 +260,8 @@ fi
 
 if [ "$REMOTE" = "$PREV" ]; then
   log "El repositorio está al día, pero el servicio ejecuta código anterior."
-  log "Se reinicia para aplicarlo (no hay nada que traer ni que verificar)."
+    log "Hay que VERIFICAR ese codigo antes de reiniciar: puede haberlo"
+    log "cambiado un agente, y una interfaz rota no la detecta un health check."
   if [ "$MODO" = "check" ]; then
     log "(--check: hay un reinicio pendiente)"
     exit 0
@@ -225,6 +270,14 @@ if [ "$REMOTE" = "$PREV" ]; then
     log "(simulación) se reiniciaría el servicio."
     exit 0
   fi
+
+    if ! verificar_codigo; then
+      # El servicio NO se toca: sigue con lo que ya tenia cargado y funcionaba.
+      # Se devuelve el repositorio al ultimo commit bueno.
+      revertir_codigo "$LAST_GOOD"
+      bitacora "RECHAZADO el codigo sin verificar; se vuelve a $(git rev-parse --short "$LAST_GOOD")"
+      morir "el codigo del repositorio no pasa la verificacion. El servicio sigue intacto y el codigo se ha devuelto a $(git rev-parse --short "$LAST_GOOD")."
+    fi
 
   if reiniciar_y_verificar; then
     echo "$(git rev-parse HEAD)" > "$LAST_GOOD_FILE"
@@ -273,49 +326,15 @@ if ! git merge --ff-only "origin/$BRANCH" >>"$LOG_FICHERO" 2>&1; then
 fi
 log "Barrera 3 OK: código en $(git rev-parse --short HEAD)."
 
+
 # ---------------------------------------------------------------
 # BARRERA 4 · Verificar ANTES de tocar el servicio
-#   4a. La suite de pruebas
-#   4b. Que el servidor arranque de verdad, en un puerto aparte
-#       y con una carpeta de memoria temporal (no se tocan las
-#       notas reales).
 # ---------------------------------------------------------------
-revertir_codigo() {
-  log "Revirtiendo el código a $(git rev-parse --short "$1")..."
-  git reset --hard "$1" >/dev/null 2>&1 || log "AVISO: la reversión del código falló"
-}
-
-log "Barrera 4a: ejecutando la suite de pruebas..."
-if ! timeout 300 npm test >>"$LOG_FICHERO" 2>&1; then
+log "Verificando el código nuevo antes de tocar nada..."
+if ! verificar_codigo; then
   revertir_codigo "$PREV"
-  morir "las pruebas fallan con el código nuevo. Se ha vuelto a $(git rev-parse --short "$PREV") y Jarvis NO se ha reiniciado."
+  morir "el código nuevo no pasa la verificación. Se ha vuelto a $(git rev-parse --short "$PREV") y Jarvis sigue con lo anterior, intacto."
 fi
-log "Barrera 4a OK: pruebas en verde."
-
-log "Barrera 4b: comprobando que el servidor arranca de verdad..."
-BRAIN_TEMPORAL="$(mktemp -d)"
-JARVIS_PORT="$SMOKE_PORT" JARVIS_BRAIN_DIR="$BRAIN_TEMPORAL" \
-  node src/index.js >>"$LOG_FICHERO" 2>&1 &
-SMOKE_PID=$!
-
-arranca=0
-for _ in $(seq 1 15); do
-  sleep 1
-  if curl -fsS --max-time 2 "http://127.0.0.1:$SMOKE_PORT/api/health" >/dev/null 2>&1; then
-    arranca=1
-    break
-  fi
-  kill -0 "$SMOKE_PID" 2>/dev/null || break
-done
-kill "$SMOKE_PID" 2>/dev/null
-wait "$SMOKE_PID" 2>/dev/null
-rm -rf "$BRAIN_TEMPORAL"
-
-if [ "$arranca" -ne 1 ]; then
-  revertir_codigo "$PREV"
-  morir "el código nuevo NO arranca. Se ha vuelto a $(git rev-parse --short "$PREV") y Jarvis sigue con el código anterior, intacto."
-fi
-log "Barrera 4b OK: el servidor nuevo arranca y responde."
 
 # ---------------------------------------------------------------
 # BARRERA 5 · Reiniciar el servicio y comprobar de verdad
