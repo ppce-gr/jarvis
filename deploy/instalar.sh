@@ -136,12 +136,21 @@ if [ "$DO_JARVIS" -eq 1 ]; then
   echo "== 3/6 · servicio Jarvis (puerto 3081) =="
   # La ruta del binario dsh se inyecta en la unidad, para no depender de que
   # coincida con la que viene por defecto en el fichero del repositorio.
-  DSH_BIN_PATH="${DSH_BIN_PATH:-$(command -v dsh 2>/dev/null || echo /usr/local/bin/dsh)}"
+  # Prioridad: lo que diga el entorno > lo que haya en el PATH > lo instalado.
+  # Así se puede apuntar a una instalación local sin root (por ejemplo
+  # /home/jarvis/jarvis/.tools/bin/dsh) sin tener que tocar el PATH del sistema.
+  DSH_BIN_PATH="${JARVIS_DSH_BIN:-${DSH_BIN_PATH:-$(command -v dsh 2>/dev/null || echo /usr/local/bin/dsh)}}"
   echo "   JARVIS_DSH_BIN=$DSH_BIN_PATH"
   case "$DSH_BIN_PATH" in
     *"/_npx/"*)
-      echo "   ⚠ AVISO: esa ruta está en la caché de npx, que cambia al actualizar"
-      echo "     la versión de dsh. Ejecuta antes '--dsh-global' para fijarla."
+      echo "   ⚠ AVISO: esa ruta está en la caché de npx, que puede vaciarse y"
+      echo "     cambia al actualizar dsh. Fíjala con '--dsh-global' o apuntando"
+      echo "     JARVIS_DSH_BIN a una instalación estable."
+      ;;
+    *)
+      if [ ! -x "$DSH_BIN_PATH" ]; then
+        echo "   ⚠ AVISO: '$DSH_BIN_PATH' no existe o no es ejecutable."
+      fi
       ;;
   esac
   if [ "$DRY_RUN" -eq 1 ]; then
