@@ -203,7 +203,9 @@ fi
 if [ "$DO_AUTOUPDATE" -eq 1 ]; then
   echo "== 5/6 · autoactualización con reversión =="
 
-  if [ ! -f /etc/systemd/system/jarvis.service ]; then
+  # Sólo avisa si el servicio no existe NI se está instalando en esta misma
+  # ejecución (el paso 3 va antes que este). Si no, el aviso confunde.
+  if [ ! -f /etc/systemd/system/jarvis.service ] && [ "$DO_JARVIS" -eq 0 ]; then
     echo "   AVISO: jarvis.service no está instalado."
     echo "   La autoactualización lo necesita para reiniciarlo y comprobar su"
     echo "   salud. Ejecuta antes:  sudo bash deploy/instalar.sh --jarvis"
