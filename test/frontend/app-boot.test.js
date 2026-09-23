@@ -380,3 +380,19 @@ test('la traza se pinta como líneas plegables y guarda el detalle', async () =>
   // Todo nace plegado.
   assert.doesNotMatch(html, /<details[^>]*\bopen\b/);
 });
+
+/* ================================================================
+   Nueva idea: elegir el modelo desde el diálogo de creación
+   ================================================================ */
+
+test('el diálogo de nueva idea ofrece el catálogo de modelos', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({
+    respuestas: { '/chat/config': CONFIG_MODELOS, ...RESPUESTAS_BASE }
+  });
+  assert.deepEqual(errores, []);
+  await jarvis.abrirNuevaIdea();
+  const sel = registro.get('#new-project-model');
+  assert.ok(sel, 'debe existir el selector de modelo al crear la idea');
+  assert.match(sel.innerHTML, /Modelo por defecto/);
+  assert.match(sel.innerHTML, /Bueno/, 'el catálogo debe rellenar el selector');
+});

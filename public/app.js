@@ -219,10 +219,7 @@ function renderIdeaGrid() {
   nueva.type = 'button';
   nueva.className = 'idea-card idea-card-new';
   nueva.innerHTML = '<span class="idea-card-new-plus" aria-hidden="true">＋</span><span>Nueva idea</span>';
-  nueva.addEventListener('click', () => {
-    const dialog = $('#new-project-dialog');
-    if (dialog) dialog.showModal();
-  });
+  nueva.addEventListener('click', abrirNuevaIdea);
   grid.appendChild(nueva);
 }
 
@@ -1661,6 +1658,59 @@ function scheduleTaskPoll() {
   taskPollTimer = setTimeout(refreshTaskStatus, 4000);
 }
 
+/* ---------------- Nueva idea: elegir modelo desde el principio ---------------- */
+/** Rellena un <select> con el catálogo de modelos, agrupado por proveedor. */
+function llenarSelectModelos(sel, options, currentValue) {
+  sel.innerHTML = '';
+  const porDefecto = document.createElement('option');
+  porDefecto.value = '';
+  porDefecto.textContent = 'Modelo por defecto';
+  sel.appendChild(porDefecto);
+
+  const opt = (options || []).find((o) => o.id === 'model' || o.category === 'model');
+  const grupos = (opt?.options || []).filter((g) => Array.isArray(g.options));
+  for (const grupo of grupos) {
+    const og = document.createElement('optgroup');
+    og.label = grupo.name || grupo.group || 'Modelos';
+    for (const item of grupo.options) {
+      const o = document.createElement('option');
+      o.value = item.value;
+      o.textContent = `${modelStatusInfo(item).icon} ${item.name || item.value}`;
+      o.title = modelTooltip(item);
+      if (item.value === currentValue) o.selected = true;
+      og.appendChild(o);
+    }
+    sel.appendChild(og);
+  }
+}
+
+/** Carga el catálogo en el selector del diálogo de nueva idea. */
+async function cargarCatalogoNuevaIdea() {
+  const sel = $('#new-project-model');
+  if (!sel) return;
+  const referencia = state.currentProjectId || (state.projects || [])[0]?.id;
+  if (!referencia) {
+    sel.innerHTML = '<option value="">Modelo por defecto</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  try {
+    const config = await api(`/api/projects/${encodeURIComponent(referencia)}/chat/config`);
+    llenarSelectModelos(sel, config.options, config.current?.model || '');
+  } catch {
+    sel.innerHTML = '<option value="">Modelo por defecto</option>';
+  }
+}
+
+/** Abre el diálogo de nueva idea con el catálogo de modelos ya cargado. */
+async function abrirNuevaIdea() {
+  const dialog = $('#new-project-dialog');
+  if (!dialog) return;
+  try { await cargarCatalogoNuevaIdea(); } catch { /* se abre igual */ }
+  dialog.showModal();
+}
+
 /* ---------------- Acciones de creación ---------------- */
 async function createProject(event) {
   event.preventDefault();
@@ -1669,11 +1719,19 @@ async function createProject(event) {
     name: form.name.value.trim(),
     description: form.description.value.trim()
   };
+  const modelo = $('#new-project-model')?.value || '';
   try {
     const { project } = await api('/api/projects', {
       method: 'POST',
       body: JSON.stringify(payload)
     });
+    // El modelo se fija ANTES de abrir la idea, para que su chat arranque con él.
+    if (modelo) {
+      await api(`/api/projects/${encodeURIComponent(project.id)}/chat/config`, {
+        method: 'POST',
+        body: JSON.stringify({ configId: 'model', value: modelo })
+      });
+    }
     $('#new-project-dialog').close();
     form.reset();
     await loadProjects();
@@ -1870,8 +1928,8 @@ function bindEvents() {
     }
   });
 
-  on('#new-project-btn', 'click', () => $('#new-project-dialog').showModal());
-  on('#new-idea-btn', 'click', () => $('#new-project-dialog').showModal());
+  on('#new-project-btn', 'click', abrirNuevaIdea);
+  on('#new-idea-btn', 'click', abrirNuevaIdea);
   on('#back-btn', 'click', goHome);
   on('#home-btn', 'click', goHome);
   on('#new-note-btn', 'click', () => {
@@ -2006,6 +2064,8 @@ window.Jarvis = {
   showIdea,
   loadProjects,
   renderIdeaGrid,
+  abrirNuevaIdea,
+  llenarSelectModelos,
   switchTab,
   parseChecklist,
   construirGrafo,

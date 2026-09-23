@@ -656,12 +656,12 @@ html, body {
 .dialog form { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 .dialog h2 { margin: 0; font-size: 18px; }
 .dialog label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-dim); }
-.dialog input, .dialog textarea {
+.dialog input, .dialog textarea, .dialog select {
   background: var(--bg); color: var(--text);
   border: 1px solid var(--border); border-radius: 8px;
   padding: 9px 11px; font-size: 14px; font-family: inherit;
 }
-.dialog input:focus, .dialog textarea:focus { outline: none; border-color: var(--accent-strong); }
+.dialog input:focus, .dialog textarea:focus, .dialog select:focus { outline: none; border-color: var(--accent-strong); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
 /* ---------- Toast ---------- */

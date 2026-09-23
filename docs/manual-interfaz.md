@@ -74,7 +74,8 @@ Revisa las dudas abiertas de qa-dudas y propón respuestas
 
 ## Flujo recomendado
 
-1. **+ Idea** → nombras la idea. Se crea con `_indice.md` y `qa-dudas.md`.
+1. **+ Idea** → nombras la idea y **eliges el modelo** con el que hablará Jarvis.
+   Se crea con `_indice.md` y `qa-dudas.md`.
 2. Conversas y escribes el diseño en las notas conceptuales.
 3. Cuando quieras ejecutar, escribes la orden en la barra ⌘.
 4. El orquestador deja su rastro en la pestaña **Bitácora**.
