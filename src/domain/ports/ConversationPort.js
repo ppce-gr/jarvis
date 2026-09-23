@@ -111,6 +111,16 @@ export class ConversationPort {
     return { started: false, checking: false };
   }
 
+  /**
+   * Vuelve a comprobar **sólo** un modelo, sin tocar el resto del registro.
+   * La interfaz lo usa desde el botón de refresco de cada fila.
+   * @param {string} value identificador del modelo (el `value` del catálogo)
+   * @returns {Promise<{model: string, status: string, error: string|null, health: object}>}
+   */
+  async refreshModel(value) {
+    throw new Error('METHOD_NOT_IMPLEMENTED');
+  }
+
   /** Cierra todas las sesiones y libera los procesos. */
   async closeAll() {
     throw new Error('METHOD_NOT_IMPLEMENTED');

@@ -180,11 +180,14 @@ export class JarvisWebServer {
       }
     }
 
-    // POST /api/models/refresh  → restablece y vuelve a comprobar (202: sigue
-    //                             en segundo plano; se consulta con /health).
+    // POST /api/models/refresh  → sin body: restablece y comprueba TODOS (202,
+    //                             en segundo plano). Con { model }: comprueba
+    //                             sólo ese modelo y devuelve su salud (200).
     if (req.method === 'POST' && pathname === '/api/models/refresh') {
       try {
-        return this._sendJson(res, 202, await this.refreshModelsUseCase.execute());
+        const body = await this._readJsonBody(req);
+        const result = await this.refreshModelsUseCase.execute(body?.model);
+        return this._sendJson(res, body?.model ? 200 : 202, result);
       } catch (error) {
         return this._sendJson(res, 400, { error: error.message });
       }

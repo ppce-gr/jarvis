@@ -193,3 +193,33 @@ test('la salud persiste entre reinicios del adaptador', async () => {
   assert.equal(health.results[ROTO].status, MODEL_STATUS.BROKEN);
   assert.ok(health.checkedAt, 'debe recordar cuándo se comprobó');
 });
+
+/* ================================================================
+   Refresco de un solo modelo
+   ================================================================ */
+
+test('refreshModel comprueba sólo el modelo pedido', async () => {
+  const ws = await tempWorkspace();
+  const adapter = new AcpConversationAdapter({
+    brainDir: ws,
+    provider: 'p1',
+    model: 'bueno',
+    spawnFn: fakeSpawn()
+  });
+
+  const res = await adapter.refreshModel(ROTO);
+  assert.equal(res.model, ROTO);
+  assert.equal(res.status, MODEL_STATUS.BROKEN);
+
+  const health = await adapter.getModelHealth();
+  assert.equal(health.results[ROTO].status, MODEL_STATUS.BROKEN);
+  assert.equal(health.results[BUENO], undefined, 'no debe tocar los demás modelos');
+
+  await adapter.closeAll();
+});
+
+test('refreshModel exige un modelo', async () => {
+  const ws = await tempWorkspace();
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
+  await assert.rejects(() => adapter.refreshModel(''), /MODEL_REQUIRED/);
+});

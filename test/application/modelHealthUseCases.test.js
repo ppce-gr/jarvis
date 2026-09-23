@@ -7,11 +7,16 @@ import { RefreshModelsUseCase } from '../../src/application/RefreshModelsUseCase
 function fakeAdapter() {
   return {
     refreshed: 0,
+    modelRefreshed: null,
     health: { checking: false, checkedAt: '2026-01-01T00:00:00.000Z', results: { m: { status: 'ok' } } },
     async getModelHealth() { return this.health; },
     async refreshModels() {
       this.refreshed += 1;
       return { started: true, checking: true };
+    },
+    async refreshModel(value) {
+      this.modelRefreshed = value;
+      return { model: value, status: 'ok' };
     }
   };
 }
@@ -22,9 +27,18 @@ test('GetModelHealthUseCase devuelve la salud del adaptador', async () => {
   assert.equal(health.results.m.status, 'ok');
 });
 
-test('RefreshModelsUseCase pide la re-comprobación', async () => {
+test('RefreshModelsUseCase pide la re-comprobación completa', async () => {
   const adapter = fakeAdapter();
   const result = await new RefreshModelsUseCase(adapter).execute();
   assert.deepEqual(result, { started: true, checking: true });
   assert.equal(adapter.refreshed, 1);
+  assert.equal(adapter.modelRefreshed, null);
+});
+
+test('RefreshModelsUseCase con modelo comprueba sólo ese modelo', async () => {
+  const adapter = fakeAdapter();
+  const result = await new RefreshModelsUseCase(adapter).execute('["p","m"]');
+  assert.equal(result.model, '["p","m"]');
+  assert.equal(adapter.modelRefreshed, '["p","m"]');
+  assert.equal(adapter.refreshed, 0, 'no debe lanzar la comprobación global');
 });

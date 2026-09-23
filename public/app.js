@@ -348,6 +348,10 @@ function switchTab(tab) {
    es systemd desde fuera del proceso, para poder revertir si el
    código nuevo no arranca.
    ================================================================ */
+// Versión que cargó esta pestaña. Si el proceso se reinicia con otra (por una
+// actualización), la interfaz se recarga sola para servir el código nuevo.
+let versionEnEjecucion = null;
+
 async function loadSystemStatus() {
   try {
     const st = await api('/api/system/status');
@@ -362,6 +366,23 @@ async function loadSystemStatus() {
       st.updateRequested || st.dirty || st.reinicioPendiente
         || st.actualizadorDesfasado || st.ultimoFallo
     ));
+
+    // Auto-refresco tras una actualización: si el proceso que responde ya no
+    // es el mismo con el que se cargó la página, se recarga para no quedarse
+    // con la interfaz vieja.
+    const versionActual = st.runningCommitCorto || st.commitCorto || null;
+    if (versionActual) {
+      if (versionEnEjecucion === null) {
+        versionEnEjecucion = versionActual;
+      } else if (versionActual !== versionEnEjecucion) {
+        versionEnEjecucion = versionActual;
+        toast('Jarvis se ha actualizado; recargando la interfaz…', 'ok');
+        setTimeout(() => {
+          if (typeof window.location.reload === 'function') window.location.reload();
+          else window.location.href = window.location.href;
+        }, 1500);
+      }
+    }
     return st;
   } catch {
     const pill = $('#system-pill');
@@ -530,22 +551,23 @@ async function resyncChat() {
 /* ---------------- Selector de modelo y esfuerzo ---------------- */
 async function loadChatConfig() {
   if (!state.chat.projectId) return;
-  const modelSel = $('#chat-model');
+  const btn = $('#chat-model-btn');
   const effortSel = $('#chat-effort');
-  modelSel.classList.add('loading');
+  if (btn) btn.classList.add('loading');
   try {
     const config = await api(
       `/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/config`
     );
-    fillModelSelect(modelSel, config.options, config.current);
+    renderModelPicker(config.options, config.current);
     fillSimpleSelect(effortSel, config.options, 'reasoning_effort', config.current);
-    modelSel.classList.remove('loading');
-    // Si ya hay una comprobación en marcha, el icono gira y se sigue el avance.
+    // Si ya hay una comprobación global en marcha, se sigue su avance.
     setRefreshing(Boolean(config.health?.checking));
     if (config.health?.checking) programarSondeoAdmin();
     if (config.current?.error) toast(`Aviso del motor: ${config.current.error}`, 'err');
   } catch {
-    modelSel.classList.remove('loading');
+    // Sin conexión: se conserva lo que ya había en pantalla.
+  } finally {
+    if (btn) btn.classList.remove('loading');
   }
 }
 
@@ -562,58 +584,78 @@ function modelStatusInfo(item) {
   return { icon: '⚪', nota: 'sin comprobar', title: 'Sin comprobar' };
 }
 
-/** ¿Este modelo va a la sección de abajo (ha fallado y no es por cuota)? */
-function esModeloRoto(item) {
-  return (item?.health?.status || 'unknown') === 'broken';
+/**
+ * Un modelo es "disponible" si funciona o sólo está sin cuota. Los que no
+ * están confirmados cuentan como no disponibles: no sabemos si funcionan.
+ */
+function esModeloDisponible(item) {
+  const status = item?.health?.status || 'unknown';
+  return status === 'ok' || status === 'quota';
 }
 
-function fillModelSelect(sel, options, current) {
+/** Pinta la etiqueta del botón y el menú de modelos. */
+function renderModelPicker(options, current) {
   const opt = (options || []).find((o) => o.id === 'model' || o.category === 'model');
-  sel.innerHTML = '';
-  if (!opt?.options?.length) {
-    sel.classList.add('hidden');
-    return;
+  const grupos = (opt?.options || []).filter((g) => Array.isArray(g.options));
+  const seleccionado = current?.model || null;
+
+  const label = $('#chat-model-label');
+  if (label) {
+    const item = buscarModelo(grupos, seleccionado);
+    label.textContent = item
+      ? `${modelStatusInfo(item).icon} ${item.name || item.value}`
+      : (current?.modelName || 'Elegir modelo…');
   }
-  sel.classList.remove('hidden');
 
-  // Dos bloques: arriba los que se pueden usar (o están sin cuota) y abajo
-  // los que no funcionan. Dentro de cada bloque, agrupados por empresa.
-  const grupos = opt.options.filter((g) => Array.isArray(g.options));
-  const disponibles = grupos.filter((g) => g.options.some((i) => !esModeloRoto(i)));
-  const rotos = grupos.filter((g) => g.options.some((i) => esModeloRoto(i)));
+  const menu = $('#chat-model-menu');
+  if (!menu) return;
+  const disponibles = grupos.filter((g) => g.options.some((i) => esModeloDisponible(i)));
+  const noDisponibles = grupos.filter((g) => g.options.some((i) => !esModeloDisponible(i)));
+  const html = seccionModelos('Disponibles', disponibles, false, seleccionado)
+    + seccionModelos('No funcionan', noDisponibles, true, seleccionado);
+  menu.innerHTML = html || '<div class="model-empty">Sin modelos que mostrar</div>';
+}
 
-  const anadirGrupo = (group, esRoto) => {
-    const og = document.createElement('optgroup');
-    og.label = `${group.name || group.group || ''}${esRoto ? ' · no funcionan' : ''}`;
-    for (const item of group.options) {
-      if (esModeloRoto(item) !== esRoto) continue;
-      const info = modelStatusInfo(item);
-      const base = item.description ? `${item.name} — ${item.description}` : item.name;
-      const extras = [];
-      if (info.nota) extras.push(info.nota);
-      if (item.health?.supportsEffort === false) extras.push('sin esfuerzo');
-      const o = document.createElement('option');
-      o.value = item.value;
-      o.textContent = `${info.icon} ${base}${extras.length ? ` (${extras.join(', ')})` : ''}`;
-      o.title = [info.title, item.description].filter(Boolean).join(' · ');
-      if (item.value === current?.model) o.selected = true;
-      og.appendChild(o);
-    }
-    sel.appendChild(og);
-  };
-
-  for (const group of disponibles) anadirGrupo(group, false);
-  for (const group of rotos) anadirGrupo(group, true);
-
-  // Robustez: catálogo plano sin grupos (no es el formato de DSH, pero se pinta).
-  for (const item of opt.options.filter((g) => !Array.isArray(g.options))) {
-    const info = modelStatusInfo(item);
-    const o = document.createElement('option');
-    o.value = item.value;
-    o.textContent = `${info.icon} ${item.name || item.value}`;
-    if (item.value === current?.model) o.selected = true;
-    sel.appendChild(o);
+function buscarModelo(grupos, value) {
+  for (const grupo of grupos) {
+    const encontrado = (grupo.options || []).find((i) => i.value === value);
+    if (encontrado) return encontrado;
   }
+  return null;
+}
+
+function seccionModelos(titulo, grupos, esNoDisponible, seleccionado) {
+  const interior = grupos
+    .map((g) => grupoModelosHtml(g, esNoDisponible, seleccionado))
+    .join('');
+  if (!interior) return '';
+  return `<div class="model-section"><div class="model-section-title">${titulo}</div>${interior}</div>`;
+}
+
+function grupoModelosHtml(group, esNoDisponible, seleccionado) {
+  const filas = (group.options || [])
+    .filter((i) => esModeloDisponible(i) !== esNoDisponible)
+    .map((i) => filaModeloHtml(i, seleccionado))
+    .join('');
+  if (!filas) return '';
+  return `<div class="model-group"><div class="model-group-title">`
+    + `${escapeHtml(group.name || group.group || '')}</div>${filas}</div>`;
+}
+
+function filaModeloHtml(item, seleccionado) {
+  const info = modelStatusInfo(item);
+  const flags = [];
+  if (info.nota) flags.push(info.nota);
+  if (item.health?.supportsEffort === false) flags.push('sin esfuerzo');
+  const valor = escapeHtml(item.value);
+  const nombre = escapeHtml(item.name || item.value);
+  const actual = item.value === seleccionado;
+  return `<div class="model-row${actual ? ' selected' : ''}" role="option" data-model="${valor}" aria-selected="${actual}" title="${escapeHtml(info.title)}">`
+    + `<span class="model-icon" aria-hidden="true">${info.icon}</span>`
+    + `<span class="model-name">${nombre}</span>`
+    + `<span class="model-flags">${escapeHtml(flags.join(' · '))}</span>`
+    + `<button type="button" class="model-refresh" data-refresh="${valor}" title="Volver a comprobar solo este modelo" aria-label="Volver a comprobar ${nombre}">⟳</button>`
+    + '</div>';
 }
 
 function fillSimpleSelect(sel, options, id, current) {
@@ -649,6 +691,66 @@ async function saveChatConfig(configId, value) {
   } catch (error) {
     toast(`No se pudo guardar: ${error.message}`, 'err');
     loadChatConfig();
+  }
+}
+
+/* ---------------- Desplegable de modelos ---------------- */
+function toggleModelMenu(event) {
+  if (event) event.stopPropagation();
+  const menu = $('#chat-model-menu');
+  if (!menu) return;
+  const quedóOculto = menu.classList.toggle('hidden');
+  const btn = $('#chat-model-btn');
+  if (btn) btn.setAttribute('aria-expanded', String(quedóOculto === false));
+}
+
+function cerrarModelMenu() {
+  const menu = $('#chat-model-menu');
+  if (menu) menu.classList.add('hidden');
+  const btn = $('#chat-model-btn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function manejarMenuModelos(event) {
+  // El botón de refrescar de cada fila: comprueba SÓLO ese modelo.
+  const botonRefresco = event.target.closest('[data-refresh]');
+  if (botonRefresco) {
+    event.stopPropagation();
+    recargarModelo(botonRefresco.dataset.refresh, botonRefresco);
+    return;
+  }
+  // Cualquier otro punto de la fila: elige ese modelo.
+  const fila = event.target.closest('[data-model]');
+  if (!fila) return;
+  cerrarModelMenu();
+  saveChatConfig('model', fila.dataset.model);
+}
+
+async function recargarModelo(value, btn = null) {
+  if (!value) return;
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('refreshing');
+  }
+  try {
+    toast('Comprobando el modelo…', 'warn');
+    const res = await api('/api/models/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ model: value })
+    });
+    await loadChatConfig();
+    const estado = res?.health?.status || res?.status;
+    toast(
+      estado === 'ok' ? 'Modelo comprobado: funciona' : `Modelo comprobado: ${estado || 'sin confirmar'}`,
+      estado === 'ok' ? 'ok' : 'warn'
+    );
+  } catch (error) {
+    toast(`No se pudo comprobar el modelo: ${error.message}`, 'err');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('refreshing');
+    }
   }
 }
 
@@ -1143,14 +1245,12 @@ function renderAdminModelos(salud) {
   }
 }
 
-/** Gira el icono de refrescar y bloquea los botones mientras se comprueba. */
+/** Gira el icono de la comprobación global y bloquea su botón. */
 function setRefreshing(activo) {
-  for (const selector of ['#models-refresh', '#chat-models-refresh']) {
-    const btn = $(selector);
-    if (!btn) continue;
-    btn.disabled = activo;
-    btn.classList.toggle('refreshing', activo);
-  }
+  const btn = $('#models-refresh');
+  if (!btn) return;
+  btn.disabled = activo;
+  btn.classList.toggle('refreshing', activo);
 }
 
 function programarSondeoAdmin() {
@@ -1235,9 +1335,15 @@ function bindEvents() {
   on('#chat-form', 'submit', sendChatMessage);
   on('#chat-reset', 'click', resetChat);
   on('#chat-stop', 'click', cancelChat);
-  on('#chat-model', 'change', (e) => saveChatConfig('model', e.target.value));
   on('#chat-effort', 'change', (e) => saveChatConfig('reasoning_effort', e.target.value));
-  on('#chat-models-refresh', 'click', comprobarModelos);
+  // Desplegable de modelos: cada fila elige; su icono ⟳ comprueba sólo ese.
+  on('#chat-model-btn', 'click', toggleModelMenu);
+  on('#chat-model-menu', 'click', manejarMenuModelos);
+  document.addEventListener('click', (event) => {
+    const picker = $('#chat-model-picker');
+    if (!picker || typeof picker.contains !== 'function') return;
+    if (!picker.contains(event.target)) cerrarModelMenu();
+  });
 
   // Al volver a la pestaña (el móvil bloquea el SSE en segundo plano) se
   // resincroniza: es la otra mitad de «si sales y vuelves, vuelve al origen».

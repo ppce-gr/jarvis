@@ -41,11 +41,13 @@ test('el frontend consulta la salud y lanza la comprobación', () => {
   assert.match(src, /function comprobarModelos/, 'debe existir la acción de comprobar');
 });
 
-test('el selector de modelos tiene un icono propio para refrescar', () => {
+test('cada modelo del desplegable tiene su propio icono de refrescar', () => {
   const html = indexHtml();
-  assert.match(html, /id="chat-models-refresh"/, 'debe existir el icono junto al selector');
+  assert.match(html, /id="chat-model-menu"/, 'debe existir el menú de modelos');
+  assert.doesNotMatch(html, /id="chat-models-refresh"/, 'no debe quedar un refresco global en el selector');
   const src = appJs();
-  assert.match(src, /#chat-models-refresh/, 'el icono debe estar enlazado en el frontend');
-  assert.match(src, /function setRefreshing/, 'debe existir el estado de "comprobando"');
+  assert.match(src, /data-refresh=/, 'cada fila debe llevar su botón de refresco');
+  assert.match(src, /function recargarModelo/, 'debe existir la recarga de un solo modelo');
   assert.match(src, /modelStatusInfo/, 'debe existir la lógica de iconos por estado');
+  assert.match(src, /function esModeloDisponible/, 'sin confirmar debe contar como no disponible');
 });

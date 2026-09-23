@@ -159,7 +159,8 @@ const CONFIG_MODELOS = {
               value: '["p","roto"]',
               name: 'Roto',
               health: { status: 'broken', error: 'model not found' }
-            }
+            },
+            { value: '["p","sin-confirmar"]', name: 'Sin confirmar', health: { status: 'unknown' } }
           ]
         }
       ]
@@ -177,30 +178,43 @@ test('el selector separa los disponibles de los que no funcionan', async () => {
   const { registro, errores } = await arrancarConModelos();
   assert.deepEqual(errores, [], `la interfaz lanzó: ${errores.join(' | ')}`);
 
-  const sel = registro.get('#chat-model');
-  assert.ok(sel, 'debe existir el selector de modelos');
-  const grupos = sel._hijos.filter((h) => h.tagName === 'optgroup');
-  assert.equal(grupos.length, 2, 'un grupo para disponibles y otro para no disponibles');
-  assert.doesNotMatch(grupos[0].label, /no funcionan/);
-  assert.match(grupos[1].label, /no funcionan/);
+  const menu = registro.get('#chat-model-menu');
+  assert.ok(menu, 'debe existir el menú de modelos');
+  const html = menu.innerHTML;
+  const iDisponibles = html.indexOf('Disponibles');
+  const iNoFuncionan = html.indexOf('No funcionan');
+  assert.ok(iDisponibles >= 0 && iNoFuncionan > iDisponibles,
+    'primero los disponibles y debajo los que no funcionan');
 
-  const disponibles = grupos[0]._hijos.map((o) => o.textContent);
-  const rotos = grupos[1]._hijos.map((o) => o.textContent);
-  assert.ok(disponibles.some((t) => t.includes('Bueno')));
-  assert.ok(disponibles.some((t) => t.includes('Sin cuota')));
-  assert.ok(!disponibles.some((t) => t.includes('Roto')), 'el roto va abajo');
-  assert.ok(rotos.some((t) => t.includes('Roto')));
+  const arriba = html.slice(0, iNoFuncionan);
+  const abajo = html.slice(iNoFuncionan);
+  assert.match(arriba, /Bueno/);
+  assert.match(arriba, /Sin cuota/);
+  assert.doesNotMatch(arriba, /Roto/);
+  // Los "sin confirmar" cuentan como no disponibles: van abajo.
+  assert.doesNotMatch(arriba, /Sin confirmar/);
+  assert.match(abajo, /Roto/);
+  assert.match(abajo, /Sin confirmar/);
 });
 
-test('cada modelo lleva su icono de estado a la izquierda', async () => {
+test('cada modelo lleva su icono de estado y su botón de refrescar', async () => {
   const { registro } = await arrancarConModelos();
-  const sel = registro.get('#chat-model');
-  const grupos = sel._hijos.filter((h) => h.tagName === 'optgroup');
-  const disponibles = grupos[0]._hijos.map((o) => o.textContent);
-  const rotos = grupos[1]._hijos.map((o) => o.textContent);
+  const html = registro.get('#chat-model-menu').innerHTML;
+  const iNoFuncionan = html.indexOf('No funcionan');
+  const arriba = html.slice(0, iNoFuncionan);
+  const abajo = html.slice(iNoFuncionan);
 
-  assert.match(disponibles.find((t) => t.includes('Bueno')), /^🟢/);
-  assert.match(disponibles.find((t) => t.includes('Sin cuota')), /^🟡/);
-  assert.match(rotos.find((t) => t.includes('Roto')), /^🔴/);
-  assert.match(disponibles.find((t) => t.includes('Sin cuota')), /sin cuota/);
+  assert.match(arriba, /🟢/);
+  assert.match(arriba, /🟡/);
+  assert.match(abajo, /🔴/);
+  assert.match(abajo, /⚪/);
+
+  // Un botón de refresco por modelo, no uno global.
+  assert.equal((html.match(/data-refresh=/g) || []).length, 4);
+  assert.match(html, /class="model-refresh"/);
+});
+
+test('el botón del desplegable muestra el modelo elegido con su icono', async () => {
+  const { registro } = await arrancarConModelos();
+  assert.match(registro.get('#chat-model-label').textContent, /🟢 Bueno/);
 });

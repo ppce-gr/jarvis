@@ -94,6 +94,9 @@ export class AcpConversationAdapter extends ConversationPort {
     this._checking = false;
     this._checkProgress = null;
     this._probeSessionId = null;
+    // Los sondeos van de uno en uno: comparten la sesión de prueba y el
+    // proceso de DSH. La cola evita que dos comprobaciones se pisen.
+    this._probeQueue = Promise.resolve();
 
     /** @type {null | {child: any, rpc: JsonRpcStdioClient}} */
     this._client = null;
@@ -996,11 +999,15 @@ export class AcpConversationAdapter extends ConversationPort {
   async _saveHealth() {
     try {
       await fs.mkdir(path.dirname(this.healthFile), { recursive: true });
-      await fs.writeFile(this.healthFile, JSON.stringify({
+      // Escritura atómica: se escribe a un temporal único y se renombra.
+      // Así un lector nunca pilla el fichero a medias (rename es atómico).
+      const tmp = `${this.healthFile}.${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
+      await fs.writeFile(tmp, JSON.stringify({
         checkedAt: this._health.checkedAt,
         updatedAt: new Date().toISOString(),
         results: this._health.results
       }, null, 2));
+      await fs.rename(tmp, this.healthFile);
     } catch { /* no es crítico */ }
   }
 
@@ -1092,15 +1099,42 @@ export class AcpConversationAdapter extends ConversationPort {
     this._runModelCheck()
       .catch(() => { /* cada modelo registra su propio fallo */ })
       .finally(async () => {
-        this._checking = false;
         this._checkProgress = null;
         this._health.checkedAt = new Date().toISOString();
         // Si el modelo elegido resultó roto, no dejar al usuario atrapado:
         // se pasa al primero que funcione. La cuota no cuenta (puede volver).
         await this._preferHealthyModel();
         await this._saveHealth();
+        // El "checking" se apaga AL FINAL: cuando lo veas en false, el
+        // registro ya está persistido y es consistente.
+        this._checking = false;
       });
     return { started: true, checking: true };
+  }
+
+  /**
+   * Vuelve a comprobar SÓLO un modelo. No vacía el registro: actualiza la
+   * entrada de ese modelo y deja el resto como estaban. La interfaz lo usa
+   * desde el botón de refresco de cada fila del selector.
+   */
+  async refreshModel(value) {
+    const model = String(value ?? '').trim();
+    if (!model) throw new Error('MODEL_REQUIRED');
+    await this._loadHealth();
+    const outcome = await this._serializeProbe(() => this._probeOnce(model));
+    await this._noteHealth(model, {
+      status: outcome.status,
+      kind: outcome.kind,
+      error: outcome.error || null,
+      supportsEffort: outcome.supportsEffort
+    });
+    return {
+      model,
+      status: outcome.status,
+      kind: outcome.kind,
+      error: outcome.error || null,
+      health: this._health.results[model]
+    };
   }
 
   /** Cambia la preferencia a un modelo sano si el actual se retiró. */
@@ -1127,8 +1161,8 @@ export class AcpConversationAdapter extends ConversationPort {
 
   async _runModelCheck() {
     const client = await this._ensureClient();
-    let sessionId = await this._ensureProbeSession(client);
-    if (!sessionId) throw new Error('No se pudo abrir la sesión de comprobación');
+    await this._ensureProbeSession(client);
+    if (!this._probeSessionId) throw new Error('No se pudo abrir la sesión de comprobación');
 
     const models = flattenModels(this._catalog || []);
     this._checkProgress = { done: 0, total: models.length, current: null };
@@ -1138,7 +1172,7 @@ export class AcpConversationAdapter extends ConversationPort {
       // El sondeo puede durar minutos: que el proceso no se duerma a mitad.
       this._touchClient();
       this._checkProgress.current = item.value;
-      const outcome = await this._probeModel(client, sessionId, item.value);
+      const outcome = await this._serializeProbe(() => this._probeOnce(item.value));
       await this._noteHealth(item.value, {
         status: outcome.status,
         kind: outcome.kind,
@@ -1146,16 +1180,32 @@ export class AcpConversationAdapter extends ConversationPort {
         supportsEffort: outcome.supportsEffort
       });
       this._checkProgress.done += 1;
-      if (outcome.resetSession) {
-        this._probeSessionId = null;
-        sessionId = await this._ensureProbeSession(client);
-      }
     }
 
     // La sesión de sondeo no hace falta para nada más.
+    await this._serializeProbe(() => this._cerrarProbeSession(client));
+  }
+
+  /** Cola de un solo carril: los sondeos comparten sesión y proceso. */
+  _serializeProbe(fn) {
+    const run = this._probeQueue.then(fn, fn);
+    this._probeQueue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  /** Asegura cliente y sesión de prueba, y sondea un modelo. */
+  async _probeOnce(value) {
+    const client = await this._ensureClient();
+    const sessionId = await this._ensureProbeSession(client);
+    const outcome = await this._probeModel(client, sessionId, value);
+    if (outcome.resetSession) this._probeSessionId = null;
+    return outcome;
+  }
+
+  async _cerrarProbeSession(client) {
     const probe = this._probeSessionId;
     this._probeSessionId = null;
-    if (probe) {
+    if (probe && client && !client.dead) {
       try { await client.rpc.request('session/close', { sessionId: probe }); } catch { /* da igual */ }
     }
   }

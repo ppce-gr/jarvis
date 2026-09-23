@@ -116,29 +116,33 @@ según el tipo de fallo:
 |---|---|---|
 | `ok` | Responde | 🟢 arriba, entre los disponibles |
 | `quota` | Se agotó la cuota/el saldo de la cuenta | 🟡 arriba, marcado «sin cuota» |
-| `broken` | No existe, no está disponible o no es accesible | 🔴 abajo, bajo «no funcionan» |
-| `unknown` | Fallo transitorio (red, credencial, límite temporal) | ⚪ arriba, «sin comprobar» |
+| `broken` | No existe, no está disponible o no es accesible | 🔴 abajo, bajo «No funcionan» |
+| `unknown` | Sin confirmar (fallo transitorio, red, credencial, límite temporal) | ⚪ **abajo**, «sin confirmar» |
+
+Los modelos **sin confirmar cuentan como no disponibles**: hasta que una
+comprobación no diga lo contrario, se muestran con los que no funcionan.
 
 El registro se alimenta de dos formas:
 
 1. **De los fallos reales**: si un turno del chat falla porque el modelo no
    existe, se marca como roto; si falla por cuota, se marca pero se conserva.
-2. **De una comprobación activa**: la sección **Admin** (o el icono **⟳** junto
-   al selector) lanza un turno mínimo contra cada modelo y clasifica el
-   resultado, sin esperar a que falle una conversación.
+2. **De una comprobación activa**: la sección **Admin** lanza un turno mínimo
+   contra todos los modelos, y el botón **⟳** de cada fila del selector
+   comprueba **sólo ese modelo**, sin tocar el resto.
 
 ### Cómo se presenta el selector
 
-El desplegable de modelos tiene **dos bloques**, y dentro de cada uno se
-mantiene la agrupación por empresa (proveedor):
+El selector de modelos es un desplegable propio (no un `<select>` nativo)
+porque cada modelo necesita su propio botón de refresco. Tiene **dos bloques**,
+y dentro de cada uno se mantiene la agrupación por empresa (proveedor):
 
-1. **Arriba**: los modelos que se pueden usar o que están sin cuota.
-2. **Debajo**, bajo el rótulo «… · no funcionan»: los que han dado un error que
-   no es de cuota.
+1. **Arriba**, bajo «Disponibles»: los modelos que funcionan o están sin cuota.
+2. **Debajo**, bajo «No funcionan»: los rotos y los que están sin confirmar.
 
-Cada opción lleva un **icono de estado a la izquierda** (🟢 / 🟡 / 🔴 / ⚪). El
-icono **⟳** que hay junto al selector vuelve a comprobar todos los modelos y
-gira mientras trabaja.
+Cada fila lleva el **icono de estado a la izquierda** (🟢 / 🟡 / 🔴 / ⚪), el
+nombre, el aviso correspondiente («sin cuota», «sin esfuerzo»…) y un botón
+**⟳** que vuelve a comprobar **sólo ese modelo** y gira mientras trabaja.
+Pinchar en el resto de la fila elige ese modelo.
 
 ### El esfuerzo no es universal
 
@@ -150,10 +154,16 @@ cuando el modelo elegido no lo admite.
 ### Sección de administración
 
 El botón **⚙ Admin** de la barra superior abre el panel de modelos: muestra el
-estado de cada uno, cuándo se comprobó y el motivo del fallo. El botón
-**«⟳ Restablecer y comprobar»** (y el icono **⟳** del selector) borra el registro
-aprendido y vuelve a probar todos los modelos, de uno en uno y en segundo plano.
-La comprobación consume algo de cuota, así que no se lanza sola.
+estado de cada uno y el motivo del fallo. El botón **«⟳ Restablecer y comprobar»**
+borra el registro aprendido y vuelve a probar **todos** los modelos, de uno en
+uno y en segundo plano. La comprobación consume algo de cuota, así que no se
+lanza sola.
+
+### Auto-refresco tras una actualización
+
+La interfaz compara la versión que tiene cargada con la que ejecuta el proceso
+(`/api/system/status`). Si cambia —porque el actualizador reinició
+`jarvis.service`— se recarga sola para no quedarse con la interfaz vieja.
 
 ## Comportamiento observado en la Pi 3B
 

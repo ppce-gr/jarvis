@@ -60,8 +60,13 @@
           <div class="chat-shell">
             <div class="chat-head">
               <span id="chat-status" class="chat-status">—</span>
-              <select id="chat-model" class="chat-select" title="Modelo con el que conversa Jarvis"></select>
-              <button id="chat-models-refresh" class="icon-btn tiny chat-refresh" title="Volver a comprobar los modelos" aria-label="Volver a comprobar los modelos">⟳</button>
+              <div id="chat-model-picker" class="model-picker">
+                <button id="chat-model-btn" type="button" class="chat-select model-picker-btn" aria-haspopup="listbox" aria-expanded="false" title="Modelo con el que conversa Jarvis">
+                  <span id="chat-model-label">Cargando…</span>
+                  <span class="model-picker-caret" aria-hidden="true">▾</span>
+                </button>
+                <div id="chat-model-menu" class="model-picker-menu hidden" role="listbox" aria-label="Modelos"></div>
+              </div>
               <select id="chat-effort" class="chat-select chat-select-sm" title="Esfuerzo de razonamiento"></select>
               <button id="chat-stop" class="btn btn-ghost btn-sm hidden" title="Detener la respuesta en curso (el agente conserva lo hablado)">■ Detener</button>
               <button id="chat-reset" class="btn btn-ghost btn-sm" title="Empezar una conversación nueva (el agente olvida lo hablado; el historial se conserva)">⟳ Nueva</button>
