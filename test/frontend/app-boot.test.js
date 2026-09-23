@@ -264,6 +264,52 @@ test('borrar pregunta o clave pide confirmación antes de tocar la nota', async 
 });
 
 /* ================================================================
+   Dudas del agente: se responden una a una
+   ================================================================ */
+
+test('editarLineaSeguimiento deja la duda respondida como [x]', async () => {
+  const { jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  const lineas = ['# Dudas', '', '- [ ] ¿Conviene X?', '- [x] Otra — ya'];
+  const out = jarvis.editarLineaSeguimiento(lineas, 2, 'responder', '  Sí,   por A  ');
+  assert.equal(out[2], '- [x] ¿Conviene X? — Sí, por A');
+  // Sin respuesta no cambia nada.
+  assert.equal(jarvis.editarLineaSeguimiento(lineas, 2, 'responder', '   '), null);
+});
+
+test('la pestaña de dudas pinta un campo de respuesta por duda', async () => {
+  const base = { ...RESPUESTAS_BASE };
+  delete base['/conceptual'];
+  const respuestas = {
+    '/conceptual': {
+      notes: [
+        {
+          id: 'dudas',
+          title: 'Dudas del agente',
+          frontmatter: {},
+          content: '# Dudas\n\n- [ ] ¿Conviene X?\n- [x] ¿Otra? — Sí',
+          wikilinks: []
+        }
+      ]
+    },
+    ...base
+  };
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas });
+  await abrirIdea(jarvis, 'idea-uno');
+  assert.deepEqual(errores, []);
+  jarvis.switchTab('dudas');
+
+  const html = registro.get('#dudas-list').innerHTML;
+  assert.match(html, /Sin responder/);
+  assert.match(html, /Respondidas/);
+  assert.match(html, /class="seg-respuesta"/);
+  assert.match(html, /name="respuesta"/);
+  assert.match(html, /Responder/);
+  assert.match(html, /data-seg-accion="borrar"/);
+  // La duda respondida no ofrece ir a la conversación (no tiene por qué estar ahí).
+  assert.doesNotMatch(html, /data-seg-conv/);
+});
+
+/* ================================================================
    Selector de modelos: disponibles arriba, no disponibles abajo
    ================================================================ */
 

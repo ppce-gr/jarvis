@@ -73,6 +73,7 @@
             <button class="tab" data-tab="conceptual" role="tab">Conceptual</button>
             <button class="tab" data-tab="preguntas" role="tab">Preguntas<span id="badge-preguntas" class="tab-badge hidden" title="Preguntas pendientes de evaluar">!</span></button>
             <button class="tab" data-tab="clave" role="tab" title="Puntos clave de la idea">Clave<span id="badge-clave" class="tab-badge hidden" title="Puntos clave pendientes de evaluar">!</span></button>
+            <button class="tab" data-tab="dudas" role="tab" title="Dudas del agente sin responder">Dudas<span id="badge-dudas" class="tab-badge hidden" title="Dudas del agente sin responder">!</span></button>
             <button class="tab" data-tab="mapa" role="tab" title="Mapa mental de la idea">Mapa</button>
             <button class="tab" data-tab="code" role="tab">Código</button>
             <button class="tab" data-tab="logs" role="tab">Bitácora</button>
@@ -143,6 +144,17 @@
                 tu decisión. El color de cada punto tiñe las notas relacionadas en el mapa.</p>
             </div>
             <div id="clave-list" class="seguimiento-list"></div>
+          </section>
+
+          <!-- Seguimiento: dudas del agente, se responden una a una -->
+          <section id="pane-dudas" class="pane hidden">
+            <div class="seguimiento-head">
+              <h2>Dudas del agente</h2>
+              <p class="muted">Lo que Jarvis necesita saber de ti para seguir con la idea.
+                Responde cada duda cuando quieras; si alguna bloquea el trabajo, te la
+                preguntará en el chat.</p>
+            </div>
+            <div id="dudas-list" class="seguimiento-list"></div>
           </section>
 
           <!-- Mapa mental: notas y sus enlaces, como en Obsidian -->

@@ -112,6 +112,8 @@ test('buildOutgoingMessage da contexto sólo en el primer mensaje', () => {
   assert.match(first, /proyecto "demo"/);
   assert.match(first, /conceptual\//);
   assert.match(first, /preguntas\.md/);
+  assert.match(first, /dudas\.md/);
+  assert.match(first, /bloquea/i, 'las dudas bloqueantes se preguntan en el chat');
   assert.match(first, /puntos-clave\.md/);
   assert.match(first, /hola$/);
 

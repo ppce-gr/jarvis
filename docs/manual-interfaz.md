@@ -41,23 +41,31 @@ ocurre en **tu navegador** (móvil o PC), así que la Pi no sufre.
 ### Pestañas centrales
 - **Conceptual:** tus notas Markdown. Los `[[enlaces]]` son clicables para saltar
   entre ideas hermanas. Los que no existen aparecen en rojo.
-- **Preguntas:** registro de lo que Jarvis anota de la conversación. Cada elemento
-  es una casilla en `conceptual/preguntas.md`: `- [x]` ya registrado, `- [ ]`
-  pendiente. Los pendientes traen **✓** (guardar); mientras haya pendientes, la
-  pestaña muestra un **!**. Cada elemento tiene **⧉** para copiar la pregunta y su
-  respuesta tal cual se ven, y **✕** para borrarlo (pide confirmación).
+- **Preguntas:** SOLO las preguntas que haces tú, con su respuesta ya verificada,
+  en `conceptual/preguntas.md`. Cada elemento es una casilla: `- [x]` respondida,
+  `- [ ]` pendiente. Los pendientes traen **✓** (guardar); mientras haya
+  pendientes, la pestaña muestra un **!**. Cada elemento tiene **⧉** para copiar la
+  pregunta y su respuesta tal cual se ven, y **✕** para borrarlo (pide
+  confirmación).
 - **Clave (puntos clave):** lo mismo sobre `conceptual/puntos-clave.md`, también
   con **✕** para borrar con confirmación. Los puntos clave dan color a las notas
   relacionadas en el mapa.
+- **Dudas:** lo que Jarvis necesita saber de ti para seguir con la idea, en
+  `conceptual/dudas.md`. Cada duda sin responder trae un campo de texto y
+  **Responder**; mientras queden sin responder, la pestaña muestra un **!**. Las
+  dudas que **bloquean** el trabajo se preguntan en el chat, no aquí.
 - **Mapa:** grafo de notas y sus enlaces `[[…]]` (estilo Obsidian). Arrastra los
   nodos para recolocarlos y pulsa uno para abrir la nota. El color agrupa por
   punto clave.
 - **Código:** explora `<memoria>/<idea>/code/`.
 - **Bitácora:** explora `<memoria>/<idea>/logs/` (registro del orquestador).
 
-El agente mantiene `preguntas.md` y `puntos-clave.md` por su cuenta: al final de
-cada turno anota en ellas lo que merezca quedar registrado (`- [x]`) o lo que
-deje a tu criterio (`- [ ]`). Son notas normales: puedes editarlas a mano.
+El agente mantiene `preguntas.md`, `dudas.md` y `puntos-clave.md` por su cuenta:
+en `preguntas.md` anota **solo las preguntas que haces tú** con su respuesta ya
+comprobada; en `dudas.md`, **sus propias dudas no bloqueantes** (`- [ ]`) para que
+las respondas; y en `puntos-clave.md`, los pilares de la idea. Si una duda suya
+bloquea el trabajo, te la pregunta en el chat. Son notas normales: puedes
+editarlas a mano.
 
 ### Chat (preguntas y respuestas)
 - Mientras Jarvis trabaja, el botón **Enviar** se convierte en **■ Detener**;

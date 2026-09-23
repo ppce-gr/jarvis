@@ -369,7 +369,15 @@ async function saveNote() {
    ================================================================ */
 const SEGUIMIENTO = {
   preguntas: { nota: 'preguntas', titulo: 'Preguntas' },
-  clave: { nota: 'puntos-clave', titulo: 'Puntos clave' }
+  clave: { nota: 'puntos-clave', titulo: 'Puntos clave' },
+  dudas: { nota: 'dudas', titulo: 'Dudas del agente' }
+};
+
+/** Selector del contenedor de cada lista de seguimiento. */
+const SEGUIMIENTO_LISTA = {
+  preguntas: '#preguntas-list',
+  clave: '#clave-list',
+  dudas: '#dudas-list'
 };
 
 /** Separa el contenido de una nota en casillas registradas y pendientes. */
@@ -398,33 +406,56 @@ function pendientesDe(tipo) {
 }
 
 function actualizarBadges() {
-  for (const [tipo, id] of [['preguntas', '#badge-preguntas'], ['clave', '#badge-clave']]) {
+  const badges = [
+    ['preguntas', '#badge-preguntas', 'pendiente(s) de evaluar'],
+    ['clave', '#badge-clave', 'pendiente(s) de evaluar'],
+    ['dudas', '#badge-dudas', 'duda(s) sin responder']
+  ];
+  for (const [tipo, id, etiqueta] of badges) {
     const el = $(id);
     if (!el) continue;
     const n = pendientesDe(tipo);
     el.classList.toggle('hidden', n === 0);
-    el.title = n === 0 ? '' : `${n} pendiente(s) de evaluar`;
+    el.title = n === 0 ? '' : `${n} ${etiqueta}`;
   }
 }
 
 function renderSeguimiento(tipo) {
   const cfg = SEGUIMIENTO[tipo];
-  const cont = $(tipo === 'preguntas' ? '#preguntas-list' : '#clave-list');
+  const cont = $(SEGUIMIENTO_LISTA[tipo]);
   if (!cont || !cfg) return;
+  const esDuda = tipo === 'dudas';
   const nota = notaDeSeguimiento(tipo);
   if (!nota) {
     cont.innerHTML = `<div class="empty-state"><h2>Sin ${cfg.titulo.toLowerCase()} todavía</h2>`
-      + '<p class="muted">Jarvis irá anotando aquí lo que merezca quedar registrado. '
+      + `<p class="muted">${esDuda
+        ? 'Aquí aparecerán las dudas que Jarvis no pueda resolver solo, para que las respondas una a una.'
+        : 'Jarvis irá anotando aquí lo que merezca quedar registrado.'} `
       + `También puedes crear la nota <code>${cfg.nota}.md</code> en <code>conceptual/</code> `
-      + 'con listas <code>- [x]</code> (registrado) y <code>- [ ]</code> (pendiente).</p></div>';
+      + `con listas <code>- [${esDuda ? ' ' : 'x'}]</code> (${esDuda ? 'sin responder' : 'registrado'}) `
+      + `y <code>- [${esDuda ? 'x' : ' '}]</code> (${esDuda ? 'respondida' : 'pendiente'}).</p></div>`;
     return;
   }
   const { registrados, pendientes } = parseChecklist(nota.content);
   let html = '';
 
   if (pendientes.length) {
-    html += `<div class="seg-grupo"><h3>Pendientes de evaluar <span class="seg-count">${pendientes.length}</span></h3>`
-      + pendientes.map((it) => `
+    html += `<div class="seg-grupo"><h3>${esDuda ? 'Sin responder' : 'Pendientes de evaluar'} <span class="seg-count">${pendientes.length}</span></h3>`;
+    if (esDuda) {
+      html += pendientes.map((it) => `
+        <div class="seg-item seg-pendiente seg-duda">
+          <span class="seg-texto">${escapeHtml(it.texto)}</span>
+          <span class="seg-acciones">
+            <button class="seg-btn seg-copy" data-seg-copiar="${escapeHtml(it.texto)}" title="Copiar">⧉</button>
+            <button class="seg-btn seg-del" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="borrar" data-seg-texto="${escapeHtml(it.texto)}" title="Borrar definitivamente">✕</button>
+          </span>
+          <form class="seg-respuesta" data-seg-linea="${it.linea}">
+            <input type="text" name="respuesta" placeholder="Escribe tu respuesta…" autocomplete="off" />
+            <button type="submit" class="btn btn-primary btn-sm">Responder</button>
+          </form>
+        </div>`).join('');
+    } else {
+      html += pendientes.map((it) => `
         <div class="seg-item seg-pendiente">
           <span class="seg-texto">${escapeHtml(it.texto)}</span>
           <span class="seg-acciones">
@@ -432,40 +463,60 @@ function renderSeguimiento(tipo) {
             <button class="seg-btn seg-ok" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="guardar" title="Guardar (dejar de estar pendiente)">✓</button>
             <button class="seg-btn seg-del" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="borrar" data-seg-texto="${escapeHtml(it.texto)}" title="Borrar definitivamente">✕</button>
           </span>
-        </div>`).join('')
-      + '</div>';
+        </div>`).join('');
+    }
+    html += '</div>';
   }
 
   if (registrados.length) {
-    html += `<div class="seg-grupo"><h3>Registrados <span class="seg-count">${registrados.length}</span></h3>`
-      + registrados.map((it) => `
+    html += `<div class="seg-grupo"><h3>${esDuda ? 'Respondidas' : 'Registrados'} <span class="seg-count">${registrados.length}</span></h3>`;
+    html += registrados.map((it) => `
         <div class="seg-item">
           <span class="seg-check" aria-hidden="true">✓</span>
           <span class="seg-texto">${escapeHtml(it.texto)}</span>
           <span class="seg-acciones">
             <button class="seg-btn seg-copy" data-seg-copiar="${escapeHtml(it.texto)}" title="Copiar">⧉</button>
-            <button class="seg-btn seg-ir" data-seg-conv="${escapeHtml(it.texto)}" title="Ver en la conversación">↗</button>
+            ${esDuda ? '' : `<button class="seg-btn seg-ir" data-seg-conv="${escapeHtml(it.texto)}" title="Ver en la conversación">↗</button>`}
             <button class="seg-btn seg-del" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="borrar" data-seg-texto="${escapeHtml(it.texto)}" title="Borrar definitivamente">✕</button>
           </span>
-        </div>`).join('')
-      + '</div>';
+        </div>`).join('');
+    html += '</div>';
   }
 
   cont.innerHTML = html || '<div class="empty-state"><p class="muted">Sin elementos todavía.</p></div>';
 }
 
-/** Guarda o borra una línea pendiente reescribiendo la nota. */
-async function resolverSeguimiento(tipo, linea, accion) {
+/**
+ * Aplica `guardar`, `borrar` o `responder` a una línea del checklist y
+ * devuelve las líneas nuevas (o `null` si la acción no cambia nada).
+ * Es puro para poder probarlo sin red ni DOM.
+ */
+function editarLineaSeguimiento(lineas, i, accion, valor = '') {
+  const copia = [...lineas];
+  if (!Number.isInteger(i) || i < 0 || i >= copia.length) return null;
+  if (accion === 'guardar') copia[i] = copia[i].replace(/\[(\s*)\]/, '[x]');
+  else if (accion === 'borrar') copia.splice(i, 1);
+  else if (accion === 'responder') {
+    const respuesta = String(valor).replace(/\s+/g, ' ').trim();
+    if (!respuesta) return null;
+    const duda = copia[i].replace(/^\s*[-*]\s*\[[ xX]\]\s*/, '').trim();
+    copia[i] = `- [x] ${duda} — ${respuesta}`;
+  } else return null;
+  return copia;
+}
+
+/** Guarda, borra o responde una línea reescribiendo la nota. */
+async function resolverSeguimiento(tipo, linea, accion, valor = '') {
   const cfg = SEGUIMIENTO[tipo];
   const nota = notaDeSeguimiento(tipo);
   if (!cfg || !nota || !state.currentProjectId) return;
-  const lineas = String(nota.content || '').split('\n');
-  const i = Number(linea);
-  if (!Number.isInteger(i) || i < 0 || i >= lineas.length) return;
-
-  if (accion === 'guardar') lineas[i] = lineas[i].replace(/\[(\s*)\]/, '[x]');
-  else if (accion === 'borrar') lineas.splice(i, 1);
-  else return;
+  const lineas = editarLineaSeguimiento(
+    String(nota.content || '').split('\n'),
+    Number(linea),
+    accion,
+    valor
+  );
+  if (!lineas) return;
 
   try {
     await api(
@@ -535,6 +586,17 @@ function manejarSeguimiento(event) {
   resolverSeguimiento(btn.dataset.segTipo, btn.dataset.segLinea, btn.dataset.segAccion);
 }
 
+/** Envía la respuesta escrita a una duda del agente. */
+function manejarRespuestaDuda(event) {
+  const form = event.target.closest('.seg-respuesta');
+  if (!form) return;
+  event.preventDefault();
+  const input = typeof form.querySelector === 'function'
+    ? (form.querySelector('input[name="respuesta"]') || form.querySelector('input'))
+    : null;
+  resolverSeguimiento('dudas', form.dataset.segLinea, 'responder', input ? input.value : '');
+}
+
 /** Salta al turno de la conversación que contiene ese texto. */
 function irAConversacion(texto) {
   switchTab('chat');
@@ -561,7 +623,7 @@ async function refrescarSeguimiento() {
   } catch { return; }
   const activo = document.querySelector('.tab.active');
   const tab = activo?.dataset?.tab;
-  if (tab === 'preguntas' || tab === 'clave') renderSeguimiento(tab);
+  if (tab === 'preguntas' || tab === 'clave' || tab === 'dudas') renderSeguimiento(tab);
   if (tab === 'mapa') renderMapa();
 }
 
@@ -784,13 +846,14 @@ function switchTab(tab) {
   $('#pane-conceptual').classList.toggle('hidden', tab !== 'conceptual');
   $('#pane-preguntas').classList.toggle('hidden', tab !== 'preguntas');
   $('#pane-clave').classList.toggle('hidden', tab !== 'clave');
+  $('#pane-dudas').classList.toggle('hidden', tab !== 'dudas');
   $('#pane-mapa').classList.toggle('hidden', tab !== 'mapa');
   $('#pane-code').classList.toggle('hidden', tab !== 'code');
   $('#pane-logs').classList.toggle('hidden', tab !== 'logs');
   $('#edit-toggle').classList.toggle('hidden', tab !== 'conceptual' || !state.currentNoteId);
   if (tab === 'logs') refreshTaskStatus();
   if (tab === 'chat') scrollChatToEnd();
-  if (tab === 'preguntas' || tab === 'clave') renderSeguimiento(tab);
+  if (tab === 'preguntas' || tab === 'clave' || tab === 'dudas') renderSeguimiento(tab);
   if (tab === 'mapa') renderMapa();
 }
 
@@ -2042,6 +2105,8 @@ function bindEvents() {
   // Seguimiento: resolver pendientes (guardar/borrar) y saltar a la conversación
   on('#preguntas-list', 'click', manejarSeguimiento);
   on('#clave-list', 'click', manejarSeguimiento);
+  on('#dudas-list', 'click', manejarSeguimiento);
+  on('#dudas-list', 'submit', manejarRespuestaDuda);
 
   // Mapa: arrastrar los nodos y abrir la nota al pulsarla
   on('#mapa-graph', 'pointerdown', mapaPointerDown);
@@ -2211,7 +2276,10 @@ window.Jarvis = {
   textoVisible,
   copiarTexto,
   pedirBorrado,
-  confirmarBorrado
+  confirmarBorrado,
+  manejarRespuestaDuda,
+  resolverSeguimiento,
+  editarLineaSeguimiento
 };
 
 boot();
