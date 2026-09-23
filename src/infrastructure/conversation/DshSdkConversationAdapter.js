@@ -2,6 +2,12 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ConversationPort } from '../../domain/ports/ConversationPort.js';
+import {
+  summarizeTool,
+  formatToolInput,
+  formatToolDetail,
+  sanitizeActivity
+} from '../../domain/ActivityTrace.js';
 import { JsonRpcStdioClient } from './JsonRpcStdioClient.js';
 
 /**
@@ -63,6 +69,9 @@ export class DshSdkConversationAdapter extends ConversationPort {
 
     /** @type {Map<string, object>} projectId -> sesión */
     this._sessions = new Map();
+
+    /** Cola de escritura del transcript por proyecto: evita entrelazar líneas. */
+    this._recordQueues = new Map();
   }
 
   /* ------------------------------------------------------------------
@@ -235,7 +244,17 @@ export class DshSdkConversationAdapter extends ConversationPort {
     this._touch(session);
 
     switch (event.type) {
+      case 'assistant/chunk': {
+        // El razonamiento llega como deltas; se acumula para un solo bloque.
+        const chunk = event.data?.chunk;
+        if (chunk?.type === 'reasoning-delta' && typeof chunk.text === 'string' && chunk.text) {
+          session.thoughtBuffer = `${session.thoughtBuffer || ''}${chunk.text}`;
+        }
+        break;
+      }
       case 'assistant/message': {
+        // El razonamiento del paso se registra ANTES que su mensaje.
+        this._recordReasoning(session, event.time);
         const text = DshSdkConversationAdapter.extractText(event.data?.message?.content);
         if (!text) return;
         this._record(session.projectId, { role: 'assistant', text, at: event.time });
@@ -243,13 +262,43 @@ export class DshSdkConversationAdapter extends ConversationPort {
         break;
       }
       case 'tool/call': {
+        const id = event.data?.callId || `tool-${event.seq || Date.now()}`;
         const name = event.data?.name || 'herramienta';
-        this._record(session.projectId, { role: 'tool', text: name, at: event.time });
-        this._emit(session.projectId, { type: 'tool-call', name });
+        if (!session.pendingTools) session.pendingTools = new Map();
+        const input = formatToolInput(event.data?.arguments);
+        const summary = summarizeTool(name, event.data?.arguments);
+        session.pendingTools.set(id, { name, input, summary });
+        this._emit(session.projectId, {
+          type: 'tool-call',
+          id,
+          name,
+          summary,
+          status: 'in_progress',
+          detail: sanitizeActivity(input)
+        });
+        break;
+      }
+      case 'tool/result': {
+        const id = event.data?.message?.source?.callId || event.data?.callId || null;
+        if (!session.pendingTools) session.pendingTools = new Map();
+        const pendiente = (id && session.pendingTools.get(id)) || null;
+        const name = pendiente?.name || event.data?.name || 'herramienta';
+        const input = pendiente?.input || '';
+        const output = DshSdkConversationAdapter.extractText(event.data?.message?.content);
+        const failed = event.data?.message?.isError === true || Boolean(event.data?.error);
+        const status = failed ? 'failed' : 'completed';
+        const detail = sanitizeActivity(formatToolDetail(input, output));
+        const summary = pendiente?.summary || summarizeTool(name, null);
+        this._record(session.projectId, { role: 'tool', id, text: summary, status, detail, at: event.time });
+        if (id) session.pendingTools.delete(id);
+        this._emit(session.projectId, { type: 'tool-done', id, name, status, detail });
         break;
       }
       case 'turn/end': {
         session.busy = false;
+        // Lo que quedara pendiente no se pierde.
+        this._flushPendingTools(session, event.time);
+        this._recordReasoning(session, event.time);
         this._emit(session.projectId, {
           type: 'turn-end',
           reason: event.data?.reason || 'unknown'
@@ -263,6 +312,32 @@ export class DshSdkConversationAdapter extends ConversationPort {
         // persistida de DSH para quien quiera inspeccionarla.
         break;
     }
+  }
+
+  /** Registra el razonamiento acumulado como bloque plegable y lo vacía. */
+  _recordReasoning(session, at) {
+    const texto = String(session.thoughtBuffer || '').trim();
+    if (!texto) return;
+    const detail = sanitizeActivity(texto);
+    session.thoughtBuffer = '';
+    this._record(session.projectId, { role: 'thought', text: 'Razonamiento', detail, at });
+    this._emit(session.projectId, { type: 'reasoning', detail });
+  }
+
+  /** Registra las herramientas que quedaran en curso al cerrar el turno. */
+  _flushPendingTools(session, at) {
+    if (!session.pendingTools || !session.pendingTools.size) return;
+    for (const [id, t] of session.pendingTools) {
+      this._record(session.projectId, {
+        role: 'tool',
+        id,
+        text: t.summary,
+        status: 'in_progress',
+        detail: sanitizeActivity(t.input),
+        at
+      });
+    }
+    session.pendingTools.clear();
   }
 
   /** Extrae el texto visible de una lista de ContentBlock. */
@@ -306,11 +381,18 @@ export class DshSdkConversationAdapter extends ConversationPort {
       ...entry,
       at: new Date(entry.at || Date.now()).toISOString()
     });
-    try {
-      const file = this._transcriptPath(projectId);
-      await fs.mkdir(path.dirname(file), { recursive: true });
-      await fs.appendFile(file, `${line}\n`, 'utf8');
-    } catch { /* la interfaz puede repintar desde los eventos; no es crítico */ }
+    // Se encadena por proyecto para que las líneas salgan en orden aunque
+    // coincidan el mensaje, las herramientas y el razonamiento.
+    const previa = this._recordQueues.get(projectId) || Promise.resolve();
+    const siguiente = previa
+      .then(async () => {
+        const file = this._transcriptPath(projectId);
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.appendFile(file, `${line}\n`, 'utf8');
+      })
+      .catch(() => { /* la interfaz puede repintar desde los eventos; no es crítico */ });
+    this._recordQueues.set(projectId, siguiente);
+    return siguiente;
   }
 
   /* ------------------------------------------------------------------

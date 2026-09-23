@@ -218,3 +218,44 @@ test('el botón del desplegable muestra el modelo elegido con su icono', async (
   const { registro } = await arrancarConModelos();
   assert.match(registro.get('#chat-model-label').textContent, /🟢 Bueno/);
 });
+
+/* ================================================================
+   Traza de actividad: herramientas y razonamiento plegables
+   ================================================================ */
+
+test('la traza se pinta como líneas plegables y guarda el detalle', async () => {
+  // `/chat` debe ir primero (para ganar a `/api/projects`) y con el historial.
+  const base = { ...RESPUESTAS_BASE };
+  delete base['/chat'];
+  const { registro, errores } = await arrancarInterfaz({
+    respuestas: {
+      '/chat': {
+        messages: [
+          { role: 'user', text: 'hola' },
+          {
+            role: 'tool',
+            id: 't1',
+            text: 'read_file · nota.md',
+            status: 'completed',
+            detail: 'Entrada:\nnota.md\n\nSalida:\ncontenido'
+          },
+          { role: 'thought', id: 'r1', text: 'Razonamiento', detail: 'pensando…' },
+          { role: 'assistant', text: 'listo' }
+        ],
+        status: { status: 'idle' }
+      },
+      ...base
+    }
+  });
+  assert.deepEqual(errores, [], `la interfaz lanzó: ${errores.join(' | ')}`);
+
+  const html = registro.get('#chat-messages').innerHTML;
+  assert.match(html, /data-activity-id="t1"/);
+  assert.match(html, /data-activity-id="r1"/);
+  assert.match(html, /<details/);
+  assert.match(html, /read_file/);
+  assert.match(html, /Razonamiento/);
+  assert.match(html, /Entrada:/);
+  // Todo nace plegado.
+  assert.doesNotMatch(html, /<details[^>]*\bopen\b/);
+});

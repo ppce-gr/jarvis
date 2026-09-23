@@ -85,20 +85,48 @@ rl.on('line', (line) => {
       notify('session.status', { sessionId, status: 'running' });
       notify('session.event', {
         sessionId,
-        event: { type: 'tool/call', seq: 1, time: Date.now(), data: { name: 'read' } }
+        event: {
+          type: 'assistant/chunk',
+          seq: 0,
+          time: Date.now(),
+          data: { chunk: { type: 'reasoning-delta', text: 'pensando en la tarea' } }
+        }
+      });
+      notify('session.event', {
+        sessionId,
+        event: {
+          type: 'tool/call',
+          seq: 1,
+          time: Date.now(),
+          data: { callId: 'c1', name: 'read', arguments: { path: 'nota.md' } }
+        }
+      });
+      notify('session.event', {
+        sessionId,
+        event: {
+          type: 'tool/result',
+          seq: 2,
+          time: Date.now(),
+          data: {
+            message: {
+              source: { callId: 'c1' },
+              content: [{ type: 'text', text: 'contenido leído' }]
+            }
+          }
+        }
       });
       notify('session.event', {
         sessionId,
         event: {
           type: 'assistant/message',
-          seq: 2,
+          seq: 3,
           time: Date.now(),
           data: { message: { content: [{ type: 'text', text: 'Respuesta de prueba' }] } }
         }
       });
       notify('session.event', {
         sessionId,
-        event: { type: 'turn/end', seq: 3, time: Date.now(), data: { reason: 'ok' } }
+        event: { type: 'turn/end', seq: 4, time: Date.now(), data: { reason: 'ok' } }
       });
       notify('session.status', { sessionId, status: 'idle' });
       return;

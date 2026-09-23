@@ -382,18 +382,18 @@ html, body {
 .chat-select.loading { opacity: .5; }
 
 /* Desplegable propio de modelos: cada fila con su icono y su refresco */
-.model-picker { position: relative; max-width: 260px; }
+.model-picker { position: relative; max-width: 340px; }
 .model-picker-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 260px;
+  max-width: 340px;
 }
 .model-picker-btn #chat-model-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 210px;
+  max-width: 290px;
 }
 .model-picker-caret { color: var(--text-dim); font-size: 10px; }
 .model-picker-menu {
@@ -401,8 +401,8 @@ html, body {
   top: calc(100% + 6px);
   left: 0;
   z-index: 30;
-  min-width: 260px;
-  max-width: min(360px, 92vw);
+  min-width: 340px;
+  max-width: min(460px, 92vw);
   max-height: 52vh;
   overflow: auto;
   background: var(--bg-soft);
@@ -506,17 +506,43 @@ html, body {
   margin: 4px 6px 0;
 }
 
-/* Progreso: herramientas y avisos, deliberadamente discretos */
-.msg-tool {
+/* Progreso: herramientas y razonamiento, plegables y discretos */
+.msg-activity {
   align-self: flex-start;
+  width: 100%;
+  max-width: 860px;
+}
+.msg-activity-line {
   font-size: 12.5px;
   color: var(--text-dim);
-  padding: 5px 11px;
-  border-radius: 999px;
-  border: 1px dashed var(--border);
-  background: transparent;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 2px 0;
 }
+.msg-activity > summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 2px 0;
+}
+.msg-activity > summary::-webkit-details-marker { display: none; }
+.msg-activity > summary::before { content: '▸ '; }
+.msg-activity[open] > summary::before { content: '▾ '; }
+.msg-activity > summary:hover { color: var(--text); }
+.msg-activity-detail {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11.5px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.msg-thought > summary { color: #b7a4e6; }
 .msg-note {
   align-self: center;
   font-size: 12px;
@@ -574,6 +600,12 @@ html, body {
 #chat-input:focus { outline: none; border-color: var(--accent-strong); }
 #chat-input:disabled { opacity: .6; }
 .chat-form .btn { height: 40px; }
+/* Mientras el agente trabaja, «Enviar» se convierte en «Detener». */
+.chat-form #chat-send.is-stop {
+  background: #4a1f1c;
+  border-color: #6b2b26;
+  color: #ffd9d5;
+}
 
 /* ---------- Botones ---------- */
 .btn {

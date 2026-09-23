@@ -209,18 +209,28 @@ test('los eventos del agente se emiten y se persisten en el transcript', async (
   await waitFor(() => events.some((e) => e.type === 'turn-end'));
 
   assert.ok(events.some((e) => e.type === 'tool-call' && e.name === 'read'));
+  assert.ok(events.some((e) => e.type === 'tool-done' && e.status === 'completed'));
+  assert.ok(events.some((e) => e.type === 'reasoning' && e.detail.includes('pensando')));
   assert.ok(events.some((e) => e.type === 'status' && e.status === 'running'));
   assert.ok(events.some((e) => e.type === 'status' && e.status === 'idle'));
 
   const assistant = events.find((e) => e.type === 'assistant');
   assert.equal(assistant.text, 'Respuesta de prueba');
 
-  // El transcript en disco debe contener el mensaje del usuario y la respuesta.
+  // El transcript en disco debe contener el mensaje del usuario, la respuesta
+  // y la traza de lo que hizo el agente (herramienta + razonamiento).
+  await waitFor(async () => (await adapter.history('demo')).some((h) => h.role === 'tool'));
   const history = await adapter.history('demo');
   assert.equal(history[0].role, 'user');
   assert.equal(history[0].text, '¿qué hay?');
   assert.ok(history.some((h) => h.role === 'assistant' && h.text === 'Respuesta de prueba'));
-  assert.ok(history.some((h) => h.role === 'tool' && h.text === 'read'));
+
+  const tool = history.find((h) => h.role === 'tool');
+  assert.ok(tool.text.startsWith('read'));
+  assert.match(tool.detail, /Entrada:/);
+  assert.match(tool.detail, /Salida:/);
+  assert.match(tool.detail, /contenido leído/);
+  assert.ok(history.some((h) => h.role === 'thought' && /pensando/.test(h.detail)));
 
   await adapter.closeAll();
 });

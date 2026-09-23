@@ -489,3 +489,41 @@ test('rechaza un segundo turno simultáneo en la misma sesión', async () => {
 
   await adapter.closeAll();
 });
+
+/* ================================================================
+   Traza de actividad: herramientas y razonamiento
+   ================================================================ */
+
+test('guarda la herramienta y el razonamiento, con el detalle redactado', async () => {
+  const ws = await tempWorkspace();
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
+
+  const eventos = [];
+  adapter.subscribe('demo', (e) => eventos.push(e));
+  await adapter.send('demo', 'hola');
+  await waitFor(() => eventos.some((e) => e.type === 'turn-end'));
+  await waitFor(async () => (await adapter.history('demo')).some((h) => h.role === 'tool'));
+
+  const history = await adapter.history('demo');
+
+  const tool = history.find((h) => h.role === 'tool');
+  assert.ok(tool, 'debe guardar la herramienta');
+  assert.equal(tool.status, 'completed');
+  assert.match(tool.text, /read_file/);
+  assert.match(tool.detail, /Entrada:/);
+  assert.match(tool.detail, /Salida:/);
+  assert.match(tool.detail, /contenido leído/);
+  assert.doesNotMatch(tool.detail, /sk-abcdefghijklmnop/, 'no debe guardar el secreto');
+  assert.match(tool.detail, /REDACTADO/);
+
+  const thought = history.find((h) => h.role === 'thought');
+  assert.ok(thought, 'debe guardar el razonamiento');
+  assert.match(thought.detail, /pensando en la tarea/);
+
+  // Los eventos en vivo también llevan el detalle para poder desplegarlo.
+  assert.ok(eventos.some((e) => e.type === 'tool-call' && e.detail.includes('nota.md')));
+  assert.ok(eventos.some((e) => e.type === 'tool-done' && e.detail.includes('contenido leído')));
+  assert.ok(eventos.some((e) => e.type === 'reasoning' && e.detail.includes('pensando')));
+
+  await adapter.closeAll();
+});

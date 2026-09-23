@@ -9,6 +9,12 @@ import {
   effortOption,
   flattenModels
 } from '../../domain/ModelHealth.js';
+import {
+  summarizeTool,
+  formatToolInput,
+  formatToolDetail,
+  sanitizeActivity
+} from '../../domain/ActivityTrace.js';
 import { JsonRpcStdioClient } from './JsonRpcStdioClient.js';
 
 /**
@@ -113,6 +119,10 @@ export class AcpConversationAdapter extends ConversationPort {
      *  Sirven para dos cosas: no dejar al agente colgado si algo falla, y
      *  poder contestarlas al cerrar para que el servidor termine limpio. */
     this._pendingPermissions = new Map();
+
+    /** Cola de escritura del transcript por proyecto: evita que dos
+     *  `appendFile` concurrentes entrelacen líneas. */
+    this._recordQueues = new Map();
   }
 
   /* ------------------------------------------------------------------
@@ -510,25 +520,55 @@ export class AcpConversationAdapter extends ConversationPort {
       }
       case 'agent_thought_chunk': {
         const text = AcpConversationAdapter.extractText(update.content);
-        if (text) this._emit(session.projectId, { type: 'thought', text });
+        // El razonamiento se acumula y se emite una sola vez al cerrar el
+        // turno, como bloque plegable: no ensucia el chat a cada token.
+        if (text) session.thoughtBuffer = `${session.thoughtBuffer || ''}${text}`;
         break;
       }
       case 'tool_call': {
+        const id = update.toolCallId || `tool-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const name = update.title || update.name || 'herramienta';
+        if (!session.pendingTools) session.pendingTools = new Map();
+        const input = formatToolInput(update.rawInput);
+        const summary = summarizeTool(name, update.rawInput);
+        session.pendingTools.set(id, { name, input, summary });
         this._emit(session.projectId, {
           type: 'tool-call',
-          name: update.title || update.name || 'herramienta',
-          status: update.status || 'pending'
+          id,
+          name,
+          summary,
+          status: update.status || 'in_progress',
+          detail: sanitizeActivity(input)
         });
         break;
       }
       case 'tool_call_update': {
-        if (update.status === 'completed' || update.status === 'failed') {
-          this._emit(session.projectId, {
-            type: 'tool-done',
-            name: update.title || update.name || 'herramienta',
-            status: update.status
-          });
-        }
+        if (update.status !== 'completed' && update.status !== 'failed') break;
+        const id = update.toolCallId || null;
+        if (!session.pendingTools) session.pendingTools = new Map();
+        const pendiente = (id && session.pendingTools.get(id)) || null;
+        const name = update.title || update.name || pendiente?.name || 'herramienta';
+        const input = pendiente?.input || formatToolInput(update.rawInput);
+        const output = AcpConversationAdapter.extractToolText(update.content)
+          || AcpConversationAdapter.extractToolText(update.rawOutput);
+        const detail = sanitizeActivity(formatToolDetail(input, output));
+        const summary = pendiente?.summary || summarizeTool(name, update.rawInput);
+        // Se guarda en el transcript al terminar: una línea por herramienta.
+        this._record(session.projectId, {
+          role: 'tool',
+          id,
+          text: summary,
+          status: update.status,
+          detail
+        });
+        if (id) session.pendingTools.delete(id);
+        this._emit(session.projectId, {
+          type: 'tool-done',
+          id,
+          name,
+          status: update.status,
+          detail
+        });
         break;
       }
       default:
@@ -650,6 +690,27 @@ export class AcpConversationAdapter extends ConversationPort {
     return '';
   }
 
+  /**
+   * Extrae el texto del resultado de una herramienta. ACP lo manda como
+   * `[{ type: 'content', content: <ContentBlock> }, …]`, así que se acepta
+   * tanto el envoltorio como el bloque suelto.
+   */
+  static extractToolText(content) {
+    if (!Array.isArray(content)) return AcpConversationAdapter.extractText(content);
+    const partes = [];
+    for (const bloque of content) {
+      if (!bloque) continue;
+      if (bloque.type === 'content' && bloque.content) {
+        const texto = AcpConversationAdapter.extractText(bloque.content);
+        if (texto) partes.push(texto);
+      } else {
+        const texto = AcpConversationAdapter.extractText(bloque);
+        if (texto) partes.push(texto);
+      }
+    }
+    return partes.join('\n');
+  }
+
   /** Contexto del proyecto en el primer mensaje de la sesión. */
   static buildOutgoingMessage(projectId, text, isFirstOfSession) {
     if (!isFirstOfSession) return text;
@@ -671,11 +732,47 @@ export class AcpConversationAdapter extends ConversationPort {
    * ------------------------------------------------------------------ */
   async _record(projectId, entry) {
     const line = JSON.stringify({ ...entry, at: new Date(entry.at || Date.now()).toISOString() });
-    try {
-      const file = this._transcriptPath(projectId);
-      await fs.mkdir(path.dirname(file), { recursive: true });
-      await fs.appendFile(file, `${line}\n`, 'utf8');
-    } catch { /* no crítico */ }
+    // Se encadena por proyecto para que las líneas salgan en orden aunque
+    // varias escrituras (mensaje, herramientas, razonamiento) coincidan.
+    const previa = this._recordQueues.get(projectId) || Promise.resolve();
+    const siguiente = previa
+      .then(async () => {
+        const file = this._transcriptPath(projectId);
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.appendFile(file, `${line}\n`, 'utf8');
+      })
+      .catch(() => { /* no crítico */ });
+    this._recordQueues.set(projectId, siguiente);
+    return siguiente;
+  }
+
+  /**
+   * Cierra la actividad del turno: registra en el transcript las herramientas
+   * que quedaran en curso y el razonamiento acumulado, y emite este último
+   * como bloque plegable. Se llama ANTES del mensaje final del asistente para
+   * que en la conversación quede por encima de la respuesta.
+   */
+  async _finishTurnActivity(session) {
+    if (!session) return;
+    if (session.pendingTools && session.pendingTools.size) {
+      for (const [id, t] of session.pendingTools) {
+        await this._record(session.projectId, {
+          role: 'tool',
+          id,
+          text: t.summary,
+          status: 'in_progress',
+          detail: sanitizeActivity(t.input)
+        });
+      }
+      session.pendingTools.clear();
+    }
+    const razonamiento = String(session.thoughtBuffer || '').trim();
+    if (razonamiento) {
+      const detail = sanitizeActivity(razonamiento);
+      await this._record(session.projectId, { role: 'thought', text: 'Razonamiento', detail });
+      this._emit(session.projectId, { type: 'reasoning', detail });
+    }
+    session.thoughtBuffer = '';
   }
 
   /* ------------------------------------------------------------------
@@ -718,6 +815,9 @@ export class AcpConversationAdapter extends ConversationPort {
       sessionId: session.sessionId,
       prompt: [{ type: 'text', text: outgoing }]
     }).then(async (result) => {
+      // Primero la actividad (herramientas y razonamiento) y después la
+      // respuesta: así el transcript queda en el orden en que se vivió.
+      await this._finishTurnActivity(session);
       const textOut = session.turnBuffer.trim();
       if (textOut) {
         await this._record(projectId, { role: 'assistant', text: textOut });
@@ -729,10 +829,12 @@ export class AcpConversationAdapter extends ConversationPort {
       this._emit(projectId, { type: 'turn-end', reason: result?.stopReason || 'end_turn' });
       this._emit(projectId, { type: 'status', status: 'idle' });
       this._touchClient();
-    }).catch((error) => {
+    }).catch(async (error) => {
       session.busy = false;
       session.turnBuffer = '';
       this._clearStallWatchdog(session);
+      // Lo que el agente hubiera alcanzado a hacer no se pierde.
+      await this._finishTurnActivity(session);
       // Aprender del fallo real: si el modelo no existe o no está disponible
       // se retira de la lista; si fue cuota, se conserva y se avisa.
       this._learnFromFailure(this._currentSelection(session).model, error, projectId).catch(() => {});

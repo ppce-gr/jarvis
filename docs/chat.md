@@ -159,6 +159,30 @@ borra el registro aprendido y vuelve a probar **todos** los modelos, de uno en
 uno y en segundo plano. La comprobación consume algo de cuota, así que no se
 lanza sola.
 
+### Traza de actividad: qué está haciendo el agente
+
+Para no perderse mientras trabaja, el chat muestra una **traza** de lo que
+hace, sin ensuciar la conversación:
+
+- **Herramientas**: una línea compacta y discreta por herramienta
+  (`✓ read_file · nota.md`), con una flecha para **desplegar** la entrada y la
+  salida completas. Se actualiza en el sitio cuando termina (`✓`) o falla (`✗`).
+- **Razonamiento**: al cerrar el turno se añade un bloque **🧠 Razonamiento**,
+  también plegado, con lo que el agente pensó.
+
+La traza se guarda en el transcript (`conversacion.jsonl`), así que **sobrevive
+a las recargas**; al volver, todo aparece **plegado**. El detalle se **recorta a
+6 KB / 200 líneas** por entrada y se **redactan los patrones de secreto** típicos
+(tokens, claves, contraseñas) antes de guardarlo. Funciona igual con los dos
+protocolos, **ACP y SDK**.
+
+### Detener con confirmación
+
+Mientras el agente trabaja, el campo de escritura se deshabilita y el botón
+**Enviar** se convierte en **■ Detener**. También sigue el botón **Detener** de
+la cabecera. Pulsar cualquiera de los dos **pide confirmación** antes de
+cancelar el turno.
+
 ### Auto-refresco tras una actualización
 
 La interfaz compara la versión que tiene cargada con la que ejecuta el proceso

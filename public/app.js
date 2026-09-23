@@ -780,7 +780,13 @@ function setChatStatus(status) {
   // ACP no permite separar los deltas de dos turnos a la vez, así que el
   // servidor rechaza el segundo. Se deshabilita el campo para no chocar.
   $('#chat-input').disabled = state.chat.busy;
-  $('#chat-send').disabled = state.chat.busy;
+  const enviar = $('#chat-send');
+  if (enviar) {
+    // Mientras el agente trabaja, el mismo botón de enviar sirve para detener.
+    enviar.textContent = state.chat.busy ? '■ Detener' : 'Enviar';
+    enviar.classList.toggle('is-stop', state.chat.busy);
+    enviar.disabled = false;
+  }
   $('#chat-input').placeholder = state.chat.busy
     ? 'Jarvis está respondiendo… (pulsa Detener para interrumpir)'
     : 'Escribe a Jarvis… (Enter envía, Shift+Enter salto de línea)';
@@ -814,17 +820,37 @@ function handleChatEvent(event) {
       break;
     }
 
+    case 'reasoning':
+      // Razonamiento del turno: una línea plegable, no ruido token a token.
+      state.chat.messages.push({
+        role: 'thought',
+        id: `thought-${event.at || Date.now()}`,
+        text: 'Razonamiento',
+        detail: event.detail || '',
+        at: event.at
+      });
+      renderChat();
+      break;
+
     case 'thought':
-      // El razonamiento no se pinta; está en la traza de la sesión de DSH.
+      // Los deltas sueltos de razonamiento no se pintan: el adaptador los
+      // acumula y emite un único bloque `reasoning`.
       break;
 
     case 'tool-call':
-      state.chat.messages.push({ role: 'tool', text: event.name, at: event.at });
+      state.chat.messages.push({
+        role: 'tool',
+        id: event.id,
+        text: event.summary || event.name || 'herramienta',
+        status: event.status || 'in_progress',
+        detail: event.detail || '',
+        at: event.at
+      });
       renderChat();
       break;
 
     case 'tool-done':
-      updateLastTool(event);
+      actualizarHerramienta(event);
       break;
 
     case 'permission':
@@ -873,13 +899,35 @@ function handleChatEvent(event) {
   }
 }
 
-/** Marca la última herramienta como terminada, sin duplicar entradas. */
-function updateLastTool(event) {
-  for (let i = state.chat.messages.length - 1; i >= 0; i -= 1) {
-    const msg = state.chat.messages[i];
-    if (msg.role === 'tool' && msg.name === event.name) return;  // ya está listada
+/** Actualiza en el sitio la herramienta que acaba de terminar. */
+function actualizarHerramienta(event) {
+  let msg = null;
+  if (event.id) {
+    msg = state.chat.messages.find((m) => m.role === 'tool' && m.id === event.id) || null;
   }
-  state.chat.messages.push({ role: 'tool', text: event.name, at: event.at });
+  if (!msg) {
+    // Compatibilidad: sin id, se completa la última herramienta pendiente.
+    for (let i = state.chat.messages.length - 1; i >= 0; i -= 1) {
+      const m = state.chat.messages[i];
+      if (m.role === 'tool' && m.status !== 'completed' && m.status !== 'failed') {
+        msg = m;
+        break;
+      }
+    }
+  }
+  if (!msg) {
+    state.chat.messages.push({
+      role: 'tool',
+      id: event.id,
+      text: event.name || 'herramienta',
+      status: event.status,
+      detail: event.detail || '',
+      at: event.at
+    });
+  } else {
+    msg.status = event.status || msg.status;
+    if (event.detail) msg.detail = event.detail;
+  }
   renderChat();
 }
 
@@ -921,9 +969,33 @@ function updateTyping() {
   }
 }
 
+/** Icono compacto del estado de una herramienta. */
+function estadoIcono(status) {
+  if (status === 'completed') return '✓';
+  if (status === 'failed') return '✗';
+  if (status === 'in_progress') return '…';
+  return '⚙';
+}
+
+/** HTML de una entrada de actividad: línea compacta plegable con detalle. */
+function actividadHtml({ id, resumen, detalle, clase = '' }) {
+  const seguro = escapeHtml(resumen);
+  if (!detalle) return `<div class="msg-activity-line ${clase}">${seguro}</div>`;
+  return `<details class="msg-activity ${clase}" data-activity-id="${escapeHtml(id || '')}">`
+    + `<summary>${seguro}</summary>`
+    + `<pre class="msg-activity-detail">${escapeHtml(detalle)}</pre>`
+    + '</details>';
+}
+
 function renderChat() {
   const box = $('#chat-messages');
   const messages = state.chat.messages;
+  // Recuerda qué detalles estaban desplegados para no cerrarlos al repintar.
+  // Al recargar la página este conjunto nace vacío: todo plegado, como se pidió.
+  const abiertos = new Set();
+  for (const detalle of box.querySelectorAll('details[open][data-activity-id]')) {
+    if (detalle.dataset?.activityId) abiertos.add(detalle.dataset.activityId);
+  }
   box.innerHTML = '';
 
   if (!messages.length) {
@@ -952,8 +1024,21 @@ function renderChat() {
       wrap.innerHTML = `<div class="msg-bubble markdown">${renderMarkdown(msg.text || '')}</div>
         <div class="msg-meta">Jarvis${time ? ` · ${time}` : ''}</div>`;
     } else if (msg.role === 'tool') {
-      wrap.className = 'msg-tool';
-      wrap.textContent = `⚙ ${msg.text}`;
+      wrap.className = 'msg msg-activity';
+      wrap.innerHTML = actividadHtml({
+        id: msg.id,
+        resumen: `${estadoIcono(msg.status)} ${msg.text || 'herramienta'}`,
+        detalle: msg.detail,
+        clase: 'msg-tool-activity'
+      });
+    } else if (msg.role === 'thought') {
+      wrap.className = 'msg msg-activity';
+      wrap.innerHTML = actividadHtml({
+        id: msg.id,
+        resumen: '🧠 Razonamiento',
+        detalle: msg.detail,
+        clase: 'msg-thought'
+      });
     } else if (msg.role === 'error') {
       wrap.className = 'msg-error';
       wrap.textContent = msg.text;
@@ -962,6 +1047,13 @@ function renderChat() {
       wrap.textContent = msg.text;
     }
     box.appendChild(wrap);
+  }
+
+  // Restaura lo que estuviera desplegado en esta misma sesión.
+  if (abiertos.size) {
+    for (const detalle of box.querySelectorAll('details[data-activity-id]')) {
+      if (abiertos.has(detalle.dataset?.activityId)) detalle.open = true;
+    }
   }
 
   updateTyping();
@@ -979,6 +1071,8 @@ function scrollChatToEnd() {
 
 async function sendChatMessage(event) {
   if (event) event.preventDefault();
+  // Mientras el agente trabaja, este mismo botón hace de «Detener».
+  if (state.chat.busy) { preguntarDetener(); return; }
   const input = $('#chat-input');
   const text = input.value.trim();
   if (!text) return;
@@ -1014,8 +1108,27 @@ async function resetChat() {
   }
 }
 
+/** El botón de detener (arriba o abajo) pide confirmación antes de parar. */
+function cancelChat() {
+  preguntarDetener();
+}
+
+/** Abre la confirmación de parada, con `confirm()` como red de seguridad. */
+function preguntarDetener() {
+  if (!state.chat.busy) return;
+  const dialog = $('#stop-dialog');
+  if (dialog && typeof dialog.showModal === 'function') {
+    dialog.showModal();
+    return;
+  }
+  if (typeof window.confirm === 'function'
+    && window.confirm('¿Detener la respuesta en curso?')) {
+    cancelarTurno();
+  }
+}
+
 /** Detiene el turno en curso sin perder la memoria del agente. */
-async function cancelChat() {
+async function cancelarTurno() {
   if (!state.chat.projectId) return;
   try {
     const { cancelled } = await api(
@@ -1335,6 +1448,11 @@ function bindEvents() {
   on('#chat-form', 'submit', sendChatMessage);
   on('#chat-reset', 'click', resetChat);
   on('#chat-stop', 'click', cancelChat);
+  on('#stop-confirm', 'click', () => {
+    const dialog = $('#stop-dialog');
+    if (dialog) dialog.close();
+    cancelarTurno();
+  });
   on('#chat-effort', 'change', (e) => saveChatConfig('reasoning_effort', e.target.value));
   // Desplegable de modelos: cada fila elige; su icono ⟳ comprueba sólo ese.
   on('#chat-model-btn', 'click', toggleModelMenu);

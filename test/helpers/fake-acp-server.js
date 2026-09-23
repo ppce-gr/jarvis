@@ -227,9 +227,21 @@ rl.on('line', async (line) => {
         record({ permissionAnswer: answer.result });
       }
 
-      emitUpdate(sessionId, { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'pensando' } });
-      emitUpdate(sessionId, { sessionUpdate: 'tool_call', toolCallId: 'tc-1', title: 'read_file', status: 'in_progress' });
-      emitUpdate(sessionId, { sessionUpdate: 'tool_call_update', toolCallId: 'tc-1', status: 'completed' });
+      emitUpdate(sessionId, { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'pensando en la tarea' } });
+      emitUpdate(sessionId, {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'tc-1',
+        title: 'read_file',
+        status: 'in_progress',
+        // Un secreto a propósito: el adaptador debe redactarlo al guardar.
+        rawInput: { path: 'nota.md', token: 'sk-abcdefghijklmnopqrstuvwxyz012345' }
+      });
+      emitUpdate(sessionId, {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'tc-1',
+        status: 'completed',
+        content: [{ type: 'content', content: { type: 'text', text: 'contenido leído' } }]
+      });
 
       // Texto en TROZOS, como hace ACP de verdad.
       const reply = `Recibido: ${promptText.slice(-40)}`;
