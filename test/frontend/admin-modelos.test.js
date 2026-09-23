@@ -40,3 +40,12 @@ test('el frontend consulta la salud y lanza la comprobación', () => {
   assert.match(src, /function abrirAdmin/, 'debe existir la apertura del panel');
   assert.match(src, /function comprobarModelos/, 'debe existir la acción de comprobar');
 });
+
+test('el selector de modelos tiene un icono propio para refrescar', () => {
+  const html = indexHtml();
+  assert.match(html, /id="chat-models-refresh"/, 'debe existir el icono junto al selector');
+  const src = appJs();
+  assert.match(src, /#chat-models-refresh/, 'el icono debe estar enlazado en el frontend');
+  assert.match(src, /function setRefreshing/, 'debe existir el estado de "comprobando"');
+  assert.match(src, /modelStatusInfo/, 'debe existir la lógica de iconos por estado');
+});

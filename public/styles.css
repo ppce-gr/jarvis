@@ -381,6 +381,23 @@ html, body {
 .chat-select-sm { max-width: 110px; }
 .chat-select.loading { opacity: .5; }
 
+/* Icono para volver a comprobar los modelos: gira mientras trabajan */
+.chat-refresh {
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-dim);
+}
+.chat-refresh:hover { color: var(--text); border-color: #2f4356; }
+.chat-refresh:disabled { cursor: default; opacity: .7; }
+.chat-refresh.refreshing { color: var(--accent-strong); }
+@keyframes jarvis-spin { to { transform: rotate(360deg); } }
+#chat-models-refresh.refreshing,
+#models-refresh.refreshing { animation: jarvis-spin 1s linear infinite; }
+
 .chat-messages {
   flex: 1 1 auto;
   min-height: 0;

@@ -112,20 +112,33 @@ Al poner una API key, el motor descubre **muchos** modelos y no todos valen.
 Jarvis mantiene un registro de salud (`<memoria>/model-health.json`) y actúa
 según el tipo de fallo:
 
-| Estado | Qué significa | Qué hace Jarvis |
+| Estado | Qué significa | Cómo se muestra |
 |---|---|---|
-| `ok` | Responde | Se queda en la lista |
-| `quota` | Se agotó la cuota/el saldo de la cuenta | **Se conserva** (puede volver) |
-| `broken` | No existe, no está disponible o no es accesible | **Se retira** del selector |
-| `unknown` | Fallo transitorio (red, credencial, límite temporal) | Se conserva |
+| `ok` | Responde | 🟢 arriba, entre los disponibles |
+| `quota` | Se agotó la cuota/el saldo de la cuenta | 🟡 arriba, marcado «sin cuota» |
+| `broken` | No existe, no está disponible o no es accesible | 🔴 abajo, bajo «no funcionan» |
+| `unknown` | Fallo transitorio (red, credencial, límite temporal) | ⚪ arriba, «sin comprobar» |
 
 El registro se alimenta de dos formas:
 
 1. **De los fallos reales**: si un turno del chat falla porque el modelo no
-   existe, se retira solo; si falla por cuota, se marca pero se conserva.
-2. **De una comprobación activa**: la sección **Admin** lanza un turno mínimo
-   contra cada modelo y clasifica el resultado, sin esperar a que falle una
-   conversación.
+   existe, se marca como roto; si falla por cuota, se marca pero se conserva.
+2. **De una comprobación activa**: la sección **Admin** (o el icono **⟳** junto
+   al selector) lanza un turno mínimo contra cada modelo y clasifica el
+   resultado, sin esperar a que falle una conversación.
+
+### Cómo se presenta el selector
+
+El desplegable de modelos tiene **dos bloques**, y dentro de cada uno se
+mantiene la agrupación por empresa (proveedor):
+
+1. **Arriba**: los modelos que se pueden usar o que están sin cuota.
+2. **Debajo**, bajo el rótulo «… · no funcionan»: los que han dado un error que
+   no es de cuota.
+
+Cada opción lleva un **icono de estado a la izquierda** (🟢 / 🟡 / 🔴 / ⚪). El
+icono **⟳** que hay junto al selector vuelve a comprobar todos los modelos y
+gira mientras trabaja.
 
 ### El esfuerzo no es universal
 
@@ -138,9 +151,9 @@ cuando el modelo elegido no lo admite.
 
 El botón **⚙ Admin** de la barra superior abre el panel de modelos: muestra el
 estado de cada uno, cuándo se comprobó y el motivo del fallo. El botón
-**«⟳ Restablecer y comprobar»** borra el registro aprendido y vuelve a probar
-todos los modelos, de uno en uno y en segundo plano. La comprobación consume
-algo de cuota, así que no se lanza sola.
+**«⟳ Restablecer y comprobar»** (y el icono **⟳** del selector) borra el registro
+aprendido y vuelve a probar todos los modelos, de uno en uno y en segundo plano.
+La comprobación consume algo de cuota, así que no se lanza sola.
 
 ## Comportamiento observado en la Pi 3B
 

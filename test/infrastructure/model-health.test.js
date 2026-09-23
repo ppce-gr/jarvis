@@ -140,13 +140,16 @@ test('refreshModels clasifica cada modelo y getConfig retira los rotos', async (
   assert.ok(visibles.includes(BUENO));
   assert.ok(visibles.includes(SIN_CUOTA), 'los que no tienen cuota se conservan');
   assert.ok(visibles.includes(SIN_ESFUERZO));
-  assert.ok(!visibles.includes(ROTO), 'los rotos se retiran');
+  assert.ok(visibles.includes(ROTO), 'los rotos siguen en el catálogo, marcados aparte');
+  const itemRoto = options.find((o) => o.id === 'model').options[0].options
+    .find((i) => i.value === ROTO);
+  assert.equal(itemRoto.health.status, MODEL_STATUS.BROKEN);
   assert.equal(current.supportsEffort, true);
 
   await adapter.closeAll();
 });
 
-test('un fallo real retira el modelo de la lista', async () => {
+test('un fallo real marca el modelo como roto', async () => {
   const ws = await tempWorkspace();
   const adapter = new AcpConversationAdapter({
     brainDir: ws,
@@ -166,7 +169,9 @@ test('un fallo real retira el modelo de la lista', async () => {
   });
 
   const { options } = await adapter.getConfig('demo');
-  assert.ok(!modelosDe(options).includes(ROTO));
+  const itemRoto = options.find((o) => o.id === 'model').options[0].options
+    .find((i) => i.value === ROTO);
+  assert.equal(itemRoto?.health.status, MODEL_STATUS.BROKEN);
 
   await adapter.closeAll();
 });

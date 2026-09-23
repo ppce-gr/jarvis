@@ -5,7 +5,7 @@ import { ConversationPort } from '../../domain/ports/ConversationPort.js';
 import {
   MODEL_STATUS,
   classifyModelFailure,
-  applyModelHealth,
+  annotateModelHealth,
   effortOption,
   flattenModels
 } from '../../domain/ModelHealth.js';
@@ -875,9 +875,11 @@ export class AcpConversationAdapter extends ConversationPort {
     };
   }
 
-  /** Copia del catálogo con los modelos rotos retirados y su salud anotada. */
+  /** Copia del catálogo con cada modelo anotado con su salud. */
   _decoratedOptions(options) {
-    return applyModelHealth(options, this._health.results);
+    // Se anotan TODOS (también los rotos): el selector los agrupa aparte para
+    // que se vean; quien decide si se pueden elegir es la interfaz.
+    return annotateModelHealth(options, this._health.results);
   }
 
   /** Selección vigente, tal como debe verla la interfaz. */

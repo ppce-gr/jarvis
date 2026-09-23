@@ -6,6 +6,7 @@ import {
   isRemovable,
   effortOption,
   flattenModels,
+  annotateModelHealth,
   applyModelHealth
 } from '../../src/domain/ModelHealth.js';
 
@@ -138,4 +139,25 @@ test('applyModelHealth retira los rotos y anota el resto', () => {
 test('applyModelHealth no toca la opción de esfuerzo', () => {
   const filtrado = applyModelHealth(CATALOGO, { '["p","a"]': { status: MODEL_STATUS.BROKEN } });
   assert.ok(filtrado.find((o) => o.id === 'reasoning_effort'));
+});
+
+test('annotateModelHealth conserva los rotos pero los marca', () => {
+  const anotado = annotateModelHealth(CATALOGO, {
+    '["p","b"]': { status: MODEL_STATUS.BROKEN, error: 'no existe' },
+    '["p","c"]': { status: MODEL_STATUS.QUOTA }
+  });
+  const modelos = flattenModels(anotado);
+  assert.deepEqual(
+    modelos.map((m) => m.value),
+    ['["p","a"]', '["p","b"]', '["p","c"]'],
+    'no debe retirar ninguno'
+  );
+
+  const opcionModelo = anotado.find((o) => o.id === 'model');
+  const itemB = opcionModelo.options[0].options.find((i) => i.value === '["p","b"]');
+  const itemC = opcionModelo.options[0].options.find((i) => i.value === '["p","c"]');
+  const itemA = opcionModelo.options[0].options.find((i) => i.value === '["p","a"]');
+  assert.equal(itemB.health.status, MODEL_STATUS.BROKEN);
+  assert.equal(itemC.health.status, MODEL_STATUS.QUOTA);
+  assert.equal(itemA.health.status, MODEL_STATUS.UNKNOWN, 'sin datos queda sin confirmar');
 });

@@ -146,30 +146,43 @@ export function flattenModels(options) {
 }
 
 /**
- * Devuelve una copia del catálogo con los modelos rotos retirados y cada
- * modelo anotado con su salud. Lo que se pinta en el selector es esto,
- * no el catálogo crudo del motor.
+ * Copia del catálogo con cada modelo anotado con su salud, **sin retirar
+ * ninguno**. Es lo que necesita el selector para poder enseñar los que
+ * funcionan arriba y los que no, debajo.
  */
-export function applyModelHealth(options, results = {}) {
+export function annotateModelHealth(options, results = {}) {
   return (options || []).map((opt) => {
     if (!(opt?.id === 'model' || opt?.category === 'model')) return opt;
+    const groups = (opt.options || []).map((group) => {
+      const items = (group.options || []).map((item) => {
+        const health = results[item.value];
+        return {
+          ...item,
+          health: {
+            status: health?.status || MODEL_STATUS.UNKNOWN,
+            error: health?.error || null,
+            supportsEffort: health?.supportsEffort ?? null
+          }
+        };
+      });
+      return { ...group, options: items };
+    });
+    return { ...opt, options: groups };
+  });
+}
+
+/**
+ * Como `annotateModelHealth`, pero además retira los modelos rotos. Se usa
+ * donde no interesa enseñarlos (por ejemplo, para elegir uno sano).
+ */
+export function applyModelHealth(options, results = {}) {
+  return annotateModelHealth(options, results).map((opt) => {
+    if (!(opt?.id === 'model' || opt?.category === 'model')) return opt;
     const groups = (opt.options || [])
-      .map((group) => {
-        const items = (group.options || [])
-          .map((item) => {
-            const health = results[item.value];
-            return {
-              ...item,
-              health: {
-                status: health?.status || MODEL_STATUS.UNKNOWN,
-                error: health?.error || null,
-                supportsEffort: health?.supportsEffort ?? null
-              }
-            };
-          })
-          .filter((item) => !isRemovable(item.health.status));
-        return { ...group, options: items };
-      })
+      .map((group) => ({
+        ...group,
+        options: group.options.filter((item) => !isRemovable(item.health.status))
+      }))
       .filter((group) => group.options.length > 0);
     return { ...opt, options: groups };
   });

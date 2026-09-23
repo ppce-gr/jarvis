@@ -137,3 +137,70 @@ test('si el servidor no responde, el fallo se VE en pantalla', async () => {
   const html = registro.get('#project-list').innerHTML;
   assert.match(html, /⚠️|Sin ideas/, 'debe quedar constancia visible del problema');
 });
+
+/* ================================================================
+   Selector de modelos: disponibles arriba, no disponibles abajo
+   ================================================================ */
+
+const CONFIG_MODELOS = {
+  current: { model: '["p","bueno"]', supportsEffort: true },
+  options: [
+    {
+      id: 'model',
+      category: 'model',
+      options: [
+        {
+          group: 'p',
+          name: 'Proveedor P',
+          options: [
+            { value: '["p","bueno"]', name: 'Bueno', health: { status: 'ok' } },
+            { value: '["p","sin-cuota"]', name: 'Sin cuota', health: { status: 'quota' } },
+            {
+              value: '["p","roto"]',
+              name: 'Roto',
+              health: { status: 'broken', error: 'model not found' }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  health: { checking: false, results: {} }
+};
+
+async function arrancarConModelos() {
+  // `/chat/config` va primero para que el fetch falso lo prefiera sobre `/api/projects`.
+  return arrancarInterfaz({ respuestas: { '/chat/config': CONFIG_MODELOS, ...RESPUESTAS_BASE } });
+}
+
+test('el selector separa los disponibles de los que no funcionan', async () => {
+  const { registro, errores } = await arrancarConModelos();
+  assert.deepEqual(errores, [], `la interfaz lanzó: ${errores.join(' | ')}`);
+
+  const sel = registro.get('#chat-model');
+  assert.ok(sel, 'debe existir el selector de modelos');
+  const grupos = sel._hijos.filter((h) => h.tagName === 'optgroup');
+  assert.equal(grupos.length, 2, 'un grupo para disponibles y otro para no disponibles');
+  assert.doesNotMatch(grupos[0].label, /no funcionan/);
+  assert.match(grupos[1].label, /no funcionan/);
+
+  const disponibles = grupos[0]._hijos.map((o) => o.textContent);
+  const rotos = grupos[1]._hijos.map((o) => o.textContent);
+  assert.ok(disponibles.some((t) => t.includes('Bueno')));
+  assert.ok(disponibles.some((t) => t.includes('Sin cuota')));
+  assert.ok(!disponibles.some((t) => t.includes('Roto')), 'el roto va abajo');
+  assert.ok(rotos.some((t) => t.includes('Roto')));
+});
+
+test('cada modelo lleva su icono de estado a la izquierda', async () => {
+  const { registro } = await arrancarConModelos();
+  const sel = registro.get('#chat-model');
+  const grupos = sel._hijos.filter((h) => h.tagName === 'optgroup');
+  const disponibles = grupos[0]._hijos.map((o) => o.textContent);
+  const rotos = grupos[1]._hijos.map((o) => o.textContent);
+
+  assert.match(disponibles.find((t) => t.includes('Bueno')), /^🟢/);
+  assert.match(disponibles.find((t) => t.includes('Sin cuota')), /^🟡/);
+  assert.match(rotos.find((t) => t.includes('Roto')), /^🔴/);
+  assert.match(disponibles.find((t) => t.includes('Sin cuota')), /sin cuota/);
+});

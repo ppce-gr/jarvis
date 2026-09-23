@@ -540,19 +540,31 @@ async function loadChatConfig() {
     fillModelSelect(modelSel, config.options, config.current);
     fillSimpleSelect(effortSel, config.options, 'reasoning_effort', config.current);
     modelSel.classList.remove('loading');
+    // Si ya hay una comprobación en marcha, el icono gira y se sigue el avance.
+    setRefreshing(Boolean(config.health?.checking));
+    if (config.health?.checking) programarSondeoAdmin();
     if (config.current?.error) toast(`Aviso del motor: ${config.current.error}`, 'err');
   } catch {
     modelSel.classList.remove('loading');
   }
 }
 
-/** Sufijo de aviso para un modelo: sin cuota, sin soporte de esfuerzo… */
-function modelHealthSuffix(item) {
-  const health = item?.health || {};
-  const marcas = [];
-  if (health.status === 'quota') marcas.push('sin cuota');
-  if (health.supportsEffort === false) marcas.push('sin esfuerzo');
-  return marcas.length ? ` (${marcas.join(', ')})` : '';
+/** Icono, nota y pista de un modelo según su estado de salud. */
+function modelStatusInfo(item) {
+  const status = item?.health?.status || 'unknown';
+  if (status === 'ok') return { icon: '🟢', nota: '', title: 'Se puede usar' };
+  if (status === 'quota') {
+    return { icon: '🟡', nota: 'sin cuota', title: 'Sin cuota: podrá usarse cuando se restablezca' };
+  }
+  if (status === 'broken') {
+    return { icon: '🔴', nota: 'no funciona', title: item?.health?.error || 'No funciona' };
+  }
+  return { icon: '⚪', nota: 'sin comprobar', title: 'Sin comprobar' };
+}
+
+/** ¿Este modelo va a la sección de abajo (ha fallado y no es por cuota)? */
+function esModeloRoto(item) {
+  return (item?.health?.status || 'unknown') === 'broken';
 }
 
 function fillModelSelect(sel, options, current) {
@@ -563,27 +575,44 @@ function fillModelSelect(sel, options, current) {
     return;
   }
   sel.classList.remove('hidden');
-  for (const group of opt.options) {
-    if (group.options) {
-      const og = document.createElement('optgroup');
-      og.label = group.name || group.group;
-      for (const item of group.options) {
-        const o = document.createElement('option');
-        const sufijo = modelHealthSuffix(item);
-        o.value = item.value;
-        o.textContent = (item.description ? `${item.name} — ${item.description}` : item.name) + sufijo;
-        o.title = (item.description || item.name) + sufijo;
-        if (item.value === current.model) o.selected = true;
-        og.appendChild(o);
-      }
-      sel.appendChild(og);
-    } else {
+
+  // Dos bloques: arriba los que se pueden usar (o están sin cuota) y abajo
+  // los que no funcionan. Dentro de cada bloque, agrupados por empresa.
+  const grupos = opt.options.filter((g) => Array.isArray(g.options));
+  const disponibles = grupos.filter((g) => g.options.some((i) => !esModeloRoto(i)));
+  const rotos = grupos.filter((g) => g.options.some((i) => esModeloRoto(i)));
+
+  const anadirGrupo = (group, esRoto) => {
+    const og = document.createElement('optgroup');
+    og.label = `${group.name || group.group || ''}${esRoto ? ' · no funcionan' : ''}`;
+    for (const item of group.options) {
+      if (esModeloRoto(item) !== esRoto) continue;
+      const info = modelStatusInfo(item);
+      const base = item.description ? `${item.name} — ${item.description}` : item.name;
+      const extras = [];
+      if (info.nota) extras.push(info.nota);
+      if (item.health?.supportsEffort === false) extras.push('sin esfuerzo');
       const o = document.createElement('option');
-      o.value = group.value;
-      o.textContent = group.name + modelHealthSuffix(group);
-      if (group.value === current.model) o.selected = true;
-      sel.appendChild(o);
+      o.value = item.value;
+      o.textContent = `${info.icon} ${base}${extras.length ? ` (${extras.join(', ')})` : ''}`;
+      o.title = [info.title, item.description].filter(Boolean).join(' · ');
+      if (item.value === current?.model) o.selected = true;
+      og.appendChild(o);
     }
+    sel.appendChild(og);
+  };
+
+  for (const group of disponibles) anadirGrupo(group, false);
+  for (const group of rotos) anadirGrupo(group, true);
+
+  // Robustez: catálogo plano sin grupos (no es el formato de DSH, pero se pinta).
+  for (const item of opt.options.filter((g) => !Array.isArray(g.options))) {
+    const info = modelStatusInfo(item);
+    const o = document.createElement('option');
+    o.value = item.value;
+    o.textContent = `${info.icon} ${item.name || item.value}`;
+    if (item.value === current?.model) o.selected = true;
+    sel.appendChild(o);
   }
 }
 
@@ -1043,7 +1072,7 @@ function modeloHealthLabel(status) {
   switch (status) {
     case 'ok': return { texto: 'funciona', clase: 'ok' };
     case 'quota': return { texto: 'sin cuota', clase: 'warn' };
-    case 'broken': return { texto: 'retirado', clase: 'err' };
+    case 'broken': return { texto: 'no funciona', clase: 'err' };
     default: return { texto: 'sin confirmar', clase: '' };
   }
 }
@@ -1097,7 +1126,7 @@ function renderAdminModelos(salud) {
     } else {
       const fecha = salud.checkedAt ? new Date(salud.checkedAt).toLocaleString() : '—';
       resumen.textContent = `Última comprobación: ${fecha} · ${cuenta.ok || 0} funcionan · `
-        + `${cuenta.quota || 0} sin cuota · ${cuenta.broken || 0} retirados · ${cuenta.unknown || 0} sin confirmar`;
+        + `${cuenta.quota || 0} sin cuota · ${cuenta.broken || 0} no funcionan · ${cuenta.unknown || 0} sin confirmar`;
     }
   }
 
@@ -1114,6 +1143,16 @@ function renderAdminModelos(salud) {
   }
 }
 
+/** Gira el icono de refrescar y bloquea los botones mientras se comprueba. */
+function setRefreshing(activo) {
+  for (const selector of ['#models-refresh', '#chat-models-refresh']) {
+    const btn = $(selector);
+    if (!btn) continue;
+    btn.disabled = activo;
+    btn.classList.toggle('refreshing', activo);
+  }
+}
+
 function programarSondeoAdmin() {
   if (adminPoll) return;
   adminPoll = setInterval(async () => {
@@ -1123,18 +1162,19 @@ function programarSondeoAdmin() {
       if (!salud.checking) {
         clearInterval(adminPoll);
         adminPoll = null;
+        setRefreshing(false);
         if (state.chat.projectId) loadChatConfig();
       }
     } catch {
       clearInterval(adminPoll);
       adminPoll = null;
+      setRefreshing(false);
     }
   }, 1500);
 }
 
 async function comprobarModelos() {
-  const btn = $('#models-refresh');
-  if (btn) btn.disabled = true;
+  setRefreshing(true);
   try {
     await api('/api/models/refresh', { method: 'POST' });
     toast('Comprobando modelos; esto puede tardar y consume algo de cuota', 'warn');
@@ -1142,8 +1182,7 @@ async function comprobarModelos() {
     programarSondeoAdmin();
   } catch (error) {
     toast(`No se pudo comprobar: ${error.message}`, 'err');
-  } finally {
-    if (btn) btn.disabled = false;
+    setRefreshing(false);
   }
 }
 
@@ -1198,6 +1237,7 @@ function bindEvents() {
   on('#chat-stop', 'click', cancelChat);
   on('#chat-model', 'change', (e) => saveChatConfig('model', e.target.value));
   on('#chat-effort', 'change', (e) => saveChatConfig('reasoning_effort', e.target.value));
+  on('#chat-models-refresh', 'click', comprobarModelos);
 
   // Al volver a la pestaña (el móvil bloquea el SSE en segundo plano) se
   // resincroniza: es la otra mitad de «si sales y vuelves, vuelve al origen».
