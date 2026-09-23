@@ -229,6 +229,8 @@ test('la pestaña de preguntas pinta pendientes con botones para decidir', async
   assert.match(html, /Pendiente/);
   assert.match(html, /data-seg-accion="guardar"/);
   assert.match(html, /data-seg-accion="borrar"/);
+  // Cada pregunta (pendiente o registrada) se puede copiar.
+  assert.equal((html.match(/data-seg-copiar=/g) || []).length, 2);
 });
 
 /* ================================================================
@@ -379,6 +381,52 @@ test('la traza se pinta como líneas plegables y guarda el detalle', async () =>
   assert.match(html, /Entrada:/);
   // Todo nace plegado.
   assert.doesNotMatch(html, /<details[^>]*\bopen\b/);
+});
+
+/* ================================================================
+   Copiar y reintentar en el chat
+   ================================================================ */
+
+async function arrancarConConversacion(messages) {
+  const base = { ...RESPUESTAS_BASE };
+  delete base['/chat'];
+  return arrancarInterfaz({
+    respuestas: { '/chat': { messages, status: { status: 'idle' } }, ...base }
+  });
+}
+
+test('cada pregunta y respuesta ofrece copiar; la pregunta, además, reintentar', async () => {
+  const { registro, errores, jarvis } = await arrancarConConversacion([
+    { role: 'user', text: '¿qué modelo elijo?' },
+    { role: 'assistant', text: '**DeepSeek**' }
+  ]);
+  await abrirIdea(jarvis, 'idea-uno');
+  assert.deepEqual(errores, []);
+
+  const html = registro.get('#chat-messages').innerHTML;
+  // Copiar en las dos (pregunta y respuesta).
+  assert.equal((html.match(/data-msg-accion="copiar"/g) || []).length, 2);
+  // Reintentar sólo en la pregunta, con el texto original.
+  assert.match(html, /data-msg-accion="reintentar"/);
+  assert.match(html, /data-pregunta="¿qué modelo elijo\?"/);
+});
+
+test('reintentarPregunta vuelve a enviar la misma pregunta', async () => {
+  const { errores, jarvis } = await arrancarConConversacion([]);
+  await abrirIdea(jarvis, 'idea-uno');
+  assert.deepEqual(errores, []);
+
+  await jarvis.reintentarPregunta('¿y si cambio de modelo?');
+  const usuarios = jarvis.state.chat.messages.filter((m) => m.role === 'user');
+  assert.equal(usuarios.length, 1);
+  assert.equal(usuarios[0].text, '¿y si cambio de modelo?');
+});
+
+test('textoVisible copia lo que se ve, no el Markdown crudo', async () => {
+  const { jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.equal(jarvis.textoVisible({ innerText: 'visto', textContent: 'crudo' }), 'visto');
+  assert.equal(jarvis.textoVisible({ innerText: '   ', textContent: 'crudo' }), 'crudo');
+  assert.equal(jarvis.textoVisible(null, 'respaldo'), 'respaldo');
 });
 
 /* ================================================================

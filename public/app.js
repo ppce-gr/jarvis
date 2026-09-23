@@ -428,6 +428,7 @@ function renderSeguimiento(tipo) {
         <div class="seg-item seg-pendiente">
           <span class="seg-texto">${escapeHtml(it.texto)}</span>
           <span class="seg-acciones">
+            <button class="seg-btn seg-copy" data-seg-copiar="${escapeHtml(it.texto)}" title="Copiar">⧉</button>
             <button class="seg-btn seg-ok" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="guardar" title="Guardar (dejar de estar pendiente)">✓</button>
             <button class="seg-btn seg-del" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="borrar" title="Borrar definitivamente">✕</button>
           </span>
@@ -441,7 +442,10 @@ function renderSeguimiento(tipo) {
         <div class="seg-item">
           <span class="seg-check" aria-hidden="true">✓</span>
           <span class="seg-texto">${escapeHtml(it.texto)}</span>
-          <button class="seg-btn seg-ir" data-seg-conv="${escapeHtml(it.texto)}" title="Ver en la conversación">↗</button>
+          <span class="seg-acciones">
+            <button class="seg-btn seg-copy" data-seg-copiar="${escapeHtml(it.texto)}" title="Copiar">⧉</button>
+            <button class="seg-btn seg-ir" data-seg-conv="${escapeHtml(it.texto)}" title="Ver en la conversación">↗</button>
+          </span>
         </div>`).join('')
       + '</div>';
   }
@@ -483,6 +487,8 @@ async function resolverSeguimiento(tipo, linea, accion) {
 
 /** Clic en el seguimiento: resolver una pendiente o saltar a la conversación. */
 function manejarSeguimiento(event) {
+  const copiar = event.target.closest('[data-seg-copiar]');
+  if (copiar) { copiarTexto(copiar.dataset.segCopiar); return; }
   const ir = event.target.closest('[data-seg-conv]');
   if (ir) { irAConversacion(ir.dataset.segConv); return; }
   const btn = event.target.closest('[data-seg-accion]');
@@ -1413,6 +1419,73 @@ function actividadHtml({ id, resumen, detalle, clase = '' }) {
     + '</details>';
 }
 
+/** Botones de una pregunta o respuesta: copiar y (si procede) reintentar. */
+function accionesMensaje({ copiar = false, reintentar = null } = {}) {
+  const botones = [];
+  if (reintentar) {
+    botones.push('<button type="button" class="msg-accion" data-msg-accion="reintentar"'
+      + ` data-pregunta="${escapeHtml(reintentar)}" title="Volver a hacer esta pregunta">↻ Reintentar</button>`);
+  }
+  if (copiar) {
+    botones.push('<button type="button" class="msg-accion" data-msg-accion="copiar"'
+      + ' title="Copiar el texto tal cual se ve">⧉ Copiar</button>');
+  }
+  return botones.length ? `<div class="msg-acciones">${botones.join('')}</div>` : '';
+}
+
+/** Texto tal cual se ve: `innerText` conserva los saltos de los bloques. */
+function textoVisible(el, respaldo = '') {
+  if (!el) return respaldo;
+  if (typeof el.innerText === 'string' && el.innerText.trim()) return el.innerText;
+  if (typeof el.textContent === 'string') return el.textContent;
+  return respaldo;
+}
+
+/** Copia al portapapeles, con plan B para HTTP en red local. */
+async function copiarTexto(texto) {
+  const valor = String(texto ?? '');
+  if (!valor) return;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard
+      && (typeof window === 'undefined' || window.isSecureContext !== false)) {
+      await navigator.clipboard.writeText(valor);
+      toast('Copiado', 'ok');
+      return;
+    }
+  } catch { /* se intenta el plan B */ }
+  try {
+    const area = document.createElement('textarea');
+    area.value = valor;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    const ok = typeof document.execCommand === 'function' && document.execCommand('copy');
+    area.remove();
+    toast(ok ? 'Copiado' : 'No se pudo copiar', ok ? 'ok' : 'err');
+  } catch {
+    toast('No se pudo copiar', 'err');
+  }
+}
+
+/** Clic en los botones de copiar/reintentar de una pregunta o respuesta. */
+function manejarAccionMensaje(event) {
+  const btn = event.target.closest('[data-msg-accion]');
+  if (!btn) return;
+  if (btn.dataset.msgAccion === 'reintentar') {
+    reintentarPregunta(btn.dataset.pregunta || '');
+    return;
+  }
+  if (btn.dataset.msgAccion === 'copiar') {
+    const wrap = typeof btn.closest === 'function' ? btn.closest('.msg') : null;
+    const burbuja = wrap && typeof wrap.querySelector === 'function'
+      ? wrap.querySelector('.msg-bubble')
+      : null;
+    copiarTexto(textoVisible(burbuja, btn.dataset.fallback || ''));
+  }
+}
+
 function renderChat() {
   const box = $('#chat-messages');
   const messages = state.chat.messages;
@@ -1447,11 +1520,13 @@ function renderChat() {
 
     if (msg.role === 'user') {
       wrap.className = 'msg msg-user';
-      wrap.innerHTML = `<div class="msg-bubble">${escapeHtml(msg.text)}</div>`;
+      wrap.innerHTML = `<div class="msg-bubble">${escapeHtml(msg.text)}</div>`
+        + accionesMensaje({ copiar: true, reintentar: msg.text });
     } else if (msg.role === 'assistant') {
       wrap.className = 'msg msg-assistant';
       wrap.innerHTML = `<div class="msg-bubble markdown">${renderMarkdown(msg.text || '')}</div>
-        <div class="msg-meta">Jarvis${time ? ` · ${time}` : ''}</div>`;
+        <div class="msg-meta">Jarvis${time ? ` · ${time}` : ''}</div>`
+        + accionesMensaje({ copiar: true });
     } else if (msg.role === 'tool') {
       wrap.className = 'msg msg-activity';
       wrap.innerHTML = actividadHtml({
@@ -1505,27 +1580,43 @@ async function sendChatMessage(event) {
   const input = $('#chat-input');
   const text = input.value.trim();
   if (!text) return;
+  input.value = '';
+  await enviarTexto(text);
+}
+
+/** Envía un texto como pregunta: se pinta al momento y se manda al motor. */
+async function enviarTexto(text) {
+  const limpio = String(text ?? '').trim();
+  if (!limpio) return;
   if (!state.chat.projectId) {
     toast('Selecciona primero una idea', 'err');
     return;
   }
 
-  // Optimista: pintamos el mensaje ya mismo y vaciamos la caja.
-  state.chat.messages.push({ role: 'user', text, at: new Date().toISOString() });
-  input.value = '';
+  // Optimista: pintamos la pregunta ya mismo.
+  state.chat.messages.push({ role: 'user', text: limpio, at: new Date().toISOString() });
   renderChat();
   setChatStatus('running');
 
   try {
     await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat`, {
       method: 'POST',
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text: limpio })
     });
   } catch (error) {
     state.chat.messages.push({ role: 'error', text: `No se pudo enviar: ${error.message}` });
     setChatStatus('error');
     renderChat();
   }
+}
+
+/** Vuelve a preguntar lo mismo, con el modelo que esté elegido ahora. */
+async function reintentarPregunta(texto) {
+  if (state.chat.busy) {
+    toast('Jarvis está respondiendo; espera o pulsa Detener', 'warn');
+    return;
+  }
+  await enviarTexto(texto);
 }
 
 async function resetChat() {
@@ -1953,6 +2044,7 @@ function bindEvents() {
 
   // --- Chat ---
   on('#chat-form', 'submit', sendChatMessage);
+  on('#chat-messages', 'click', manejarAccionMensaje);
   on('#chat-reset', 'click', resetChat);
   on('#chat-stop', 'click', cancelChat);
   on('#stop-confirm', 'click', () => {
@@ -2073,7 +2165,11 @@ window.Jarvis = {
   parseChecklist,
   construirGrafo,
   renderSeguimiento,
-  SEGUIMIENTO
+  SEGUIMIENTO,
+  enviarTexto,
+  reintentarPregunta,
+  textoVisible,
+  copiarTexto
 };
 
 boot();

@@ -44,7 +44,8 @@ ocurre en **tu navegador** (móvil o PC), así que la Pi no sufre.
 - **Preguntas:** registro de lo que Jarvis anota de la conversación. Cada elemento
   es una casilla en `conceptual/preguntas.md`: `- [x]` ya registrado, `- [ ]`
   pendiente. Los pendientes traen **✓** (guardar) y **✕** (borrar); mientras haya
-  pendientes, la pestaña muestra un **!**.
+  pendientes, la pestaña muestra un **!**. Cada elemento tiene además **⧉** para
+  copiar la pregunta y su respuesta tal cual se ven.
 - **Clave (puntos clave):** lo mismo sobre `conceptual/puntos-clave.md`. Los
   puntos clave dan color a las notas relacionadas en el mapa.
 - **Mapa:** grafo de notas y sus enlaces `[[…]]` (estilo Obsidian). Arrastra los
@@ -56,6 +57,16 @@ ocurre en **tu navegador** (móvil o PC), así que la Pi no sufre.
 El agente mantiene `preguntas.md` y `puntos-clave.md` por su cuenta: al final de
 cada turno anota en ellas lo que merezca quedar registrado (`- [x]`) o lo que
 deje a tu criterio (`- [ ]`). Son notas normales: puedes editarlas a mano.
+
+### Chat (preguntas y respuestas)
+- Mientras Jarvis trabaja, el botón **Enviar** se convierte en **■ Detener**;
+  pulsarlo (o el Detener de la cabecera) pide confirmación antes de parar.
+- Cada **pregunta** tuya lleva **↻ Reintentar** (vuelve a enviarla tal cual, útil
+  si el turno falló por haber elegido un modelo equivocado) y **⧉ Copiar**.
+- Cada **respuesta** de Jarvis lleva **⧉ Copiar**. Se copia el texto tal cual se
+  ve, no el Markdown en crudo.
+- La **traza** de herramientas y razonamiento aparece plegada; se despliega para
+  ver la entrada y la salida.
 
 ### Edición
 - Botón **✎ Editar** para escribir Markdown en crudo.

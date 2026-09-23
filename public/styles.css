@@ -571,6 +571,28 @@ html, body {
   white-space: pre-wrap;
 }
 
+/* Acciones de una pregunta o respuesta: copiar y reintentar */
+.msg-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  padding-left: 2px;
+}
+.msg-user .msg-acciones { justify-content: flex-end; }
+.msg-accion {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.msg-accion:hover { color: var(--text); border-color: var(--border); background: var(--bg-elev); }
+
 /* Indicador de escritura */
 .typing { display: inline-flex; gap: 4px; align-items: center; height: 18px; }
 .typing span {
@@ -984,6 +1006,7 @@ html, body {
 .seg-btn.seg-ok:hover { color: var(--ok); border-color: #1c3a22; }
 .seg-btn.seg-del:hover { color: var(--danger); border-color: #4a1f1c; }
 .seg-btn.seg-ir { width: auto; padding: 0 8px; }
+.seg-btn.seg-copy:hover { color: var(--accent); border-color: var(--accent-strong); }
 
 .mapa-graph {
   height: 62vh; min-height: 400px;
