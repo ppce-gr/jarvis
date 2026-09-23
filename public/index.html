@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0b0f14" />
+  <meta name="theme-color" content="#070b12" />
   <title>Jarvis · Centro de Mando</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="stylesheet" href="/styles.css" />
@@ -12,14 +12,14 @@
   <div id="app">
     <!-- Cabecera -->
     <header class="topbar">
-      <button id="menu-toggle" class="icon-btn" aria-label="Mostrar menú">☰</button>
-      <div class="brand">
+      <button id="menu-toggle" class="icon-btn" aria-label="Mostrar notas">☰</button>
+      <button id="home-btn" class="brand" title="Volver al inicio" aria-label="Volver al inicio">
         <span class="brand-mark">J</span>
         <div class="brand-text">
           <strong>JARVIS</strong>
           <small id="brand-sub">Centro de Mando</small>
         </div>
-      </div>
+      </button>
       <div class="topbar-actions">
         <span id="git-status" class="pill" title="Estado del respaldo Git">git · …</span>
         <button id="system-pill" class="pill pill-btn" title="Versión y actualización de Jarvis">v…</button>
@@ -28,106 +28,129 @@
       </div>
     </header>
 
-    <div class="layout">
-      <!-- Panel lateral: proyectos e ideas -->
-      <aside id="sidebar" class="sidebar">
-        <div class="sidebar-section">
-          <div class="sidebar-title">Proyectos / Ideas</div>
-          <ul id="project-list" class="tree"></ul>
+    <!-- ══════════════════════ VISTA INICIO ══════════════════════ -->
+    <section id="view-home" class="view view-home">
+      <div class="home-head">
+        <div class="home-head-text">
+          <h1>Buenos días, <span class="accent">señor</span></h1>
+          <p class="muted">Todo listo. ¿Qué idea construimos hoy?</p>
         </div>
-        <div class="sidebar-section">
+        <button id="new-idea-btn" class="btn btn-primary btn-lg">＋ Nueva idea</button>
+      </div>
+      <div class="home-body">
+        <div id="idea-grid" class="idea-grid"></div>
+        <div id="home-empty" class="empty-state home-empty hidden">
+          <h2>Sin ideas todavía</h2>
+          <p>Crea la primera con <strong>+ Nueva idea</strong>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════ VISTA IDEA ══════════════════════ -->
+    <section id="view-idea" class="view view-idea hidden">
+      <div class="idea-bar">
+        <button id="back-btn" class="btn btn-ghost btn-sm" title="Volver al inicio">← Volver</button>
+        <div class="idea-bar-titles">
+          <h1 id="idea-title">—</h1>
+          <p id="idea-desc" class="muted"></p>
+        </div>
+        <button id="new-note-btn" class="icon-btn" title="Nueva nota conceptual">＋</button>
+      </div>
+
+      <div class="layout">
+        <!-- Notas de la idea -->
+        <aside id="sidebar" class="sidebar">
           <div class="sidebar-title">
             <span>Notas de <em id="current-project-label">—</em></span>
-            <button id="new-note-btn" class="icon-btn tiny" title="Nueva nota">＋</button>
           </div>
           <ul id="note-list" class="tree"></ul>
-        </div>
-      </aside>
+        </aside>
 
-      <!-- Panel principal -->
-      <main class="main">
-        <div class="tabs" role="tablist">
-          <button class="tab active" data-tab="chat" role="tab">Chat</button>
-          <button class="tab" data-tab="conceptual" role="tab">Conceptual</button>
-          <button class="tab" data-tab="code" role="tab">Código</button>
-          <button class="tab" data-tab="logs" role="tab">Bitácora</button>
-          <span class="tabs-spacer"></span>
-          <button id="edit-toggle" class="btn btn-ghost btn-sm" title="Editar / Ver">✎ Editar</button>
-          <button id="save-note-btn" class="btn btn-primary btn-sm hidden">💾 Guardar</button>
-        </div>
+        <!-- Panel principal -->
+        <main class="main">
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-tab="chat" role="tab">Chat</button>
+            <button class="tab" data-tab="conceptual" role="tab">Conceptual</button>
+            <button class="tab" data-tab="code" role="tab">Código</button>
+            <button class="tab" data-tab="logs" role="tab">Bitácora</button>
+            <span class="tabs-spacer"></span>
+            <button id="edit-toggle" class="btn btn-ghost btn-sm" title="Editar / Ver">✎ Editar</button>
+            <button id="save-note-btn" class="btn btn-primary btn-sm hidden">💾 Guardar</button>
+          </div>
 
-        <section id="pane-chat" class="pane pane-chat">
-          <div class="chat-shell">
-            <div class="chat-head">
-              <span id="chat-status" class="chat-status">—</span>
-              <div id="chat-model-picker" class="model-picker">
-                <button id="chat-model-btn" type="button" class="chat-select model-picker-btn" aria-haspopup="listbox" aria-expanded="false" title="Modelo con el que conversa Jarvis">
-                  <span id="chat-model-label">Cargando…</span>
-                  <span class="model-picker-caret" aria-hidden="true">▾</span>
-                </button>
-                <div id="chat-model-menu" class="model-picker-menu hidden" role="listbox" aria-label="Modelos"></div>
+          <section id="pane-chat" class="pane pane-chat">
+            <div class="chat-shell">
+              <div class="chat-head">
+                <span id="chat-status" class="chat-status">—</span>
+                <div id="chat-model-picker" class="model-picker">
+                  <button id="chat-model-btn" type="button" class="chat-select model-picker-btn" aria-haspopup="listbox" aria-expanded="false" title="Modelo con el que conversa Jarvis">
+                    <span id="chat-model-label">Cargando…</span>
+                    <span class="model-picker-caret" aria-hidden="true">▾</span>
+                  </button>
+                  <div id="chat-model-menu" class="model-picker-menu hidden" role="listbox" aria-label="Modelos"></div>
+                </div>
+                <select id="chat-effort" class="chat-select chat-select-sm" title="Esfuerzo de razonamiento"></select>
+                <button id="chat-stop" class="btn btn-ghost btn-sm hidden" title="Detener la respuesta en curso (el agente conserva lo hablado)">■ Detener</button>
+                <button id="chat-reset" class="btn btn-ghost btn-sm" title="Empezar una conversación nueva (el agente olvida lo hablado; el historial se conserva)">⟳ Nueva</button>
               </div>
-              <select id="chat-effort" class="chat-select chat-select-sm" title="Esfuerzo de razonamiento"></select>
-              <button id="chat-stop" class="btn btn-ghost btn-sm hidden" title="Detener la respuesta en curso (el agente conserva lo hablado)">■ Detener</button>
-              <button id="chat-reset" class="btn btn-ghost btn-sm" title="Empezar una conversación nueva (el agente olvida lo hablado; el historial se conserva)">⟳ Nueva</button>
-            </div>
-            <div id="chat-messages" class="chat-messages">
-              <div class="chat-empty">
-                <h2>Conversemos sobre esta idea</h2>
-                <p class="muted">Aquí se desarrolla la parte conceptual. Cuando tengas claro el plan,
-                  usa la barra <strong>⌘</strong> de abajo para que Jarvis lo ejecute con agentes.</p>
+              <div id="chat-messages" class="chat-messages">
+                <div class="chat-empty">
+                  <h2>Conversemos sobre esta idea</h2>
+                  <p class="muted">Aquí se desarrolla la parte conceptual. Cuando tengas claro el plan,
+                    usa la barra <strong>⌘</strong> de abajo para que Jarvis lo ejecute con agentes.</p>
+                </div>
               </div>
+              <form id="chat-form" class="chat-form">
+                <textarea id="chat-input" rows="2" placeholder="Escribe a Jarvis… (Enter envía, Shift+Enter salto de línea)"></textarea>
+                <button type="submit" id="chat-send" class="btn btn-primary">Enviar</button>
+              </form>
             </div>
-            <form id="chat-form" class="chat-form">
-              <textarea id="chat-input" rows="2" placeholder="Escribe a Jarvis… (Enter envía, Shift+Enter salto de línea)"></textarea>
-              <button type="submit" id="chat-send" class="btn btn-primary">Enviar</button>
-            </form>
-          </div>
-        </section>
+          </section>
 
-        <section id="pane-conceptual" class="pane">
-          <div id="note-header" class="note-header hidden">
-            <h1 id="note-title-view">—</h1>
-            <div id="note-tags" class="tags"></div>
-          </div>
-          <article id="markdown-view" class="markdown">
-            <div class="empty-state">
-              <h2>Bienvenido a Jarvis</h2>
-              <p id="hint-ideas">Selecciona una idea en el panel izquierdo o crea una nueva con <strong>+ Idea</strong>.</p>
-              <p class="muted">Aquí vivirán tus notas conceptuales, tus subideas enlazadas y tus ficheros de preguntas y respuestas.</p>
+          <section id="pane-conceptual" class="pane">
+            <div id="note-header" class="note-header hidden">
+              <h1 id="note-title-view">—</h1>
+              <div id="note-tags" class="tags"></div>
             </div>
-          </article>
-          <textarea id="markdown-editor" class="editor hidden" spellcheck="true"></textarea>
-        </section>
+            <article id="markdown-view" class="markdown">
+              <div class="empty-state">
+                <h2>Bienvenido a Jarvis</h2>
+                <p id="hint-ideas">Selecciona una nota en el panel izquierdo o crea una nueva.</p>
+                <p class="muted">Aquí vivirán tus notas conceptuales, tus subideas enlazadas y tus ficheros de preguntas y respuestas.</p>
+              </div>
+            </article>
+            <textarea id="markdown-editor" class="editor hidden" spellcheck="true"></textarea>
+          </section>
 
-        <section id="pane-code" class="pane hidden">
-          <div class="file-browser">
-            <ul id="code-file-list" class="file-list"></ul>
-            <pre id="code-file-view" class="file-view"><span class="muted">Selecciona un fichero de la lista.</span></pre>
-          </div>
-        </section>
+          <section id="pane-code" class="pane hidden">
+            <div class="file-browser">
+              <ul id="code-file-list" class="file-list"></ul>
+              <pre id="code-file-view" class="file-view"><span class="muted">Selecciona un fichero de la lista.</span></pre>
+            </div>
+          </section>
 
-        <section id="pane-logs" class="pane hidden">
-          <div id="task-status" class="task-status hidden"></div>
-          <div class="file-browser">
-            <ul id="logs-file-list" class="file-list"></ul>
-            <pre id="logs-file-view" class="file-view"><span class="muted">Aquí verás las bitácoras del orquestador y de los agentes.</span></pre>
-          </div>
-        </section>
-      </main>
-    </div>
+          <section id="pane-logs" class="pane hidden">
+            <div id="task-status" class="task-status hidden"></div>
+            <div class="file-browser">
+              <ul id="logs-file-list" class="file-list"></ul>
+              <pre id="logs-file-view" class="file-view"><span class="muted">Aquí verás las bitácoras del orquestador y de los agentes.</span></pre>
+            </div>
+          </section>
+        </main>
+      </div>
 
-    <!-- Barra de órdenes para el orquestador -->
-    <footer class="commandbar">
-      <span class="command-prefix" title="Orquestador">⌘</span>
-      <input
-        id="command-input"
-        type="text"
-        placeholder="Orden de ejecución para el orquestador (lanza agentes)…"
-        autocomplete="off"
-      />
-      <button id="command-send" class="btn btn-primary">Enviar</button>
-    </footer>
+      <!-- Barra de órdenes para el orquestador -->
+      <footer class="commandbar">
+        <span class="command-prefix" title="Orquestador">⌘</span>
+        <input
+          id="command-input"
+          type="text"
+          placeholder="Orden de ejecución para el orquestador (lanza agentes)…"
+          autocomplete="off"
+        />
+        <button id="command-send" class="btn btn-primary">Enviar</button>
+      </footer>
+    </section>
   </div>
 
   <!-- Modal: nueva idea -->

@@ -7,6 +7,7 @@
    ============================================================ */
 
 const state = {
+  view: 'home',
   projects: [],
   currentProjectId: null,
   notes: [],
@@ -141,27 +142,88 @@ function renderMarkdown(md = '') {
 /* ---------------- Carga de datos ---------------- */
 async function loadProjects() {
   const { projects } = await api('/api/projects');
-  state.projects = projects;
-  renderProjectList();
+  state.projects = Array.isArray(projects) ? projects : [];
+  renderIdeaGrid();
 }
 
-function renderProjectList() {
-  const ul = $('#project-list');
-  if (!ul) return;
-  ul.innerHTML = '';
-  if (!Array.isArray(state.projects)) state.projects = [];
-  if (!state.projects.length) {
-    ul.innerHTML = '<li class="muted" style="cursor:default">Sin ideas todavía</li>';
-    return;
+/* ---------------- Vistas: inicio e idea ---------------- */
+function showHome() {
+  state.view = 'home';
+  const home = $('#view-home');
+  const idea = $('#view-idea');
+  if (home) home.classList.remove('hidden');
+  if (idea) idea.classList.add('hidden');
+  const menu = $('#menu-toggle');
+  if (menu) menu.classList.add('hidden');
+  renderIdeaGrid();
+}
+
+function showIdea() {
+  state.view = 'idea';
+  const home = $('#view-home');
+  const idea = $('#view-idea');
+  if (home) home.classList.add('hidden');
+  if (idea) idea.classList.remove('hidden');
+  const menu = $('#menu-toggle');
+  if (menu) menu.classList.remove('hidden');
+}
+
+async function goHome() {
+  closeChat();
+  state.currentProjectId = null;
+  state.currentNoteId = null;
+  state.currentNote = null;
+  state.editing = false;
+  showHome();
+  await loadProjects();
+}
+
+/* ---------------- Inicio: tarjetas de ideas (tipo Obsidian) ---------------- */
+function renderIdeaGrid() {
+  const grid = $('#idea-grid');
+  if (!grid) return;
+  const projects = Array.isArray(state.projects) ? state.projects : [];
+  const empty = $('#home-empty');
+  if (empty) {
+    if (projects.length) empty.classList.add('hidden');
+    else {
+      empty.classList.remove('hidden');
+      empty.innerHTML = '<h2>Sin ideas todavía</h2><p>Crea la primera con <strong>+ Nueva idea</strong>.</p>';
+    }
   }
-  for (const project of state.projects) {
-    const li = document.createElement('li');
-    li.dataset.id = project.id;
-    if (project.id === state.currentProjectId) li.classList.add('active');
-    li.innerHTML = `<span class="ico">📁</span><span>${escapeHtml(project.id)}</span>`;
-    li.addEventListener('click', () => selectProject(project.id));
-    ul.appendChild(li);
+
+  grid.innerHTML = '';
+  for (const project of projects) {
+    const inicial = (project.name || project.id || '?').trim().charAt(0).toUpperCase() || '?';
+    const desc = (project.description || '').trim();
+    const card = document.createElement('article');
+    card.className = 'idea-card';
+    card.dataset.id = project.id;
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+    card.innerHTML =
+      `<div class="idea-card-mark">${escapeHtml(inicial)}</div>`
+      + `<h3 class="idea-card-title">${escapeHtml(project.name || project.id)}</h3>`
+      + `<p class="idea-card-desc">${desc ? escapeHtml(desc.slice(0, 180)) : '<span class="muted">Sin descripción todavía</span>'}</p>`
+      + `<div class="idea-card-foot"><span class="idea-card-tag">${escapeHtml(project.status || 'idea')}</span><span class="idea-card-arrow" aria-hidden="true">→</span></div>`;
+    const abrir = () => selectProject(project.id);
+    card.addEventListener('click', abrir);
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); abrir(); }
+    });
+    grid.appendChild(card);
   }
+
+  // Tarjeta de nueva idea: el acceso a crear está siempre a la vista.
+  const nueva = document.createElement('button');
+  nueva.type = 'button';
+  nueva.className = 'idea-card idea-card-new';
+  nueva.innerHTML = '<span class="idea-card-new-plus" aria-hidden="true">＋</span><span>Nueva idea</span>';
+  nueva.addEventListener('click', () => {
+    const dialog = $('#new-project-dialog');
+    if (dialog) dialog.showModal();
+  });
+  grid.appendChild(nueva);
 }
 
 async function selectProject(projectId) {
@@ -169,8 +231,14 @@ async function selectProject(projectId) {
   state.currentNoteId = null;
   state.currentNote = null;
   state.editing = false;
-  $('#current-project-label').textContent = projectId;
-  renderProjectList();
+  const project = state.projects.find((p) => p.id === projectId);
+  const titulo = $('#idea-title');
+  if (titulo) titulo.textContent = project?.name || projectId;
+  const desc = $('#idea-desc');
+  if (desc) desc.textContent = (project?.description || '').trim().slice(0, 220);
+  const label = $('#current-project-label');
+  if (label) label.textContent = projectId;
+  showIdea();
   closeMobileSidebar();
   await loadNotes();
   await Promise.all([loadZone('code'), loadZone('logs')]);
@@ -1444,6 +1512,9 @@ function bindEvents() {
   });
 
   on('#new-project-btn', 'click', () => $('#new-project-dialog').showModal());
+  on('#new-idea-btn', 'click', () => $('#new-project-dialog').showModal());
+  on('#back-btn', 'click', goHome);
+  on('#home-btn', 'click', goHome);
   on('#new-note-btn', 'click', () => {
     if (!state.currentProjectId) return toast('Selecciona primero una idea', 'err');
     $('#new-note-dialog').showModal();
@@ -1543,13 +1614,9 @@ async function boot() {
 
   try {
     await loadProjects();
-
-    // En móvil (≤820px) el panel de ideas vive detrás del botón ☰. Sin nada
-    // seleccionado la pantalla queda vacía y parece que Jarvis no tiene ideas.
-    // Se abre la primera sola para que siempre haya algo que ver.
-    if (!state.currentProjectId && state.projects.length) {
-      await selectProject(state.projects[0].id);
-    }
+    // El arranque aterriza en el INICIO: las ideas como tarjetas, tipo Obsidian.
+    // Abrir una idea es decisión del usuario, no algo automático.
+    showHome();
 
     await Promise.all([refreshGitStatus(), loadSystemStatus()]);
     setInterval(refreshGitStatus, 30000);
@@ -1560,13 +1627,26 @@ async function boot() {
   }
 }
 
-/** Deja el fallo a la vista en el propio panel de ideas. */
+/** Deja el fallo a la vista en el propio inicio. */
 function mostrarAvisoArranque(mensaje) {
-  const ul = document.getElementById('project-list');
-  if (ul) {
-    ul.innerHTML = `<li style="cursor:default;color:#ffb4ae">⚠️ ${escapeHtml(mensaje)}</li>`;
+  const empty = document.getElementById('home-empty');
+  if (empty) {
+    empty.classList.remove('hidden');
+    empty.innerHTML = `<h2>No se pudo conectar</h2><p>⚠️ ${escapeHtml(mensaje)}</p>`;
   }
   toast(mensaje, 'err');
 }
+
+// API mínima para consola y pruebas: permite abrir ideas, volver al inicio y
+// refrescar datos sin depender de un clic real. No interviene en el flujo normal.
+window.Jarvis = {
+  state,
+  selectProject,
+  goHome,
+  showHome,
+  showIdea,
+  loadProjects,
+  renderIdeaGrid
+};
 
 boot();

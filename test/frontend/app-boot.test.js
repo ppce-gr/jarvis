@@ -7,8 +7,9 @@ import { fileURLToPath } from 'node:url';
 /**
  * Prueba de arranque de la interfaz.
  * ------------------------------------------------------------------
- * Carga `public/app.js` con un DOM mínimo y comprueba que arranca sin errores
- * y que pinta las ideas.
+ * Carga `public/app.js` con un DOM mínimo y comprueba que arranca sin errores,
+ * que el inicio pinta las ideas como tarjetas y que se puede abrir una idea y
+ * volver al inicio.
  *
  * POR QUÉ EXISTE: el peor fallo posible de esta interfaz no es que algo se vea
  * mal, sino que una excepción en el arranque deje la pantalla MUDA —sin ideas,
@@ -21,6 +22,9 @@ import { fileURLToPath } from 'node:url';
  */
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_JS = path.resolve(__dirname, '..', '..', 'public', 'app.js');
+const INDEX = path.resolve(__dirname, '..', '..', 'public', 'index.html');
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Monta un DOM de mentira y ejecuta el frontend. Devuelve lo que se pintó. */
 async function arrancarInterfaz({ respuestas = {} } = {}) {
@@ -74,13 +78,19 @@ async function arrancarInterfaz({ respuestas = {} } = {}) {
   new Function(src)();
   await new Promise((r) => setTimeout(r, 250));
 
-  return { registro, errores };
+  return { registro, errores, jarvis: global.window.Jarvis };
+}
+
+/** Abre una idea y deja que se asienten los fetch encadenados. */
+async function abrirIdea(jarvis, id = 'idea-uno') {
+  await jarvis.selectProject(id);
+  await sleep(80);
 }
 
 const RESPUESTAS_BASE = {
   '/api/projects': {
     projects: [
-      { id: 'idea-uno', name: 'idea-uno' },
+      { id: 'idea-uno', name: 'idea-uno', description: 'La primera idea' },
       { id: 'idea-dos', name: 'idea-dos' }
     ]
   },
@@ -104,20 +114,26 @@ test('la interfaz arranca sin lanzar errores', async () => {
   assert.deepEqual(errores, [], `la interfaz lanzó: ${errores.join(' | ')}`);
 });
 
-test('las ideas se pintan en el panel', async () => {
-  const { registro } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
-  const lista = registro.get('#project-list');
-  assert.ok(lista, 'debe existir el panel de ideas');
-  assert.match(lista.innerHTML, /idea-uno/);
-  assert.match(lista.innerHTML, /idea-dos/);
+test('el inicio pinta las ideas como tarjetas', async () => {
+  const { registro, errores } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.deepEqual(errores, []);
+  const grid = registro.get('#idea-grid');
+  assert.ok(grid, 'debe existir la rejilla de ideas');
+  assert.match(grid.innerHTML, /idea-uno/);
+  assert.match(grid.innerHTML, /idea-dos/);
+  // Cada tarjeta lleva su estructura propia, no una lista de árbol.
+  assert.match(grid.innerHTML, /idea-card-title/);
+  assert.match(grid.innerHTML, /idea-card-mark/);
 });
 
-test('sin ideas avisa en vez de quedarse en blanco', async () => {
+test('sin ideas avisa y ofrece crear la primera', async () => {
   const { registro, errores } = await arrancarInterfaz({
     respuestas: { ...RESPUESTAS_BASE, '/api/projects': { projects: [] } }
   });
   assert.deepEqual(errores, []);
-  assert.match(registro.get('#project-list').innerHTML, /Sin ideas/);
+  assert.match(registro.get('#home-empty').innerHTML, /Sin ideas/);
+  // Aun sin ideas, el acceso a crear sigue a la vista (tarjeta "Nueva idea").
+  assert.match(registro.get('#idea-grid').innerHTML, /Nueva idea/);
 });
 
 test('una respuesta inesperada NO deja la pantalla muda', async () => {
@@ -126,16 +142,44 @@ test('una respuesta inesperada NO deja la pantalla muda', async () => {
     respuestas: { ...RESPUESTAS_BASE, '/conceptual': {} }
   });
   assert.deepEqual(errores, [], 'no debe propagarse una excepción sin capturar');
-  // Lo importante: las ideas siguen viéndose.
-  assert.match(registro.get('#project-list').innerHTML, /idea-uno/);
+  // Lo importante: las ideas siguen viéndose en el inicio.
+  assert.match(registro.get('#idea-grid').innerHTML, /idea-uno/);
 });
 
-test('si el servidor no responde, el fallo se VE en pantalla', async () => {
+test('si no hay proyectos, el inicio avisa en vez de quedar en blanco', async () => {
   const { registro } = await arrancarInterfaz({
     respuestas: { '/api/projects': { error: 'caído' } }
   });
-  const html = registro.get('#project-list').innerHTML;
-  assert.match(html, /⚠️|Sin ideas/, 'debe quedar constancia visible del problema');
+  const html = registro.get('#home-empty').innerHTML;
+  assert.match(html, /Sin ideas/, 'debe quedar constancia visible del problema');
+});
+
+test('la interfaz declara inicio, idea y el botón de volver', () => {
+  const html = fs.readFileSync(INDEX, 'utf8');
+  assert.match(html, /id="view-home"/, 'debe existir la vista de inicio');
+  assert.match(html, /id="view-idea"/, 'debe existir la vista de idea');
+  assert.match(html, /id="back-btn"/, 'debe existir el botón de volver al inicio');
+  assert.match(html, /id="new-idea-btn"/, 'debe existir el botón de nueva idea en el inicio');
+  assert.match(html, /id="idea-grid"/, 'debe existir la rejilla de tarjetas');
+});
+
+test('abrir una idea muestra su título y entra en la vista de idea', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.deepEqual(errores, []);
+  await abrirIdea(jarvis, 'idea-uno');
+  assert.equal(jarvis.state.view, 'idea');
+  assert.equal(registro.get('#idea-title').textContent, 'idea-uno');
+});
+
+test('volver al inicio recupera las tarjetas y suelta la idea', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.deepEqual(errores, []);
+  await abrirIdea(jarvis, 'idea-uno');
+  assert.equal(jarvis.state.view, 'idea');
+  await jarvis.goHome();
+  assert.equal(jarvis.state.view, 'home');
+  assert.equal(jarvis.state.currentProjectId, null);
+  assert.match(registro.get('#idea-grid').innerHTML, /idea-uno/);
 });
 
 /* ================================================================
@@ -171,7 +215,11 @@ const CONFIG_MODELOS = {
 
 async function arrancarConModelos() {
   // `/chat/config` va primero para que el fetch falso lo prefiera sobre `/api/projects`.
-  return arrancarInterfaz({ respuestas: { '/chat/config': CONFIG_MODELOS, ...RESPUESTAS_BASE } });
+  const { registro, errores, jarvis } = await arrancarInterfaz({
+    respuestas: { '/chat/config': CONFIG_MODELOS, ...RESPUESTAS_BASE }
+  });
+  await abrirIdea(jarvis, 'idea-uno');
+  return { registro, errores };
 }
 
 test('el selector separa los disponibles de los que no funcionan', async () => {
@@ -250,7 +298,7 @@ test('la traza se pinta como líneas plegables y guarda el detalle', async () =>
   // `/chat` debe ir primero (para ganar a `/api/projects`) y con el historial.
   const base = { ...RESPUESTAS_BASE };
   delete base['/chat'];
-  const { registro, errores } = await arrancarInterfaz({
+  const { registro, errores, jarvis } = await arrancarInterfaz({
     respuestas: {
       '/chat': {
         messages: [
@@ -270,6 +318,7 @@ test('la traza se pinta como líneas plegables y guarda el detalle', async () =>
       ...base
     }
   });
+  await abrirIdea(jarvis, 'idea-uno');
   assert.deepEqual(errores, [], `la interfaz lanzó: ${errores.join(' | ')}`);
 
   const html = registro.get('#chat-messages').innerHTML;
