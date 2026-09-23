@@ -231,6 +231,36 @@ test('la pestaña de preguntas pinta pendientes con botones para decidir', async
   assert.match(html, /data-seg-accion="borrar"/);
   // Cada pregunta (pendiente o registrada) se puede copiar.
   assert.equal((html.match(/data-seg-copiar=/g) || []).length, 2);
+  // Y borrar: una por pendiente y otra por registrada, con su texto para confirmar.
+  assert.equal((html.match(/data-seg-accion="borrar"/g) || []).length, 2);
+  assert.equal((html.match(/data-seg-texto=/g) || []).length, 2);
+});
+
+test('borrar pregunta o clave pide confirmación antes de tocar la nota', async () => {
+  const base = { ...RESPUESTAS_BASE };
+  delete base['/conceptual'];
+  const respuestas = {
+    '/conceptual': {
+      notes: [
+        {
+          id: 'preguntas',
+          title: 'Preguntas',
+          frontmatter: {},
+          content: '# Preguntas\n\n- [x] Registrada\n- [ ] Pendiente',
+          wikilinks: []
+        }
+      ]
+    },
+    ...base
+  };
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas });
+  await abrirIdea(jarvis, 'idea-uno');
+  assert.deepEqual(errores, []);
+  jarvis.switchTab('preguntas');
+
+  jarvis.pedirBorrado('preguntas', '2', 'Pendiente');
+  assert.equal(registro.get('#borrar-dialog')._modal, true, 'debe abrirse el diálogo');
+  assert.match(registro.get('#borrar-texto').textContent, /Pendiente/);
 });
 
 /* ================================================================

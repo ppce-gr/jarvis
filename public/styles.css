@@ -655,6 +655,8 @@ html, body {
 .btn-sm { padding: 6px 11px; font-size: 12.5px; }
 .btn-primary { background: var(--accent-strong); border-color: var(--accent-strong); color: #04121f; font-weight: 600; }
 .btn-primary:hover { background: var(--accent); }
+.btn-danger { background: #4a1f1c; border-color: #6b2b26; color: #ffd9d5; font-weight: 600; }
+.btn-danger:hover { background: #5c2622; border-color: #7d332c; }
 .btn-ghost { background: transparent; }
 .icon-btn {
   background: transparent; border: none; color: var(--text-dim);

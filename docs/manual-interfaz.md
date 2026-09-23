@@ -43,11 +43,12 @@ ocurre en **tu navegador** (móvil o PC), así que la Pi no sufre.
   entre ideas hermanas. Los que no existen aparecen en rojo.
 - **Preguntas:** registro de lo que Jarvis anota de la conversación. Cada elemento
   es una casilla en `conceptual/preguntas.md`: `- [x]` ya registrado, `- [ ]`
-  pendiente. Los pendientes traen **✓** (guardar) y **✕** (borrar); mientras haya
-  pendientes, la pestaña muestra un **!**. Cada elemento tiene además **⧉** para
-  copiar la pregunta y su respuesta tal cual se ven.
-- **Clave (puntos clave):** lo mismo sobre `conceptual/puntos-clave.md`. Los
-  puntos clave dan color a las notas relacionadas en el mapa.
+  pendiente. Los pendientes traen **✓** (guardar); mientras haya pendientes, la
+  pestaña muestra un **!**. Cada elemento tiene **⧉** para copiar la pregunta y su
+  respuesta tal cual se ven, y **✕** para borrarlo (pide confirmación).
+- **Clave (puntos clave):** lo mismo sobre `conceptual/puntos-clave.md`, también
+  con **✕** para borrar con confirmación. Los puntos clave dan color a las notas
+  relacionadas en el mapa.
 - **Mapa:** grafo de notas y sus enlaces `[[…]]` (estilo Obsidian). Arrastra los
   nodos para recolocarlos y pulsa uno para abrir la nota. El color agrupa por
   punto clave.

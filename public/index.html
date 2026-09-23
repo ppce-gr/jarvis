@@ -268,6 +268,18 @@
     </div>
   </dialog>
 
+  <!-- Modal: confirmar que se borra un elemento del seguimiento -->
+  <dialog id="borrar-dialog" class="dialog">
+    <div class="dialog-body">
+      <h2>¿Borrar este elemento?</h2>
+      <p id="borrar-texto" class="muted">Esta acción no se puede deshacer.</p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+        <button type="button" id="borrar-confirm" class="btn btn-danger">Borrar</button>
+      </div>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast hidden"></div>
 
   <script src="/app.js"></script>

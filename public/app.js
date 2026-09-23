@@ -430,7 +430,7 @@ function renderSeguimiento(tipo) {
           <span class="seg-acciones">
             <button class="seg-btn seg-copy" data-seg-copiar="${escapeHtml(it.texto)}" title="Copiar">⧉</button>
             <button class="seg-btn seg-ok" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="guardar" title="Guardar (dejar de estar pendiente)">✓</button>
-            <button class="seg-btn seg-del" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="borrar" title="Borrar definitivamente">✕</button>
+            <button class="seg-btn seg-del" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="borrar" data-seg-texto="${escapeHtml(it.texto)}" title="Borrar definitivamente">✕</button>
           </span>
         </div>`).join('')
       + '</div>';
@@ -445,6 +445,7 @@ function renderSeguimiento(tipo) {
           <span class="seg-acciones">
             <button class="seg-btn seg-copy" data-seg-copiar="${escapeHtml(it.texto)}" title="Copiar">⧉</button>
             <button class="seg-btn seg-ir" data-seg-conv="${escapeHtml(it.texto)}" title="Ver en la conversación">↗</button>
+            <button class="seg-btn seg-del" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="borrar" data-seg-texto="${escapeHtml(it.texto)}" title="Borrar definitivamente">✕</button>
           </span>
         </div>`).join('')
       + '</div>';
@@ -485,6 +486,39 @@ async function resolverSeguimiento(tipo, linea, accion) {
   }
 }
 
+/** Elemento pendiente de confirmar para borrar: `{ tipo, linea }`. */
+let borradoPendiente = null;
+
+/** Pide confirmación antes de borrar una pregunta o un punto clave. */
+function pedirBorrado(tipo, linea, texto) {
+  borradoPendiente = { tipo, linea };
+  const resumen = $('#borrar-texto');
+  if (resumen) {
+    resumen.textContent = texto
+      ? `Se borrará «${texto}». Esta acción no se puede deshacer.`
+      : 'Esta acción no se puede deshacer.';
+  }
+  const dialog = $('#borrar-dialog');
+  if (dialog && typeof dialog.showModal === 'function') {
+    dialog.showModal();
+    return;
+  }
+  // Red de seguridad si faltara el diálogo.
+  if (typeof window.confirm === 'function'
+    && window.confirm(`¿Borrar${texto ? ` «${texto}»` : ''}?`)) {
+    confirmarBorrado();
+  }
+}
+
+/** Confirma el borrado que estaba pendiente y reescribe la nota. */
+async function confirmarBorrado() {
+  const pendiente = borradoPendiente;
+  borradoPendiente = null;
+  const dialog = $('#borrar-dialog');
+  if (dialog) dialog.close();
+  if (pendiente) await resolverSeguimiento(pendiente.tipo, pendiente.linea, 'borrar');
+}
+
 /** Clic en el seguimiento: resolver una pendiente o saltar a la conversación. */
 function manejarSeguimiento(event) {
   const copiar = event.target.closest('[data-seg-copiar]');
@@ -493,6 +527,11 @@ function manejarSeguimiento(event) {
   if (ir) { irAConversacion(ir.dataset.segConv); return; }
   const btn = event.target.closest('[data-seg-accion]');
   if (!btn) return;
+  // Borrar siempre pide confirmación.
+  if (btn.dataset.segAccion === 'borrar') {
+    pedirBorrado(btn.dataset.segTipo, btn.dataset.segLinea, btn.dataset.segTexto || '');
+    return;
+  }
   resolverSeguimiento(btn.dataset.segTipo, btn.dataset.segLinea, btn.dataset.segAccion);
 }
 
@@ -2052,6 +2091,7 @@ function bindEvents() {
     if (dialog) dialog.close();
     cancelarTurno();
   });
+  on('#borrar-confirm', 'click', confirmarBorrado);
   on('#chat-effort', 'change', (e) => saveChatConfig('reasoning_effort', e.target.value));
   // Desplegable de modelos: cada fila elige; su icono ⟳ comprueba sólo ese.
   on('#chat-model-btn', 'click', toggleModelMenu);
@@ -2169,7 +2209,9 @@ window.Jarvis = {
   enviarTexto,
   reintentarPregunta,
   textoVisible,
-  copiarTexto
+  copiarTexto,
+  pedirBorrado,
+  confirmarBorrado
 };
 
 boot();
