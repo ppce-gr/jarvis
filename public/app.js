@@ -255,6 +255,7 @@ async function loadNotes() {
   state.notes = Array.isArray(data.notes) ? data.notes : [];
   if (data.error) toast(`No se pudieron leer las notas: ${data.error}`, 'err');
   renderNoteList();
+  actualizarBadges();
 }
 
 function renderNoteList() {
@@ -358,6 +359,343 @@ async function saveNote() {
   }
 }
 
+/* ================================================================
+   Seguimiento: preguntas y puntos clave
+   ----------------------------------------------------------------
+   El agente mantiene dos notas en `conceptual/` con listas de casillas:
+
+     - [x] Elemento registrado (decisión tomada)
+     - [ ] Elemento pendiente de que el usuario decida
+
+   La interfaz las lee, deja resolver las pendientes (guardar o borrar) y
+   avisa con un «!» en la pestaña mientras queden pendientes.
+   ================================================================ */
+const SEGUIMIENTO = {
+  preguntas: { nota: 'preguntas', titulo: 'Preguntas' },
+  clave: { nota: 'puntos-clave', titulo: 'Puntos clave' }
+};
+
+/** Separa el contenido de una nota en casillas registradas y pendientes. */
+function parseChecklist(md = '') {
+  const registrados = [];
+  const pendientes = [];
+  String(md).split('\n').forEach((line, linea) => {
+    const m = line.match(/^\s*[-*]\s*\[([ xX])\]\s*(.+?)\s*$/);
+    if (!m) return;
+    const item = { texto: m[2], linea };
+    if (m[1].toLowerCase() === 'x') registrados.push(item);
+    else pendientes.push(item);
+  });
+  return { registrados, pendientes };
+}
+
+function notaDeSeguimiento(tipo) {
+  const cfg = SEGUIMIENTO[tipo];
+  if (!cfg) return null;
+  return (state.notes || []).find((n) => n && n.id === cfg.nota) || null;
+}
+
+/** Cuenta las pendientes de un tipo («!» en la pestaña). */
+function pendientesDe(tipo) {
+  return parseChecklist(notaDeSeguimiento(tipo)?.content || '').pendientes.length;
+}
+
+function actualizarBadges() {
+  for (const [tipo, id] of [['preguntas', '#badge-preguntas'], ['clave', '#badge-clave']]) {
+    const el = $(id);
+    if (!el) continue;
+    const n = pendientesDe(tipo);
+    el.classList.toggle('hidden', n === 0);
+    el.title = n === 0 ? '' : `${n} pendiente(s) de evaluar`;
+  }
+}
+
+function renderSeguimiento(tipo) {
+  const cfg = SEGUIMIENTO[tipo];
+  const cont = $(tipo === 'preguntas' ? '#preguntas-list' : '#clave-list');
+  if (!cont || !cfg) return;
+  const nota = notaDeSeguimiento(tipo);
+  if (!nota) {
+    cont.innerHTML = `<div class="empty-state"><h2>Sin ${cfg.titulo.toLowerCase()} todavía</h2>`
+      + '<p class="muted">Jarvis irá anotando aquí lo que merezca quedar registrado. '
+      + `También puedes crear la nota <code>${cfg.nota}.md</code> en <code>conceptual/</code> `
+      + 'con listas <code>- [x]</code> (registrado) y <code>- [ ]</code> (pendiente).</p></div>';
+    return;
+  }
+  const { registrados, pendientes } = parseChecklist(nota.content);
+  let html = '';
+
+  if (pendientes.length) {
+    html += `<div class="seg-grupo"><h3>Pendientes de evaluar <span class="seg-count">${pendientes.length}</span></h3>`
+      + pendientes.map((it) => `
+        <div class="seg-item seg-pendiente">
+          <span class="seg-texto">${escapeHtml(it.texto)}</span>
+          <span class="seg-acciones">
+            <button class="seg-btn seg-ok" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="guardar" title="Guardar (dejar de estar pendiente)">✓</button>
+            <button class="seg-btn seg-del" data-seg-tipo="${tipo}" data-seg-linea="${it.linea}" data-seg-accion="borrar" title="Borrar definitivamente">✕</button>
+          </span>
+        </div>`).join('')
+      + '</div>';
+  }
+
+  if (registrados.length) {
+    html += `<div class="seg-grupo"><h3>Registrados <span class="seg-count">${registrados.length}</span></h3>`
+      + registrados.map((it) => `
+        <div class="seg-item">
+          <span class="seg-check" aria-hidden="true">✓</span>
+          <span class="seg-texto">${escapeHtml(it.texto)}</span>
+          <button class="seg-btn seg-ir" data-seg-conv="${escapeHtml(it.texto)}" title="Ver en la conversación">↗</button>
+        </div>`).join('')
+      + '</div>';
+  }
+
+  cont.innerHTML = html || '<div class="empty-state"><p class="muted">Sin elementos todavía.</p></div>';
+}
+
+/** Guarda o borra una línea pendiente reescribiendo la nota. */
+async function resolverSeguimiento(tipo, linea, accion) {
+  const cfg = SEGUIMIENTO[tipo];
+  const nota = notaDeSeguimiento(tipo);
+  if (!cfg || !nota || !state.currentProjectId) return;
+  const lineas = String(nota.content || '').split('\n');
+  const i = Number(linea);
+  if (!Number.isInteger(i) || i < 0 || i >= lineas.length) return;
+
+  if (accion === 'guardar') lineas[i] = lineas[i].replace(/\[(\s*)\]/, '[x]');
+  else if (accion === 'borrar') lineas.splice(i, 1);
+  else return;
+
+  try {
+    await api(
+      `/api/projects/${encodeURIComponent(state.currentProjectId)}/conceptual/${encodeURIComponent(cfg.nota)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: nota.title || cfg.titulo,
+          content: lineas.join('\n'),
+          frontmatter: nota.frontmatter || {}
+        })
+      }
+    );
+    await loadNotes();
+    renderSeguimiento(tipo);
+  } catch (error) {
+    toast(`No se pudo actualizar: ${error.message}`, 'err');
+  }
+}
+
+/** Clic en el seguimiento: resolver una pendiente o saltar a la conversación. */
+function manejarSeguimiento(event) {
+  const ir = event.target.closest('[data-seg-conv]');
+  if (ir) { irAConversacion(ir.dataset.segConv); return; }
+  const btn = event.target.closest('[data-seg-accion]');
+  if (!btn) return;
+  resolverSeguimiento(btn.dataset.segTipo, btn.dataset.segLinea, btn.dataset.segAccion);
+}
+
+/** Salta al turno de la conversación que contiene ese texto. */
+function irAConversacion(texto) {
+  switchTab('chat');
+  const clave = String(texto).toLowerCase().replace(/[¿?¡!.,;:()"']/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+  const box = $('#chat-messages');
+  if (!clave || !box || typeof box.querySelectorAll !== 'function') return;
+  const nodos = box.querySelectorAll('[data-idx]');
+  for (const nodo of nodos) {
+    if (String(nodo.textContent || '').toLowerCase().replace(/\s+/g, ' ').includes(clave)) {
+      if (typeof nodo.scrollIntoView === 'function') nodo.scrollIntoView({ block: 'center' });
+      nodo.classList.add('msg-flash');
+      setTimeout(() => nodo.classList.remove('msg-flash'), 1600);
+      return;
+    }
+  }
+  toast('No encuentro ese texto en la conversación', 'warn');
+}
+
+/** Recarga las notas y repinta lo que dependa de ellas (tras un turno). */
+async function refrescarSeguimiento() {
+  if (!state.currentProjectId) return;
+  try {
+    await loadNotes();
+  } catch { return; }
+  const activo = document.querySelector('.tab.active');
+  const tab = activo?.dataset?.tab;
+  if (tab === 'preguntas' || tab === 'clave') renderSeguimiento(tab);
+  if (tab === 'mapa') renderMapa();
+}
+
+/* ================================================================
+   Mapa mental: notas y sus wikilinks, con un pequeño motor de fuerzas
+   ================================================================ */
+/** Tono estable a partir de un texto: mismo texto, mismo color. */
+function tono(texto) {
+  let h = 0;
+  for (const ch of String(texto)) h = (h * 31 + ch.codePointAt(0)) % 360;
+  return h;
+}
+
+/** Grafo de notas: nodos = notas, aristas = wikilinks existentes. */
+function construirGrafo(notes) {
+  const lista = (notes || []).filter((n) => n && n.id);
+  const nodos = lista.map((n) => ({ id: n.id, title: n.title || n.id, frontmatter: n.frontmatter || {}, content: n.content || '' }));
+  const ids = new Set(nodos.map((n) => n.id));
+  const aristas = [];
+  const vistas = new Set();
+  for (const n of lista) {
+    for (const destino of (n.wikilinks || [])) {
+      if (!ids.has(destino) || destino === n.id) continue;
+      const clave = [n.id, destino].sort().join('|');
+      if (vistas.has(clave)) continue;
+      vistas.add(clave);
+      aristas.push({ origen: n.id, destino });
+    }
+  }
+  return { nodos, aristas };
+}
+
+/** Color del nodo según el punto clave que menciona (o su etiqueta). */
+function colorDeNodo(nodo, puntos = []) {
+  const texto = `${nodo.title || ''}\n${nodo.content || ''}`.toLowerCase();
+  for (const p of puntos) {
+    const t = String(p).toLowerCase().trim();
+    if (t && texto.includes(t)) return `hsl(${tono(t)}, 72%, 62%)`;
+  }
+  const tag = String(nodo.frontmatter?.tags || '').replace(/[[\]"']/g, '').split(',')[0].trim();
+  if (tag) return `hsl(${tono(tag)}, 72%, 62%)`;
+  return 'hsl(205, 90%, 62%)';
+}
+
+/** Coloca los nodos con repulsión + muelles (fuerzas), sin dependencias. */
+function repartir(nodos, aristas, ancho, alto, ticks = 320) {
+  const n = nodos.length || 1;
+  nodos.forEach((nodo, i) => {
+    const a = (i / n) * Math.PI * 2;
+    const r = Math.min(ancho, alto) * 0.32;
+    nodo.x = ancho / 2 + Math.cos(a) * r;
+    nodo.y = alto / 2 + Math.sin(a) * r;
+  });
+  const porId = new Map(nodos.map((x) => [x.id, x]));
+  const enlaces = aristas.map((e) => ({ s: porId.get(e.origen), t: porId.get(e.destino) })).filter((l) => l.s && l.t);
+  const dist = Math.min(150, 60 + nodos.length * 6);
+
+  for (let k = 0; k < ticks; k += 1) {
+    for (let i = 0; i < nodos.length; i += 1) {
+      for (let j = i + 1; j < nodos.length; j += 1) {
+        const a = nodos[i]; const b = nodos[j];
+        const dx = a.x - b.x; const dy = a.y - b.y;
+        const d2 = dx * dx + dy * dy || 0.01;
+        const d = Math.sqrt(d2);
+        const f = 3200 / d2;
+        const fx = (dx / d) * f; const fy = (dy / d) * f;
+        a.x += fx; a.y += fy; b.x -= fx; b.y -= fy;
+      }
+    }
+    for (const l of enlaces) {
+      const dx = l.t.x - l.s.x; const dy = l.t.y - l.s.y;
+      const d = Math.hypot(dx, dy) || 0.01;
+      const f = (d - dist) * 0.02;
+      const fx = (dx / d) * f; const fy = (dy / d) * f;
+      l.s.x += fx; l.s.y += fy; l.t.x -= fx; l.t.y -= fy;
+    }
+    for (const nodo of nodos) {
+      nodo.x += (ancho / 2 - nodo.x) * 0.006;
+      nodo.y += (alto / 2 - nodo.y) * 0.006;
+    }
+  }
+  for (const nodo of nodos) {
+    nodo.x = Math.max(30, Math.min(ancho - 30, nodo.x));
+    nodo.y = Math.max(30, Math.min(alto - 30, nodo.y));
+  }
+}
+
+function svgMapa(nodos, aristas, puntos, ancho, alto) {
+  const porId = new Map(nodos.map((n) => [n.id, n]));
+  const lineas = aristas.map((e) => {
+    const o = porId.get(e.origen); const d = porId.get(e.destino);
+    if (!o || !d) return '';
+    return `<line x1="${o.x.toFixed(1)}" y1="${o.y.toFixed(1)}" x2="${d.x.toFixed(1)}" y2="${d.y.toFixed(1)}" />`;
+  }).join('');
+  const nodosHtml = nodos.map((nodo) => {
+    const color = colorDeNodo(nodo, puntos);
+    const corto = String(nodo.title || nodo.id);
+    const etiqueta = corto.length > 18 ? `${corto.slice(0, 17)}…` : corto;
+    return `<g class="mapa-nodo" data-nodo="${escapeHtml(nodo.id)}" transform="translate(${nodo.x.toFixed(1)},${nodo.y.toFixed(1)})">`
+      + `<circle r="15" fill="${color}" />`
+      + `<text y="30" text-anchor="middle">${escapeHtml(etiqueta)}</text>`
+      + '</g>';
+  }).join('');
+  return `<svg viewBox="0 0 ${ancho} ${alto}" preserveAspectRatio="xMidYMid meet" class="mapa-svg">`
+    + `<g class="mapa-lineas">${lineas}</g>${nodosHtml}</svg>`;
+}
+
+function pintarLeyenda(puntos) {
+  const cont = $('#mapa-leyenda');
+  if (!cont) return;
+  if (!puntos.length) { cont.innerHTML = '<span class="muted">Sin puntos clave: los nodos usan su color por etiqueta.</span>'; return; }
+  cont.innerHTML = '<span class="muted">Por punto clave:</span> '
+    + puntos.map((p) => `<span class="leyenda-item"><span class="leyenda-punto" style="background:hsl(${tono(String(p).toLowerCase().trim())},72%,62%)"></span>${escapeHtml(p)}</span>`).join('');
+}
+
+let mapaActual = null;
+let mapaDrag = null;
+
+function renderMapa() {
+  const cont = $('#mapa-graph');
+  if (!cont) return;
+  // Los ficheros de seguimiento no son ideas: fuera del mapa.
+  const notas = (state.notes || []).filter((n) => n && n.id && n.id !== 'preguntas' && n.id !== 'puntos-clave');
+  if (!notas.length) {
+    cont.innerHTML = '<div class="empty-state"><p class="muted">No hay notas para dibujar todavía.</p></div>';
+    const leyenda = $('#mapa-leyenda');
+    if (leyenda) leyenda.innerHTML = '';
+    return;
+  }
+  const puntos = parseChecklist(notaDeSeguimiento('clave')?.content || '').registrados.map((p) => p.texto);
+  const { nodos, aristas } = construirGrafo(notas);
+  const ancho = Math.max(360, cont.clientWidth || 760);
+  const alto = Math.max(420, cont.clientHeight || 520);
+  repartir(nodos, aristas, ancho, alto);
+  mapaActual = { nodos, aristas, puntos, ancho, alto };
+  cont.innerHTML = svgMapa(nodos, aristas, puntos, ancho, alto);
+  pintarLeyenda(puntos);
+}
+
+function redibujarMapa() {
+  const cont = $('#mapa-graph');
+  if (!cont || !mapaActual) return;
+  const { nodos, aristas, puntos, ancho, alto } = mapaActual;
+  cont.innerHTML = svgMapa(nodos, aristas, puntos, ancho, alto);
+}
+
+function mapaPointerDown(event) {
+  if (!mapaActual || !event.target?.closest) return;
+  const g = event.target.closest('[data-nodo]');
+  if (!g) return;
+  const nodo = mapaActual.nodos.find((n) => n.id === g.dataset.nodo);
+  if (!nodo) return;
+  const cont = $('#mapa-graph');
+  const r = cont.getBoundingClientRect();
+  mapaDrag = { nodo, dx: nodo.x - (event.clientX - r.left), dy: nodo.y - (event.clientY - r.top), movido: false };
+  event.preventDefault();
+}
+
+function mapaPointerMove(event) {
+  if (!mapaDrag) return;
+  const cont = $('#mapa-graph');
+  if (!cont) return;
+  const r = cont.getBoundingClientRect();
+  mapaDrag.nodo.x = event.clientX - r.left + mapaDrag.dx;
+  mapaDrag.nodo.y = event.clientY - r.top + mapaDrag.dy;
+  mapaDrag.movido = true;
+  redibujarMapa();
+}
+
+function mapaPointerUp() {
+  if (!mapaDrag) return;
+  const { nodo, movido } = mapaDrag;
+  mapaDrag = null;
+  if (!movido) { switchTab('conceptual'); openNote(nodo.id); }
+}
+
 /* ---------------- Explorador code/ y logs/ ---------------- */
 async function loadZone(zone) {
   if (!state.currentProjectId) return;
@@ -402,11 +740,16 @@ function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
   $('#pane-chat').classList.toggle('hidden', tab !== 'chat');
   $('#pane-conceptual').classList.toggle('hidden', tab !== 'conceptual');
+  $('#pane-preguntas').classList.toggle('hidden', tab !== 'preguntas');
+  $('#pane-clave').classList.toggle('hidden', tab !== 'clave');
+  $('#pane-mapa').classList.toggle('hidden', tab !== 'mapa');
   $('#pane-code').classList.toggle('hidden', tab !== 'code');
   $('#pane-logs').classList.toggle('hidden', tab !== 'logs');
   $('#edit-toggle').classList.toggle('hidden', tab !== 'conceptual' || !state.currentNoteId);
   if (tab === 'logs') refreshTaskStatus();
   if (tab === 'chat') scrollChatToEnd();
+  if (tab === 'preguntas' || tab === 'clave') renderSeguimiento(tab);
+  if (tab === 'mapa') renderMapa();
 }
 
 /* ================================================================
@@ -957,6 +1300,8 @@ function handleChatEvent(event) {
       removeStreamingBubble();
       setChatStatus('idle');
       renderChat();
+      // El agente pudo anotar preguntas o puntos clave: refrescamos el seguimiento.
+      refrescarSeguimiento();
       break;
 
     case 'reset':
@@ -1096,8 +1441,11 @@ function renderChat() {
     return;
   }
 
+  let idx = 0;
   for (const msg of messages) {
     const wrap = document.createElement('div');
+    wrap.dataset.idx = String(idx);
+    idx += 1;
     const time = msg.at ? new Date(msg.at).toLocaleTimeString().slice(0, 5) : '';
 
     if (msg.role === 'user') {
@@ -1500,6 +1848,17 @@ function bindEvents() {
     if (link) openNote(link.dataset.note);
   });
 
+  // Seguimiento: resolver pendientes (guardar/borrar) y saltar a la conversación
+  on('#preguntas-list', 'click', manejarSeguimiento);
+  on('#clave-list', 'click', manejarSeguimiento);
+
+  // Mapa: arrastrar los nodos y abrir la nota al pulsarla
+  on('#mapa-graph', 'pointerdown', mapaPointerDown);
+  if (typeof window.addEventListener === 'function') {
+    window.addEventListener('pointermove', mapaPointerMove);
+    window.addEventListener('pointerup', mapaPointerUp);
+  }
+
   on('#edit-toggle', 'click', () => setEditing(!state.editing));
   on('#save-note-btn', 'click', saveNote);
 
@@ -1646,7 +2005,12 @@ window.Jarvis = {
   showHome,
   showIdea,
   loadProjects,
-  renderIdeaGrid
+  renderIdeaGrid,
+  switchTab,
+  parseChecklist,
+  construirGrafo,
+  renderSeguimiento,
+  SEGUIMIENTO
 };
 
 boot();

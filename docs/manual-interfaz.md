@@ -41,8 +41,21 @@ ocurre en **tu navegador** (móvil o PC), así que la Pi no sufre.
 ### Pestañas centrales
 - **Conceptual:** tus notas Markdown. Los `[[enlaces]]` son clicables para saltar
   entre ideas hermanas. Los que no existen aparecen en rojo.
+- **Preguntas:** registro de lo que Jarvis anota de la conversación. Cada elemento
+  es una casilla en `conceptual/preguntas.md`: `- [x]` ya registrado, `- [ ]`
+  pendiente. Los pendientes traen **✓** (guardar) y **✕** (borrar); mientras haya
+  pendientes, la pestaña muestra un **!**.
+- **Clave (puntos clave):** lo mismo sobre `conceptual/puntos-clave.md`. Los
+  puntos clave dan color a las notas relacionadas en el mapa.
+- **Mapa:** grafo de notas y sus enlaces `[[…]]` (estilo Obsidian). Arrastra los
+  nodos para recolocarlos y pulsa uno para abrir la nota. El color agrupa por
+  punto clave.
 - **Código:** explora `<memoria>/<idea>/code/`.
 - **Bitácora:** explora `<memoria>/<idea>/logs/` (registro del orquestador).
+
+El agente mantiene `preguntas.md` y `puntos-clave.md` por su cuenta: al final de
+cada turno anota en ellas lo que merezca quedar registrado (`- [x]`) o lo que
+deje a tu criterio (`- [ ]`). Son notas normales: puedes editarlas a mano.
 
 ### Edición
 - Botón **✎ Editar** para escribir Markdown en crudo.

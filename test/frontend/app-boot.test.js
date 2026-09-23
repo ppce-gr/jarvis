@@ -183,6 +183,55 @@ test('volver al inicio recupera las tarjetas y suelta la idea', async () => {
 });
 
 /* ================================================================
+   Seguimiento (preguntas / puntos clave) y mapa mental
+   ================================================================ */
+
+test('parseChecklist distingue registradas de pendientes', async () => {
+  const { jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  const r = jarvis.parseChecklist('# T\n\n- [x] Una — respuesta\n- [ ] Otra\n- [X] Tres\n');
+  assert.deepEqual(r.registrados.map((x) => x.texto), ['Una — respuesta', 'Tres']);
+  assert.deepEqual(r.pendientes.map((x) => x.texto), ['Otra']);
+});
+
+test('construirGrafo une notas por sus wikilinks, sin duplicar ni inventar', async () => {
+  const { jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  const g = jarvis.construirGrafo([
+    { id: 'a', title: 'A', content: '', wikilinks: ['b', 'fantasma'] },
+    { id: 'b', title: 'B', content: '', wikilinks: ['a'] }
+  ]);
+  assert.equal(g.nodos.length, 2);
+  assert.equal(g.aristas.length, 1, 'a<->b cuenta una vez y el enlace roto no entra');
+});
+
+test('la pestaña de preguntas pinta pendientes con botones para decidir', async () => {
+  const base = { ...RESPUESTAS_BASE };
+  delete base['/conceptual'];   // el /conceptual de esta prueba debe ganar
+  const respuestas = {
+    '/conceptual': {
+      notes: [
+        {
+          id: 'preguntas',
+          title: 'Preguntas',
+          frontmatter: {},
+          content: '# Preguntas\n\n- [x] Registrada\n- [ ] Pendiente',
+          wikilinks: []
+        }
+      ]
+    },
+    ...base
+  };
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas });
+  await abrirIdea(jarvis, 'idea-uno');
+  assert.deepEqual(errores, []);
+  jarvis.switchTab('preguntas');
+  const html = registro.get('#preguntas-list').innerHTML;
+  assert.match(html, /Registrada/);
+  assert.match(html, /Pendiente/);
+  assert.match(html, /data-seg-accion="guardar"/);
+  assert.match(html, /data-seg-accion="borrar"/);
+});
+
+/* ================================================================
    Selector de modelos: disponibles arriba, no disponibles abajo
    ================================================================ */
 

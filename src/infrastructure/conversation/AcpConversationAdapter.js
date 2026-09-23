@@ -722,6 +722,16 @@ export class AcpConversationAdapter extends ConversationPort {
       '- El código y los artefactos van en `code/`.',
       '- No modifiques nada fuera de este proyecto.',
       '',
+      'Seguimiento de la conversación (notas en `conceptual/`):',
+      '- `preguntas.md`: cuando el usuario te pregunte algo, decide si merece quedar',
+      '  registrado. Si sí, anótalo como `- [x] <pregunta> — <respuesta breve>`. Si no',
+      '  lo tienes claro, anótalo como `- [ ] <pregunta>` para que el usuario decida',
+      '  en la pestaña Preguntas (✓ la guarda, ✕ la borra). No borres una `[ ]` tú solo.',
+      '- `puntos-clave.md`: igual, pero con los puntos clave de la idea; se usan para',
+      '  colorear el mapa mental.',
+      'Mantén estas listas al día al final del turno en que haya algo que anotar, sin',
+      'reescribir lo que ya está.',
+      '',
       'Mensaje del usuario:',
       text
     ].join('\n');

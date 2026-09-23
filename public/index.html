@@ -71,6 +71,9 @@
           <div class="tabs" role="tablist">
             <button class="tab active" data-tab="chat" role="tab">Chat</button>
             <button class="tab" data-tab="conceptual" role="tab">Conceptual</button>
+            <button class="tab" data-tab="preguntas" role="tab">Preguntas<span id="badge-preguntas" class="tab-badge hidden" title="Preguntas pendientes de evaluar">!</span></button>
+            <button class="tab" data-tab="clave" role="tab" title="Puntos clave de la idea">Clave<span id="badge-clave" class="tab-badge hidden" title="Puntos clave pendientes de evaluar">!</span></button>
+            <button class="tab" data-tab="mapa" role="tab" title="Mapa mental de la idea">Mapa</button>
             <button class="tab" data-tab="code" role="tab">Código</button>
             <button class="tab" data-tab="logs" role="tab">Bitácora</button>
             <span class="tabs-spacer"></span>
@@ -120,6 +123,37 @@
               </div>
             </article>
             <textarea id="markdown-editor" class="editor hidden" spellcheck="true"></textarea>
+          </section>
+
+          <!-- Seguimiento: preguntas de la conversación -->
+          <section id="pane-preguntas" class="pane hidden">
+            <div class="seguimiento-head">
+              <h2>Preguntas</h2>
+              <p class="muted">Lo que registra Jarvis de vuestra conversación. Las que tienen
+                <strong>!</strong> están pendientes de que decidas: guárdalas o bórralas.</p>
+            </div>
+            <div id="preguntas-list" class="seguimiento-list"></div>
+          </section>
+
+          <!-- Seguimiento: puntos clave de la idea -->
+          <section id="pane-clave" class="pane hidden">
+            <div class="seguimiento-head">
+              <h2>Puntos clave</h2>
+              <p class="muted">Los pilares de la idea. Los pendientes (<strong>!</strong>) esperan
+                tu decisión. El color de cada punto tiñe las notas relacionadas en el mapa.</p>
+            </div>
+            <div id="clave-list" class="seguimiento-list"></div>
+          </section>
+
+          <!-- Mapa mental: notas y sus enlaces, como en Obsidian -->
+          <section id="pane-mapa" class="pane hidden">
+            <div class="mapa-head">
+              <h2>Mapa mental</h2>
+              <p class="muted">Cada nodo es una nota; cada línea, un enlace <code>[[…]]</code>.
+                Arrastra para recolocar, pulsa para abrir. El color agrupa por punto clave.</p>
+            </div>
+            <div id="mapa-graph" class="mapa-graph"></div>
+            <div id="mapa-leyenda" class="mapa-leyenda"></div>
           </section>
 
           <section id="pane-code" class="pane hidden">

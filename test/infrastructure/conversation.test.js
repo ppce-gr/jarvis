@@ -111,6 +111,8 @@ test('buildOutgoingMessage da contexto sólo en el primer mensaje', () => {
   const first = DshSdkConversationAdapter.buildOutgoingMessage('demo', 'hola', true);
   assert.match(first, /proyecto "demo"/);
   assert.match(first, /conceptual\//);
+  assert.match(first, /preguntas\.md/);
+  assert.match(first, /puntos-clave\.md/);
   assert.match(first, /hola$/);
 
   const later = DshSdkConversationAdapter.buildOutgoingMessage('demo', 'sigue', false);
