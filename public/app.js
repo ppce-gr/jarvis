@@ -1703,12 +1703,15 @@ async function cargarCatalogoNuevaIdea() {
   }
 }
 
-/** Abre el diálogo de nueva idea con el catálogo de modelos ya cargado. */
-async function abrirNuevaIdea() {
+/** Abre el diálogo de nueva idea YA y rellena el catálogo en segundo plano. */
+function abrirNuevaIdea() {
   const dialog = $('#new-project-dialog');
-  if (!dialog) return;
-  try { await cargarCatalogoNuevaIdea(); } catch { /* se abre igual */ }
-  dialog.showModal();
+  if (!dialog || dialog.open) return;
+  // Se abre de inmediato. Antes se esperaba al catálogo ANTES de abrir: si esa
+  // petición tardaba (o se atascaba arrancando la sesión del agente), el botón
+  // parecía muerto. El selector se rellena cuando llega el catálogo.
+  try { dialog.showModal(); } catch { /* ya estaba abierto */ }
+  return cargarCatalogoNuevaIdea();
 }
 
 /* ---------------- Acciones de creación ---------------- */

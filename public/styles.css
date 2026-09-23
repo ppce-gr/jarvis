@@ -1016,4 +1016,8 @@ html, body {
   .tab { white-space: nowrap; }
   .seguimiento-list { max-width: 100%; }
   .mapa-graph { height: 56vh; }
+  /* Que «+ Idea» quepa en el móvil: el pill de git es lo menos crítico. */
+  #git-status { display: none; }
+  .topbar { gap: 8px; padding: 0 10px; }
+  .topbar-actions { gap: 6px; }
 }

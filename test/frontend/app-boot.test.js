@@ -41,7 +41,7 @@ async function arrancarInterfaz({ respuestas = {} } = {}) {
       this.innerHTML += (c.innerHTML || c.textContent || '');
     },
     remove() {}, closest() { return null; }, querySelectorAll() { return []; },
-    showModal() {}, close() {}, setAttribute() {}, focus() {}
+    showModal() { this._modal = true; }, close() { this._modal = false; }, setAttribute() {}, focus() {}
   });
 
   global.document = {
@@ -384,6 +384,15 @@ test('la traza se pinta como líneas plegables y guarda el detalle', async () =>
 /* ================================================================
    Nueva idea: elegir el modelo desde el diálogo de creación
    ================================================================ */
+
+test('el diálogo de nueva idea se abre al instante, sin esperar al catálogo', async () => {
+  // Regresión: antes se abría DESPUÉS de cargar el catálogo. Si esa petición
+  // tardaba o se atascaba, pulsar «Nueva idea» no hacía nada.
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.deepEqual(errores, []);
+  jarvis.abrirNuevaIdea();   // a propósito SIN await
+  assert.equal(registro.get('#new-project-dialog')._modal, true, 'debe abrirse de inmediato');
+});
 
 test('el diálogo de nueva idea ofrece el catálogo de modelos', async () => {
   const { registro, errores, jarvis } = await arrancarInterfaz({
