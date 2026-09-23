@@ -742,11 +742,21 @@ function pintarLeyenda(puntos) {
 let mapaActual = null;
 let mapaDrag = null;
 
+/**
+ * Notas que van al mapa: todas menos las de seguimiento (`preguntas`,
+ * `dudas`, `puntos-clave`), que no son ideas. Se deriva de SEGUIMIENTO para
+ * que una lista nueva quede excluida sola.
+ */
+function notasDelMapa(notes) {
+  const seguimiento = new Set(Object.values(SEGUIMIENTO).map((c) => c.nota));
+  return (notes || []).filter((n) => n && n.id && !seguimiento.has(n.id));
+}
+
 function renderMapa() {
   const cont = $('#mapa-graph');
   if (!cont) return;
   // Los ficheros de seguimiento no son ideas: fuera del mapa.
-  const notas = (state.notes || []).filter((n) => n && n.id && n.id !== 'preguntas' && n.id !== 'puntos-clave');
+  const notas = notasDelMapa(state.notes);
   if (!notas.length) {
     cont.innerHTML = '<div class="empty-state"><p class="muted">No hay notas para dibujar todavía.</p></div>';
     const leyenda = $('#mapa-leyenda');
@@ -2279,7 +2289,8 @@ window.Jarvis = {
   confirmarBorrado,
   manejarRespuestaDuda,
   resolverSeguimiento,
-  editarLineaSeguimiento
+  editarLineaSeguimiento,
+  notasDelMapa
 };
 
 boot();

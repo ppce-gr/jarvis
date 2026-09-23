@@ -203,6 +203,18 @@ test('construirGrafo une notas por sus wikilinks, sin duplicar ni inventar', asy
   assert.equal(g.aristas.length, 1, 'a<->b cuenta una vez y el enlace roto no entra');
 });
 
+test('las notas de seguimiento no entran en el mapa', async () => {
+  const { jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  const ids = jarvis.notasDelMapa([
+    { id: '_indice' },
+    { id: 'preguntas' },
+    { id: 'dudas' },
+    { id: 'puntos-clave' },
+    { id: 'nota-x' }
+  ]).map((n) => n.id);
+  assert.deepEqual(ids, ['_indice', 'nota-x']);
+});
+
 test('la pestaña de preguntas pinta pendientes con botones para decidir', async () => {
   const base = { ...RESPUESTAS_BASE };
   delete base['/conceptual'];   // el /conceptual de esta prueba debe ganar
