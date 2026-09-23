@@ -26,3 +26,7 @@ id_ed25519
 
 # Configuración local del despliegue (la genera deploy/configurar.sh)
 deploy/jarvis.conf
+
+# La bandera que escribe el AGENTE para pedir la actualización. Va ignorada para
+# que el árbol siga limpio: la barrera 1 aborta si hay cambios sin commitear.
+.solicitar-actualizacion

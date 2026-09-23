@@ -20,7 +20,8 @@ const UNIDADES = [
   'jarvis-backup.timer',
   'jarvis-autoupdate.service',
   'jarvis-autoupdate.path',
-  'jarvis-autoupdate.timer'
+  'jarvis-autoupdate.timer',
+  'jarvis-solicitud.path'
 ];
 
 /** Variables que instalar.sh sabe resolver: las de sus bucles `for var in`. */

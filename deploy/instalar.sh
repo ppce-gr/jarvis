@@ -419,6 +419,9 @@ if [ "$DO_AUTOUPDATE" -eq 1 ]; then
   instalar_unidad jarvis-autoupdate.service
   instalar_unidad jarvis-autoupdate.path
   instalar_unidad jarvis-autoupdate.timer
+  # La bandera del AGENTE, dentro de su workspace: es la que le permite cerrar el
+  # circuito él solo, porque el sandbox no lo deja escribir la de fuera.
+  instalar_unidad jarvis-solicitud.path
 
   # La regla de sudoers se valida ANTES de instalarla: un fichero mal formado
   # en /etc/sudoers.d rompe sudo por completo, y en una Pi sin pantalla eso
@@ -440,9 +443,11 @@ if [ "$DO_AUTOUPDATE" -eq 1 ]; then
   run systemctl daemon-reload
   run systemctl enable --now jarvis-autoupdate.path
   run systemctl enable --now jarvis-autoupdate.timer
+  run systemctl enable --now jarvis-solicitud.path
   echo
-  echo "   Comprobar:   systemctl status jarvis-autoupdate.path"
+  echo "   Comprobar:   systemctl status jarvis-autoupdate.path jarvis-solicitud.path"
   echo "   Actualizar:  touch $JARVIS_UPDATE_FLAG"
+  echo "   El agente:   touch $JARVIS_CODE_DIR/.solicitar-actualizacion"
   echo "   Sólo mirar:  sudo -u $JARVIS_USER $JARVIS_SBIN_DIR/jarvis-actualizar --check"
   echo "   A mano:      $JARVIS_MANTENIMIENTO ayuda"
   echo

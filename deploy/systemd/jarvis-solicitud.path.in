@@ -1,0 +1,16 @@
+[Unit]
+Description=Jarvis · vigila la petición de actualización DEL AGENTE
+Documentation=file:@JARVIS_CODE_DIR@/docs/autoactualizacion.md
+
+[Path]
+# El agente que modifica Jarvis vive en un sandbox que lo confina al repositorio
+# del código, así que NO puede escribir la bandera de fuera. Ésta está DENTRO de
+# su workspace: es suya, y es su forma de pedir la actualización cuando termina.
+#
+# Va ignorada por Git (ver .gitignore) para que el árbol siga limpio: la barrera
+# 1 aborta si hay cambios sin commitear, y un fichero sin ignorar la rompería.
+PathExists=@JARVIS_CODE_DIR@/.solicitar-actualizacion
+Unit=jarvis-autoupdate.service
+
+[Install]
+WantedBy=paths.target

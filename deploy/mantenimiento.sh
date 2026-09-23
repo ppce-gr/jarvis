@@ -34,6 +34,7 @@ LAST_GOOD="$ESTADO_DIR/last-good"
 FALLO="$ESTADO_DIR/ultimo-fallo.txt"
 INSTALADO="${JARVIS_UPDATER_INSTALLED:-${JARVIS_SBIN_DIR:-/usr/local/sbin}/jarvis-actualizar}"
 BANDERA="${JARVIS_UPDATE_FLAG:-$BASE_DIR/.update-request}"
+BANDERA_AGENTE="${JARVIS_AGENT_FLAG:-$REPO_DIR/.solicitar-actualizacion}"
 SERVICIO="${JARVIS_SERVICE:-jarvis.service}"
 SALUD="${JARVIS_SALUD_URL:-http://127.0.0.1:$PUERTO/api/system/status}"
 BRAIN_DIR="${JARVIS_BRAIN_DIR:-$BASE_DIR/jarvis-vault}"
@@ -130,7 +131,13 @@ orden_estado() {
   if [ -e "$BANDERA" ]; then
     info "presente en $BANDERA (¿actualización en curso o atascada?)"
   else
-    info "no hay ninguna (correcto)"
+    info "no hay ninguna en $BANDERA (correcto)"
+  fi
+  # La del agente vive dentro del repositorio. Si se queda ahí, el .path no
+  # volverá a dispararse cuando el agente la escriba otra vez.
+  if [ -e "$BANDERA_AGENTE" ]; then
+    info "⚠ el AGENTE dejó la suya en $BANDERA_AGENTE"
+    info "  Si no hay actualización en curso, bórrala: rm '$BANDERA_AGENTE'"
   fi
 
   paso "Último fallo"

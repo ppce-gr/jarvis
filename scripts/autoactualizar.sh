@@ -71,6 +71,10 @@ BITACORA="$BRAIN_DIR/sistema-jarvis/logs/orchestrator.log"
 # sólo dispara cuando el fichero aparece, así que si se queda ahí la próxima
 # petición no haría nada: la actualización funcionaría una sola vez.
 BANDERA="${JARVIS_UPDATE_FLAG:-$BASE_DEDUCIDA/.update-request}"
+# La bandera que escribe EL AGENTE. Vive DENTRO del repositorio a propósito: el
+# sandbox del agente lo confina ahí, así que la de fuera no puede tocarla. Es la
+# forma de que cierre el circuito él solo tras commitear.
+BANDERA_AGENTE="${JARVIS_AGENT_FLAG:-$CODE_DIR/.solicitar-actualizacion}"
 # La COPIA INSTALADA de este mismo script. systemd ejecuta ÉSTA (ver ExecStart
 # en deploy/systemd/jarvis-autoupdate.service.in), no la del repositorio.
 INSTALADO="${JARVIS_UPDATER_INSTALLED:-${JARVIS_SBIN_DIR:-/usr/local/sbin}/jarvis-actualizar}"
@@ -215,11 +219,20 @@ verificar_codigo() {
   return 0
 }
 
-# Se quita la bandera al salir por cualquier vía, incluidos los errores. Si no,
-# systemd no volvería a disparar el .path nunca más.
+# Se quitan las banderas al salir por cualquier vía, incluidos los errores. Si no,
+# systemd no volvería a disparar el .path nunca más: `PathExists` sólo reacciona a
+# que el fichero APAREZCA, así que uno que se quede ahí deja la siguiente petición
+# sin efecto.
 limpiar_bandera() {
+  local retirada=0
   if [ -e "$BANDERA" ]; then
-    rm -f "$BANDERA" && log "Bandera retirada; el .path queda armado de nuevo."
+    rm -f "$BANDERA" && retirada=1
+  fi
+  if [ -e "$BANDERA_AGENTE" ]; then
+    rm -f "$BANDERA_AGENTE" && retirada=1
+  fi
+  if [ "$retirada" -eq 1 ]; then
+    log "Banderas retiradas; los .path quedan armados de nuevo."
   fi
 }
 trap limpiar_bandera EXIT

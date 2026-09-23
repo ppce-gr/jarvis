@@ -43,7 +43,8 @@ deploy/
     ├── jarvis-backup.timer.in      → /etc/systemd/system/   (cada 30 min)
     ├── jarvis-autoupdate.service.in→ /etc/systemd/system/   (ejecuta el actualizador)
     ├── jarvis-autoupdate.path.in   → /etc/systemd/system/   (vigila la bandera)
-    └── jarvis-autoupdate.timer.in  → /etc/systemd/system/   (cada día a las 04:30)
+    ├── jarvis-autoupdate.timer.in  → /etc/systemd/system/   (cada día a las 04:30)
+    └── jarvis-solicitud.path.in    → /etc/systemd/system/   (la bandera del AGENTE)
 ```
 
 Los dos scripts que forman el actualizador en sí viven en `scripts/`:
@@ -225,6 +226,22 @@ touch .update-request      # y ya está
 
 …o el botón del panel. **Ninguna de las dos necesita `sudo`.** La ruta exacta de
 la bandera la dice `./deploy/mantenimiento.sh estado`.
+
+Y el **agente que modifica Jarvis tiene la suya**, dentro de su workspace:
+
+```bash
+touch <repositorio>/.solicitar-actualizacion
+```
+
+Existe por una razón concreta: el sandbox del agente lo confina al repositorio
+del código, así que **no puede escribir la bandera de fuera**. Va ignorada por Git
+para que el árbol siga limpio (la barrera 1 aborta con cambios sin commitear), y
+el actualizador la retira al terminar, igual que la otra.
+
+> **El commit no basta.** Nada vigila el repositorio: si el agente commitea y no
+> escribe esa bandera, el cambio se queda sin aplicar hasta que pulses el botón o
+> lleguen las 04:30. Es el eslabón que cierra el circuito, y por eso está en el
+> contrato del agente.
 
 ### Las cinco barreras, en orden de coste
 

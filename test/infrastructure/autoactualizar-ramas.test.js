@@ -43,9 +43,12 @@ async function crearEntorno() {
 
   const git = await prepararRepo(code, path.join(dir, 'remoto.git'), 'a.txt');
   // El propio actualizador busca aquí su script de respaldo: se copia para que
-  // el entorno se parezca al repositorio real.
+  // el entorno se parezca al repositorio real. Y la bandera del agente va
+  // ignorada, como en el repositorio de verdad: si no, ensuciaría el árbol y la
+  // barrera 1 abortaría por un fichero que precisamente debe ser invisible.
   await fs.mkdir(path.join(code, 'scripts'), { recursive: true });
   await fs.copyFile(path.join(SCRIPTS, 'backup.sh'), path.join(code, 'scripts', 'backup.sh'));
+  await fs.writeFile(path.join(code, '.gitignore'), '.solicitar-actualizacion\n');
   await git(['add', '-A']);
   await git(['commit', '-qm', 'scripts']);
   await git(['push', '-q', 'origin', 'main']);
@@ -235,6 +238,36 @@ test('deja post-mortem y revierte cuando la verificación falla', async (t) => {
 
   assert.equal(await revParse(), antes, 'el código que falla no debe quedarse aplicado');
   assert.equal(code, 1);
+});
+
+test('retira las DOS banderas al salir, para que los .path vuelvan a dispararse', async (t) => {
+  // `PathExists` sólo reacciona a que el fichero APAREZCA: una bandera que se
+  // quede ahí deja la siguiente petición sin efecto, y el circuito se cierra en
+  // falso. Vale para la de fuera y para la que escribe el agente.
+  const entorno = await crearEntorno();
+  t.after(() => fs.rm(entorno.dir, { recursive: true, force: true }));
+
+  const bandera = path.join(entorno.dir, 'bandera');
+  const banderaAgente = path.join(entorno.code, '.solicitar-actualizacion');
+  await fs.writeFile(bandera, '{}');
+  await fs.writeFile(banderaAgente, '');
+
+  const { salida } = await correr(entorno, ['--check']);
+
+  assert.match(salida, /Banderas retiradas/);
+  await assert.rejects(() => fs.access(bandera), 'la bandera de fuera debe retirarse');
+  await assert.rejects(() => fs.access(banderaAgente), 'la del agente también');
+});
+
+test('la bandera del agente NO ensucia el árbol de trabajo', async (t) => {
+  // Si apareciera en `git status`, la barrera 1 abortaría justo por el fichero
+  // que existe para pedir la actualización. Por eso va ignorada.
+  const entorno = await crearEntorno();
+  t.after(() => fs.rm(entorno.dir, { recursive: true, force: true }));
+
+  await fs.writeFile(path.join(entorno.code, '.solicitar-actualizacion'), '');
+  const sucio = (await entorno.git(['status', '--porcelain'])).stdout.trim();
+  assert.equal(sucio, '', `el árbol debe seguir limpio, pero git ve: ${sucio}`);
 });
 
 test('el ayudante de reinstalación no instala un script roto, y sí uno válido', async (t) => {
