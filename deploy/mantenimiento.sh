@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+# ============================================================
+#  Jarvis · mantenimiento a mano
+# ------------------------------------------------------------
+#  Las operaciones que necesitan root, con nombres que se
+#  recuerdan, en un solo sitio. NO hace nada por su cuenta: es
+#  una envoltura de deploy/instalar.sh, del actualizador y del
+#  registro. Cada orden imprime exactamente lo que ejecuta.
+#
+#  Uso:
+#     sudo ./mantenimiento.sh estado
+#     sudo ./mantenimiento.sh actualizador
+#     sudo ./mantenimiento.sh actualizar
+#
+#  Para tenerlo siempre a mano en tu carpeta:
+#     sudo ./mantenimiento.sh instalar
+# ============================================================
+set -uo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AQUI="$(readlink -f "${BASH_SOURCE[0]}")"
+ESTADO_DIR="${JARVIS_UPDATE_STATE:-/home/jarvis/jarvis/.update-state}"
+REGISTRO="$ESTADO_DIR/autoactualizacion.log"
+LAST_GOOD="$ESTADO_DIR/last-good"
+INSTALADO="${JARVIS_UPDATER_INSTALLED:-/usr/local/sbin/jarvis-actualizar}"
+BANDERA="${JARVIS_UPDATE_FLAG:-/home/jarvis/jarvis/.update-request}"
+SERVICIO="${JARVIS_SERVICE:-jarvis.service}"
+SALUD="${JARVIS_SALUD_URL:-http://127.0.0.1:3081/api/system/status}"
+DESTINO="${JARVIS_MANTENIMIENTO:-/home/jarvis/mantenimiento.sh}"
+
+info()  { printf '  %s\n' "$*"; }
+paso()  { printf '\n▶ %s\n' "$*"; }
+error() { printf 'ERROR: %s\n' "$*" >&2; }
+
+uso() {
+  cat <<'EOF'
+Órdenes:
+  estado         Resumen: versiones, servicio, y si el actualizador instalado
+                 coincide con el del repositorio. Empieza siempre por aquí.
+  actualizador   Reinstala el actualizador (deploy/instalar.sh --autoupdate).
+                 Es lo único que no se actualiza solo.
+  servicio       Reinstala y arranca jarvis.service (--jarvis).
+  respaldo       Fuerza un respaldo de los dos repositorios ahora mismo.
+  actualizar     Dispara la actualización y espera a que termine.
+  revertir       Vuelve al último commit bueno.
+  registro       Últimas 60 líneas del registro del actualizador.
+  todo           Todo lo instalable (--all). Para una instalación completa.
+  instalar       Copia este script a ~/mantenimiento.sh para tenerlo a mano.
+  ayuda          Esta ayuda.
+EOF
+}
+
+# El repositorio y el estado son del usuario jarvis, no de root. Si esto se
+# ejecuta con sudo hay que bajar de privilegio, o los commits y la bandera
+# quedarían con dueño root y jarvis no podría ni borrar la bandera (con lo que
+# el .path de systemd no volvería a dispararse nunca).
+como_jarvis() {
+  if [ "$(id -u)" -eq 0 ]; then
+    runuser -u jarvis -- "$@"
+  else
+    "$@"
+  fi
+}
+
+necesita_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    return 0
+  fi
+  if command -v sudo >/dev/null 2>&1; then
+    echo "Esta orden necesita root; se reejecuta con sudo."
+    exec sudo bash "$AQUI" "$@"
+  fi
+  error "esta orden necesita root y no hay sudo disponible."
+  exit 1
+}
+
+# ---------------------------------------------------------------
+orden_estado() {
+  paso "Versiones"
+  info "$(printf '%-24s' 'repositorio (git HEAD)') $(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')"
+  info "$(printf '%-24s' 'rama') $(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+  info "$(printf '%-24s' 'áncora (último bueno)') $(cut -c1-7 "$LAST_GOOD" 2>/dev/null || echo '(ninguna)')"
+  info "$(printf '%-24s' 'árbol de trabajo') $([ -n "$(git -C "$REPO_DIR" status --porcelain 2>/dev/null)" ] && echo 'CON CAMBIOS sin commitear' || echo 'limpio')"
+
+  local api
+  api="$(curl -fsS --max-time 5 "$SALUD" 2>/dev/null || true)"
+  if [ -n "$api" ]; then
+    info "$(printf '%-24s' 'en marcha (servicio)') $(echo "$api" | grep -o '"runningCommitCorto": *"[^"]*"' | cut -d'"' -f4)"
+    info "$(printf '%-24s' 'reinicio pendiente') $(echo "$api" | grep -o '"reinicioPendiente": *[a-z]*' | awk '{print $2}')"
+  else
+    info "$(printf '%-24s' 'en marcha (servicio)') (no responde en $SALUD)"
+  fi
+  info "$(printf '%-24s' 'jarvis.service') $(systemctl is-active "$SERVICIO" 2>/dev/null || echo 'desconocido')"
+
+  paso "Actualizador instalado"
+  local origen="$REPO_DIR/scripts/autoactualizar.sh"
+  if [ ! -f "$INSTALADO" ]; then
+    info "✗ no está instalado en $INSTALADO"
+    info "  → sudo bash $REPO_DIR/deploy/instalar.sh --autoupdate"
+  elif cmp -s "$origen" "$INSTALADO"; then
+    info "✓ al día (idéntico a scripts/autoactualizar.sh)"
+  else
+    info "⚠ DESFASADO respecto al repositorio"
+    info "  instalado:   $INSTALADO"
+    info "  repositorio: $origen"
+    info "  → sudo bash $REPO_DIR/deploy/instalar.sh --autoupdate"
+  fi
+
+  paso "Bandera de actualización"
+  if [ -e "$BANDERA" ]; then
+    info "presente en $BANDERA (¿actualización en curso o atascada?)"
+  else
+    info "no hay ninguna (correcto)"
+  fi
+}
+
+orden_actualizador() {
+  necesita_root "$@"
+  paso "Reinstalando el actualizador"
+  bash "$REPO_DIR/deploy/instalar.sh" --autoupdate
+}
+
+orden_servicio() {
+  necesita_root "$@"
+  paso "Reinstalando el servicio"
+  bash "$REPO_DIR/deploy/instalar.sh" --jarvis
+}
+
+orden_todo() {
+  necesita_root "$@"
+  paso "Instalación completa"
+  bash "$REPO_DIR/deploy/instalar.sh" --all
+}
+
+orden_respaldo() {
+  paso "Respaldando los dos repositorios"
+  como_jarvis env JARVIS_BRAIN_DIR="${JARVIS_BRAIN_DIR:-/home/jarvis/jarvis/jarvis-vault}" \
+    bash "$REPO_DIR/scripts/backup.sh" "chore: respaldo manual"
+}
+
+orden_actualizar() {
+  paso "Disparando la actualización"
+  # La bandera la crea jarvis, NUNCA root: si queda con dueño root, el
+  # actualizador no puede borrarla y el .path de systemd no vuelve a dispararse.
+  como_jarvis touch "$BANDERA"
+  info "bandera puesta; systemd lanzará el actualizador"
+
+  local espera=0
+  while [ -e "$BANDERA" ] && [ "$espera" -lt 300 ]; do
+    sleep 2
+    espera=$((espera + 2))
+    printf '\r  esperando al actualizador... %ss ' "$espera"
+  done
+  printf '\n'
+
+  if [ -e "$BANDERA" ]; then
+    error "la bandera sigue ahí tras 300s. El actualizador no ha corrido."
+    info "Comprueba:  systemctl status jarvis-autoupdate.path"
+  else
+    info "el actualizador terminó. Últimas líneas:"
+  fi
+  orden_registro
+}
+
+orden_revertir() {
+  necesita_root "$@"
+  paso "Revirtiendo al último commit bueno"
+  como_jarvis "$INSTALADO" --rollback
+}
+
+orden_registro() {
+  paso "Registro del actualizador ($REGISTRO)"
+  if [ -f "$REGISTRO" ]; then
+    tail -n 60 "$REGISTRO"
+  else
+    info "(todavía no hay registro)"
+  fi
+}
+
+orden_instalar() {
+  paso "Copiando este script a $DESTINO"
+  install -m 0755 "$AQUI" "$DESTINO"
+  if [ "$(id -u)" -eq 0 ]; then
+    chown jarvis:jarvis "$DESTINO" 2>/dev/null || true
+  fi
+  info "listo. Ya puedes ejecutarlo con:  $DESTINO estado"
+  info "Ojo: es una COPIA. Si cambia el del repositorio, vuelve a copiarlo."
+  info "Para comprobarlo:  diff $AQUI $DESTINO"
+}
+
+case "${1:-ayuda}" in
+  estado)       orden_estado ;;
+  actualizador) orden_actualizador "$@" ;;
+  servicio)     orden_servicio "$@" ;;
+  respaldo)     orden_respaldo ;;
+  actualizar)   orden_actualizar ;;
+  revertir)     orden_revertir "$@" ;;
+  registro)     orden_registro ;;
+  todo)         orden_todo "$@" ;;
+  instalar)     orden_instalar ;;
+  ayuda|-h|--help) uso ;;
+  *) error "orden desconocida: $1"; echo; uso; exit 1 ;;
+esac
