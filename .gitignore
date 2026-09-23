@@ -23,3 +23,6 @@ id_ed25519
 # Estado local de la autoactualización (ancla y registro)
 .update-state/
 .update-request
+
+# Configuración local del despliegue (la genera deploy/configurar.sh)
+deploy/jarvis.conf

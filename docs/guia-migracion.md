@@ -211,23 +211,21 @@ sudo bash deploy/instalar.sh --backup          # respaldo Git cada 30 min
 El detalle de cada paso y las comprobaciones están en
 [`deploy/README.md`](../deploy/README.md).
 
-Si prefieres hacerlo a mano:
+Si prefieres hacerlo a mano, primero configura y luego instala:
 
 ```bash
-sudo cp deploy/systemd/jarvis.service /etc/systemd/system/jarvis.service
-sudo nano /etc/systemd/system/jarvis.service   # ajusta User, rutas y JARVIS_DSH_BIN
-sudo systemctl daemon-reload
-sudo systemctl enable --now jarvis
+./deploy/configurar.sh          # quién lo ejecuta y dónde están las cosas
+sudo bash deploy/instalar.sh --all
 ```
 
-Para el respaldo periódico en Git, la vía limpia es el temporizador:
+Las unidades de `deploy/systemd/` son **plantillas** (`*.in`), no ficheros
+listos para copiar: los ficheros de systemd no pueden leer un `.env`, porque
+`User=`, `WorkingDirectory=` y `PathExists=` no expanden variables. Las rellena
+`instalar.sh` al instalar. Si de verdad quieres hacerlo a mano, copia la
+plantilla sustituyendo cada marcador `@JARVIS_...@` por su valor.
 
-```bash
-sudo cp deploy/systemd/jarvis-backup.{service,timer} /etc/systemd/system/
-sudo systemctl enable --now jarvis-backup.timer
-```
-
-O, si lo prefieres por cron:
+Para el respaldo periódico en Git, el temporizador lo instala
+`--backup` (o `--all`). Si lo prefieres por cron:
 
 ```bash
 crontab -e

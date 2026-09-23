@@ -42,13 +42,26 @@
 set -uo pipefail
 
 # --- Configuración -------------------------------------------------
-CODE_DIR="${JARVIS_CODE_DIR:-/home/jarvis/jarvis/jarvis}"
-BRAIN_DIR="${JARVIS_BRAIN_DIR:-/home/jarvis/jarvis/jarvis-vault}"
-STATE_DIR="${JARVIS_UPDATE_STATE:-/home/jarvis/jarvis/.update-state}"
+# Se lee la configuración del sistema si existe: es lo que permite ejecutar este
+# script a mano desde fuera del repositorio (la copia instalada, por ejemplo) sin
+# pasarle las rutas. El fichero usa ${VAR:-valor}, así que lo que ya venga en el
+# entorno sigue teniendo la última palabra.
+[ -f /etc/jarvis/jarvis.conf ] && . /etc/jarvis/jarvis.conf
+
+# Sin configuración, todo se deduce de dónde esté este script: es scripts/ dentro
+# del repositorio de código. Así un clon funciona sin configurar nada.
+AQUI_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DEDUCIDO="$(cd "$AQUI_SCRIPT/.." && pwd)"
+BASE_DEDUCIDA="$(dirname "$REPO_DEDUCIDO")"
+
+CODE_DIR="${JARVIS_CODE_DIR:-$REPO_DEDUCIDO}"
+BRAIN_DIR="${JARVIS_BRAIN_DIR:-$BASE_DEDUCIDA/jarvis-vault}"
+STATE_DIR="${JARVIS_UPDATE_STATE:-$BASE_DEDUCIDA/.update-state}"
 SERVICE="${JARVIS_SERVICE:-jarvis.service}"
-HEALTH_URL="${JARVIS_HEALTH_URL:-http://127.0.0.1:3081/api/health}"
-PROJECTS_URL="${JARVIS_PROJECTS_URL:-http://127.0.0.1:3081/api/projects}"
-STATUS_URL="${JARVIS_STATUS_URL:-http://127.0.0.1:3081/api/system/status}"
+PORT="${JARVIS_PORT:-3081}"
+HEALTH_URL="${JARVIS_HEALTH_URL:-http://127.0.0.1:$PORT/api/health}"
+PROJECTS_URL="${JARVIS_PROJECTS_URL:-http://127.0.0.1:$PORT/api/projects}"
+STATUS_URL="${JARVIS_STATUS_URL:-http://127.0.0.1:$PORT/api/system/status}"
 SMOKE_PORT="${JARVIS_SMOKE_PORT:-3099}"
 HEALTH_TRIES="${JARVIS_HEALTH_TRIES:-30}"
 HEALTH_WAIT="${JARVIS_HEALTH_WAIT:-2}"
@@ -57,10 +70,10 @@ BITACORA="$BRAIN_DIR/sistema-jarvis/logs/orchestrator.log"
 # La bandera que vigila systemd. OJO: hay que BORRARLA al terminar. `PathExists`
 # sólo dispara cuando el fichero aparece, así que si se queda ahí la próxima
 # petición no haría nada: la actualización funcionaría una sola vez.
-BANDERA="${JARVIS_UPDATE_FLAG:-/home/jarvis/jarvis/.update-request}"
+BANDERA="${JARVIS_UPDATE_FLAG:-$BASE_DEDUCIDA/.update-request}"
 # La COPIA INSTALADA de este mismo script. systemd ejecuta ÉSTA (ver ExecStart
-# en deploy/systemd/jarvis-autoupdate.service), no la del repositorio.
-INSTALADO="${JARVIS_UPDATER_INSTALLED:-/usr/local/sbin/jarvis-actualizar}"
+# en deploy/systemd/jarvis-autoupdate.service.in), no la del repositorio.
+INSTALADO="${JARVIS_UPDATER_INSTALLED:-${JARVIS_SBIN_DIR:-/usr/local/sbin}/jarvis-actualizar}"
 
 MODO="actualizar"
 DRY_RUN=0

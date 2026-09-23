@@ -1,6 +1,6 @@
 [Unit]
 Description=Jarvis · actualización del código con reversión automática
-Documentation=file:/home/jarvis/jarvis/jarvis/docs/autoactualizacion.md
+Documentation=file:@JARVIS_CODE_DIR@/docs/autoactualizacion.md
 # No es parte de jarvis.service: debe SOBREVIVIR a su reinicio para poder
 # comprobar si el arranque ha funcionado.
 After=network-online.target
@@ -8,30 +8,37 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=jarvis
-WorkingDirectory=/home/jarvis/jarvis/jarvis
-Environment=HOME=/home/jarvis
+User=@JARVIS_USER@
+Group=@JARVIS_GROUP@
+WorkingDirectory=@JARVIS_CODE_DIR@
+Environment=HOME=@JARVIS_HOME@
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-Environment=JARVIS_BRAIN_DIR=/home/jarvis/jarvis/jarvis-vault
-Environment=JARVIS_CODE_DIR=/home/jarvis/jarvis/jarvis
+Environment=JARVIS_BRAIN_DIR=@JARVIS_BRAIN_DIR@
+Environment=JARVIS_CODE_DIR=@JARVIS_CODE_DIR@
+Environment=JARVIS_UPDATE_STATE=@JARVIS_UPDATE_STATE@
+Environment=JARVIS_UPDATE_FLAG=@JARVIS_UPDATE_FLAG@
+Environment=JARVIS_SBIN_DIR=@JARVIS_SBIN_DIR@
+Environment=JARVIS_SMOKE_PORT=@JARVIS_SMOKE_PORT@
+Environment=JARVIS_PORT=@JARVIS_PORT@
+Environment=JARVIS_BRANCH=@JARVIS_BRANCH@
 
 # ---------------------------------------------------------------
 # El actualizador se pone al día A SÍ MISMO, aquí. Sin sudo para ti.
 # ---------------------------------------------------------------
-# /usr/local/sbin es de root y el actualizador corre como jarvis, así que no
-# puede reescribirse: un cambio en scripts/autoactualizar.sh no llegaba nunca a
-# la copia instalada, y eso obligaba a reinstalarlo a mano (y si te olvidabas,
-# se quedaba viejo con sus bugs, en silencio).
+# El directorio de instalación es de root y el actualizador corre como usuario
+# normal, así que no puede reescribirse: un cambio en scripts/autoactualizar.sh
+# no llegaba nunca a la copia instalada, y eso obligaba a reinstalarlo a mano (y
+# si te olvidabas, se quedaba viejo con sus bugs, en silencio).
 #
 # El prefijo '+' hace que este paso corra con privilegios COMPLETOS, y va ANTES
 # de ExecStart, o sea antes de que bash abra el script: cuando lo abra, ya es el
 # nuevo. No hay automodificación posible.
-ExecStartPre=+/usr/local/sbin/jarvis-reinstalar-actualizador
+ExecStartPre=+@JARVIS_SBIN_DIR@/jarvis-reinstalar-actualizador
 
 # Se ejecuta la COPIA INSTALADA, no la del repositorio: una actualización no
 # debe modificar el script que la está ejecutando. Y como el paso de arriba la
 # refresca justo antes, la copia instalada siempre es la del repositorio.
-ExecStart=/usr/local/sbin/jarvis-actualizar
+ExecStart=@JARVIS_SBIN_DIR@/jarvis-actualizar
 
 # Una actualización no debe repetirse sin control: si falla, se avisa y se
 # espera a una intervención.

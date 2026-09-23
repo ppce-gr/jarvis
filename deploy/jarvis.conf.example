@@ -1,0 +1,79 @@
+# ============================================================
+#  Jarvis · configuración de despliegue
+# ------------------------------------------------------------
+#  Este fichero es OPCIONAL. Lo normal es generarlo con el
+#  asistente, que deduce los valores de tu máquina y te los
+#  propone:
+#
+#       ./deploy/configurar.sh
+#
+#  Y luego instalarlo:
+#
+#       sudo bash deploy/instalar.sh --all
+#
+#  Todas las variables están escritas como ${VAR:-valor} para que
+#  una variable de entorno siempre tenga la última palabra: puedes
+#  sobrescribir cualquiera sin tocar este fichero.
+#
+#  Si no existe deploy/jarvis.conf, todo se deduce del sitio donde
+#  esté el repositorio y de tu usuario. Un clon con la bóveda al
+#  lado funciona sin configurar nada.
+# ============================================================
+
+# --- Identidad -------------------------------------------------
+# Usuario del sistema que ejecuta Jarvis. No debe ser root: el
+# servicio tiene NoNewPrivileges y no necesita privilegios.
+JARVIS_USER="${JARVIS_USER:-jarvis}"
+JARVIS_GROUP="${JARVIS_GROUP:-$JARVIS_USER}"
+
+# --- Rutas -----------------------------------------------------
+# Repositorio de código: el público, el motor.
+JARVIS_CODE_DIR="${JARVIS_CODE_DIR:-/home/jarvis/jarvis/jarvis}"
+# Repositorio de memoria: el privado, las notas. Fuera del árbol de Git del
+# código, para que un fallo de .gitignore no pueda publicar nada.
+JARVIS_BRAIN_DIR="${JARVIS_BRAIN_DIR:-/home/jarvis/jarvis/jarvis-vault}"
+# Estado del actualizador: ancla de reversión, registro y post-mortem.
+JARVIS_UPDATE_STATE="${JARVIS_UPDATE_STATE:-/home/jarvis/jarvis/.update-state}"
+# La bandera que vigila systemd. Escribirla NO necesita privilegios.
+JARVIS_UPDATE_FLAG="${JARVIS_UPDATE_FLAG:-/home/jarvis/jarvis/.update-request}"
+
+# --- Red -------------------------------------------------------
+JARVIS_PORT="${JARVIS_PORT:-3081}"
+JARVIS_HOST="${JARVIS_HOST:-0.0.0.0}"
+# Puerto aparte para el arranque de prueba de la barrera 4b. Debe estar libre.
+JARVIS_SMOKE_PORT="${JARVIS_SMOKE_PORT:-3099}"
+
+# --- Instalación -----------------------------------------------
+# Dónde se copian el actualizador y su ayudante (fuera del repositorio, para que
+# una actualización no modifique el script que la está ejecutando).
+JARVIS_SBIN_DIR="${JARVIS_SBIN_DIR:-/usr/local/sbin}"
+# Intérprete de Node. El del sistema suele estar en /usr/bin/node.
+JARVIS_NODE_BIN="${JARVIS_NODE_BIN:-/usr/bin/node}"
+# Binario del motor de agentes (DeepSeek Harness). Se deja VACÍO a propósito: el
+# instalador lo resuelve en ese momento (entorno > PATH > /usr/local/bin/dsh), y
+# eso es más fiable que fijarlo aquí. Si lo fijas, ten cuidado: una ruta de la
+# caché de npx cambia al actualizar y tendría prioridad sobre el PATH.
+JARVIS_DSH_BIN="${JARVIS_DSH_BIN:-}"
+# Dónde deja `mantenimiento.sh instalar` la copia a mano. Vacío = ~/mantenimiento.sh
+JARVIS_MANTENIMIENTO="${JARVIS_MANTENIMIENTO:-}"
+
+# --- Comportamiento --------------------------------------------
+# Perfil de orquestación: un proceso por tarea, que muere al terminar.
+JARVIS_DSH_PROFILE="${JARVIS_DSH_PROFILE:-headless}"
+# El chat necesita lo contrario: un proceso vivo con memoria.
+JARVIS_CHAT_PROTOCOL="${JARVIS_CHAT_PROTOCOL:-acp}"
+JARVIS_CHAT_PROFILE="${JARVIS_CHAT_PROFILE:-acp}"
+JARVIS_CHAT_PROVIDER="${JARVIS_CHAT_PROVIDER:-deepseek-official}"
+JARVIS_CHAT_MODEL="${JARVIS_CHAT_MODEL:-deepseek-v4-flash}"
+JARVIS_CHAT_EFFORT="${JARVIS_CHAT_EFFORT:-high}"
+# Apaga la conversación dormida tras 15 min sin uso para liberar memoria.
+JARVIS_CHAT_IDLE_MS="${JARVIS_CHAT_IDLE_MS:-900000}"
+
+# --- Respaldo ---------------------------------------------------
+# El temporizador NO crea commits en el código (es público y su historia la lee
+# gente); sólo sube lo ya commiteado. La memoria sí se autosalva.
+# Ponlo a 1 para que también autosalve el código.
+JARVIS_BACKUP_COMMIT_CODE="${JARVIS_BACKUP_COMMIT_CODE:-0}"
+
+# --- Rama y repositorio remoto ---------------------------------
+JARVIS_BRANCH="${JARVIS_BRANCH:-main}"

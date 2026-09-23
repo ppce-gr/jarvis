@@ -17,17 +17,29 @@
 # ============================================================
 set -uo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Configuración: se lee la del sistema si existe (la deja `instalar.sh` con los
+# valores ya resueltos) y, si no, se deduce de dónde esté este script.
+[ -f /etc/jarvis/jarvis.conf ] && . /etc/jarvis/jarvis.conf
+
 AQUI="$(readlink -f "${BASH_SOURCE[0]}")"
-ESTADO_DIR="${JARVIS_UPDATE_STATE:-/home/jarvis/jarvis/.update-state}"
+REPO_DEDUCIDO="$(cd "$(dirname "$AQUI")/.." && pwd)"
+REPO_DIR="${JARVIS_CODE_DIR:-$REPO_DEDUCIDO}"
+BASE_DIR="$(dirname "$REPO_DIR")"
+
+USUARIO="${JARVIS_USER:-$(id -un)}"
+PUERTO="${JARVIS_PORT:-3081}"
+ESTADO_DIR="${JARVIS_UPDATE_STATE:-$BASE_DIR/.update-state}"
 REGISTRO="$ESTADO_DIR/autoactualizacion.log"
 LAST_GOOD="$ESTADO_DIR/last-good"
 FALLO="$ESTADO_DIR/ultimo-fallo.txt"
-INSTALADO="${JARVIS_UPDATER_INSTALLED:-/usr/local/sbin/jarvis-actualizar}"
-BANDERA="${JARVIS_UPDATE_FLAG:-/home/jarvis/jarvis/.update-request}"
+INSTALADO="${JARVIS_UPDATER_INSTALLED:-${JARVIS_SBIN_DIR:-/usr/local/sbin}/jarvis-actualizar}"
+BANDERA="${JARVIS_UPDATE_FLAG:-$BASE_DIR/.update-request}"
 SERVICIO="${JARVIS_SERVICE:-jarvis.service}"
-SALUD="${JARVIS_SALUD_URL:-http://127.0.0.1:3081/api/system/status}"
-DESTINO="${JARVIS_MANTENIMIENTO:-/home/jarvis/mantenimiento.sh}"
+SALUD="${JARVIS_SALUD_URL:-http://127.0.0.1:$PUERTO/api/system/status}"
+BRAIN_DIR="${JARVIS_BRAIN_DIR:-$BASE_DIR/jarvis-vault}"
+CASA_USUARIO="$(getent passwd "$USUARIO" 2>/dev/null | cut -d: -f6)"
+[ -n "$CASA_USUARIO" ] || CASA_USUARIO="$HOME"
+DESTINO="${JARVIS_MANTENIMIENTO:-$CASA_USUARIO/mantenimiento.sh}"
 
 info()  { printf '  %s\n' "$*"; }
 paso()  { printf '\n▶ %s\n' "$*"; }
@@ -63,7 +75,7 @@ EOF
 # el .path de systemd no volvería a dispararse nunca).
 como_jarvis() {
   if [ "$(id -u)" -eq 0 ]; then
-    runuser -u jarvis -- "$@"
+    runuser -u "$USUARIO" -- "$@"
   else
     "$@"
   fi
@@ -193,7 +205,7 @@ orden_respaldo() {
   # "guarda lo que tengo ahora". El temporizador automático, en cambio, sólo sube
   # lo que ya esté commiteado, para no ensuciar la historia del repositorio
   # público con el trabajo a medias de un agente.
-  como_jarvis env JARVIS_BRAIN_DIR="${JARVIS_BRAIN_DIR:-/home/jarvis/jarvis/jarvis-vault}" \
+  como_jarvis env JARVIS_BRAIN_DIR="$BRAIN_DIR" \
     JARVIS_BACKUP_COMMIT_CODE=1 \
     bash "$REPO_DIR/scripts/backup.sh" "chore: respaldo manual"
 }
@@ -238,14 +250,30 @@ orden_registro() {
 }
 
 orden_instalar() {
-  paso "Copiando este script a $DESTINO"
-  install -m 0755 "$AQUI" "$DESTINO"
+  paso "Creando la copia a mano en $DESTINO"
+  # La copia lleva las rutas DENTRO, para que siga sirviendo desde ~ sin depender
+  # de la configuración del sistema. Es una herramienta de rescate: tiene que
+  # funcionar justo cuando lo demás va mal.
+  {
+    head -1 "$AQUI"          # el shebang del original
+    echo "# ---- Rutas fijadas al crear esta copia ($(date '+%Y-%m-%d %H:%M')) ----"
+    echo "JARVIS_CODE_DIR=\"$REPO_DIR\""
+    echo "JARVIS_BRAIN_DIR=\"$BRAIN_DIR\""
+    echo "JARVIS_UPDATE_STATE=\"$ESTADO_DIR\""
+    echo "JARVIS_UPDATE_FLAG=\"$BANDERA\""
+    echo "JARVIS_SBIN_DIR=\"$(dirname "$INSTALADO")\""
+    echo "JARVIS_USER=\"$USUARIO\""
+    echo "JARVIS_PORT=\"$PUERTO\""
+    echo "# ----------------------------------------------------------------------"
+    tail -n +2 "$AQUI"       # el resto del original
+  } > "$DESTINO"
+  chmod 0755 "$DESTINO"
   if [ "$(id -u)" -eq 0 ]; then
-    chown jarvis:jarvis "$DESTINO" 2>/dev/null || true
+    chown "$USUARIO:$USUARIO" "$DESTINO" 2>/dev/null || true
   fi
   info "listo. Ya puedes ejecutarlo con:  $DESTINO estado"
-  info "Ojo: es una COPIA. Si cambia el del repositorio, vuelve a copiarlo."
-  info "Para comprobarlo:  diff $AQUI $DESTINO"
+  info "Es una copia autocontenida: lleva las rutas dentro y funciona desde ~."
+  info "Si cambia el del repositorio, vuelve a ejecutar esta orden."
 }
 
 case "${1:-ayuda}" in

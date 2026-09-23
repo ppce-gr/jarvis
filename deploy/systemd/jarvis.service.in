@@ -6,34 +6,38 @@ Wants=network-online.target
 [Service]
 Type=simple
 
-# --- Ajusta estas tres líneas a tu usuario y rutas reales ---
-User=jarvis
-WorkingDirectory=/home/jarvis/jarvis/jarvis
-Environment=HOME=/home/jarvis
+# Rutas y usuario: los rellena `deploy/instalar.sh` desde deploy/jarvis.conf.
+# No los edites aquí: edita la configuración y vuelve a instalar.
+User=@JARVIS_USER@
+Group=@JARVIS_GROUP@
+WorkingDirectory=@JARVIS_CODE_DIR@
+Environment=HOME=@JARVIS_HOME@
 # La memoria vive en un repositorio aparte, fuera del codigo.
-Environment=JARVIS_BRAIN_DIR=/home/jarvis/jarvis/jarvis-vault
+Environment=JARVIS_BRAIN_DIR=@JARVIS_BRAIN_DIR@
+Environment=JARVIS_CODE_DIR=@JARVIS_CODE_DIR@
+Environment=JARVIS_UPDATE_STATE=@JARVIS_UPDATE_STATE@
+Environment=JARVIS_UPDATE_FLAG=@JARVIS_UPDATE_FLAG@
 
 # El CLI dsh vive aquí tras 'npm install -g @deepseek-ai/dsh@<version fijada>'.
-# Un `command -v dsh` en tu shell te da la ruta exacta.
-Environment=JARVIS_DSH_BIN=/usr/local/bin/dsh
-Environment=JARVIS_DSH_PROFILE=headless
-Environment=JARVIS_PORT=3081
-Environment=JARVIS_HOST=0.0.0.0
+Environment=JARVIS_DSH_BIN=@JARVIS_DSH_BIN@
+Environment=JARVIS_DSH_PROFILE=@JARVIS_DSH_PROFILE@
+Environment=JARVIS_PORT=@JARVIS_PORT@
+Environment=JARVIS_HOST=@JARVIS_HOST@
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 
 # --- Chat conversacional (ACP, un proceso para todos los proyectos) ---
 # Perfil aparte del de orquestación: el chat necesita un proceso vivo con
 # memoria, la orquestación necesita uno que muera al terminar.
 # ACP aporta cancelacion real, reanudacion de la memoria y streaming por deltas.
-Environment=JARVIS_CHAT_PROTOCOL=acp
-Environment=JARVIS_CHAT_PROFILE=acp
-Environment=JARVIS_CHAT_PROVIDER=deepseek-official
-Environment=JARVIS_CHAT_MODEL=deepseek-v4-flash
-Environment=JARVIS_CHAT_EFFORT=high
+Environment=JARVIS_CHAT_PROTOCOL=@JARVIS_CHAT_PROTOCOL@
+Environment=JARVIS_CHAT_PROFILE=@JARVIS_CHAT_PROFILE@
+Environment=JARVIS_CHAT_PROVIDER=@JARVIS_CHAT_PROVIDER@
+Environment=JARVIS_CHAT_MODEL=@JARVIS_CHAT_MODEL@
+Environment=JARVIS_CHAT_EFFORT=@JARVIS_CHAT_EFFORT@
 # Apaga la conversación dormida tras 15 min sin uso para liberar memoria.
-Environment=JARVIS_CHAT_IDLE_MS=900000
+Environment=JARVIS_CHAT_IDLE_MS=@JARVIS_CHAT_IDLE_MS@
 
-ExecStart=/usr/bin/node src/index.js
+ExecStart=@JARVIS_NODE_BIN@ src/index.js
 
 Restart=on-failure
 RestartSec=5

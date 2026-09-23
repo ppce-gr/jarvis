@@ -28,6 +28,9 @@ propio fichero y en [`docs/arquitectura-jarvis-pi3.md`](../docs/arquitectura-jar
 ```text
 deploy/
 ├── README.md                        # este fichero
+├── configurar.sh                    # asistente: deduce las rutas y las pregunta
+├── jarvis.conf.example              # todas las variables, documentadas
+├── jarvis.conf                      # TÚ configuración (ignorada por Git)
 ├── instalar.sh                      # aplica los cambios (idempotente, con --dry-run)
 ├── mantenimiento.sh                 # las órdenes de root a mano (ver abajo)
 ├── reinstalar-actualizador.sh      → /usr/local/sbin/jarvis-reinstalar-actualizador
@@ -35,12 +38,12 @@ deploy/
 ├── sysctl-swappiness.conf          → /etc/sysctl.d/99-jarvis-memoria.conf
 ├── sudoers-jarvis-update           → /etc/sudoers.d/jarvis-update (0440, validado antes con visudo)
 └── systemd/
-    ├── jarvis.service              → /etc/systemd/system/   (interfaz, puerto 3081)
-    ├── jarvis-backup.service       → /etc/systemd/system/
-    ├── jarvis-backup.timer         → /etc/systemd/system/   (cada 30 min)
-    ├── jarvis-autoupdate.service   → /etc/systemd/system/   (ejecuta el actualizador)
-    ├── jarvis-autoupdate.path      → /etc/systemd/system/   (vigila .update-request)
-    └── jarvis-autoupdate.timer     → /etc/systemd/system/   (cada día a las 04:30)
+    ├── jarvis.service.in           → /etc/systemd/system/   (interfaz, puerto 3081)
+    ├── jarvis-backup.service.in    → /etc/systemd/system/
+    ├── jarvis-backup.timer.in      → /etc/systemd/system/   (cada 30 min)
+    ├── jarvis-autoupdate.service.in→ /etc/systemd/system/   (ejecuta el actualizador)
+    ├── jarvis-autoupdate.path.in   → /etc/systemd/system/   (vigila la bandera)
+    └── jarvis-autoupdate.timer.in  → /etc/systemd/system/   (cada día a las 04:30)
 ```
 
 Los dos scripts que forman el actualizador en sí viven en `scripts/`:
@@ -49,10 +52,41 @@ repositorios).
 
 ---
 
+## Configuración: quién, dónde y en qué puertos
+
+Todo es **opcional**. Sin configurar nada, las rutas se deducen de dónde esté el
+repositorio y de tu usuario, así que un clon con la bóveda al lado funciona
+directamente. El asistente sirve para salirse de lo normal:
+
+```bash
+./deploy/configurar.sh            # interactivo: deduce y pregunta (Enter acepta)
+./deploy/configurar.sh --mostrar  # sólo enseña lo que deduciría
+./deploy/configurar.sh --yes      # acepta todo lo deducido
+```
+
+Escribe `deploy/jarvis.conf`, que **no se versiona**: cada cual configura su
+clon. Todas las variables están documentadas en `deploy/jarvis.conf.example`, y
+van escritas como `VAR="${VAR:-valor}"` para que una variable de entorno siempre
+tenga la última palabra.
+
+### Por qué las unidades son plantillas
+
+Los ficheros de systemd **no pueden leer un `.env`**: `User=`,
+`WorkingDirectory=` y `PathExists=` no expanden variables, y `EnvironmentFile=`
+sólo sirve para pasar variables a los procesos. Por eso `deploy/systemd/` guarda
+plantillas `*.in` con marcadores `@JARVIS_...@`, y `instalar.sh` las rellena al
+instalar. Si un marcador se quedara sin sustituir, el instalador **falla y lo
+dice**, en vez de dejar una unidad con `@ALGO@` dentro.
+
+Los valores ya resueltos se copian además a `/etc/jarvis/jarvis.conf`, para que
+los encuentren los comandos que se ejecutan a mano fuera de systemd.
+
+---
+
 ## Paso 0 · Ver el plan sin tocar nada
 
 ```bash
-cd /home/jarvis/jarvis/jarvis
+cd <donde tengas el repositorio>
 sudo bash deploy/instalar.sh --dry-run --all
 ```
 
@@ -185,10 +219,12 @@ falla**:
 ### Cómo pedir una actualización
 
 ```bash
-touch /home/jarvis/jarvis/.update-request      # la bandera, y ya está
+# Desde la carpeta que CONTIENE el repositorio (donde vive la bandera):
+touch .update-request      # y ya está
 ```
 
-…o el botón del panel. **Ninguna de las dos necesita `sudo`.**
+…o el botón del panel. **Ninguna de las dos necesita `sudo`.** La ruta exacta de
+la bandera la dice `./deploy/mantenimiento.sh estado`.
 
 ### Las cinco barreras, en orden de coste
 

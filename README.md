@@ -77,11 +77,24 @@ cd jarvis
 # La memoria, en una carpeta hermana
 git clone <tu-repo-privado>/jarvis-vault.git ../jarvis-vault
 
-npm test         # 100 pruebas
+npm test         # 106 pruebas
 npm start        # http://<ip>:3081
 ```
 
 No hay `npm install`: el proyecto no tiene dependencias de runtime.
+
+Para instalarlo como servicio, y opcionalmente decirle **quién** lo ejecuta y
+**dónde** están las cosas:
+
+```bash
+./deploy/configurar.sh              # deduce los valores y te los propone
+sudo bash deploy/instalar.sh --all
+```
+
+Configurar es **opcional**: si no lo haces, todo se deduce del sitio donde esté
+el repositorio y de tu usuario. El asistente sólo hace falta para salirse de lo
+normal, y la configuración vive en `deploy/jarvis.conf` (ignorado por Git), así
+que cada cual configura su clon sin tocar el repositorio.
 
 ## Estructura
 
@@ -93,9 +106,9 @@ src/
 └── index.js           raíz de composición (aquí se inyecta todo)
 public/                interfaz web (HTML/CSS/JS sin frameworks)
 docs/                  arquitectura, integración, manual y guía de migración
-deploy/                unidades systemd, zram, mantenimiento y guía de despliegue
+deploy/                asistente de configuración, unidades systemd, zram y guía
 scripts/               actualizador con reversión y respaldo en Git
-test/                  pruebas (node:test), 100 en verde
+test/                  pruebas (node:test), 106 en verde
 ```
 
 ## Actualización y automodificación
@@ -104,8 +117,9 @@ Jarvis **se actualiza sola**, y está pensada para poder modificar su propio
 código sin que un cambio roto deje la máquina inservible. Todo el mecanismo vive
 en [`deploy/`](deploy/) y [`scripts/`](scripts/).
 
-- **Pedir una actualización no necesita privilegios:** basta con escribir
-  `/home/jarvis/jarvis/.update-request` (o pulsar el botón del panel). Un `.path`
+- **Pedir una actualización no necesita privilegios:** basta con escribir la
+  **bandera de actualización** (por defecto `.update-request`, en la carpeta que
+  contiene el repositorio; o pulsar el botón del panel). Un `.path`
   de systemd lo detecta y lanza el actualizador **fuera** del árbol de procesos
   de Jarvis, para que sobreviva al reinicio del servicio y pueda comprobar si el
   arranque funcionó.
@@ -154,6 +168,13 @@ El script de mantenimiento reúne las operaciones en un solo sitio:
 |---|---|---|
 | `JARVIS_PORT` | `3081` | Puerto del servidor web. |
 | `JARVIS_HOST` | `0.0.0.0` | Interfaz de red. |
+
+Todas las variables están documentadas, con sus valores por defecto, en
+[`deploy/jarvis.conf.example`](deploy/jarvis.conf.example). El despliegue usa
+además `deploy/jarvis.conf` para las rutas del sistema, que genera el asistente.
+
+| Variable | Por defecto | Descripción |
+|---|---|---|
 | `JARVIS_BRAIN_DIR` | `../jarvis-vault` | Dónde vive la memoria. |
 | `JARVIS_DSH_BIN` | `dsh` | Binario de DeepSeek Harness. |
 | `JARVIS_DSH_PROFILE` | `headless` | Perfil para orquestar. |
@@ -165,7 +186,7 @@ El script de mantenimiento reúne las operaciones en un solo sitio:
 
 ## Estado
 
-- [x] Dominio y puertos (hexagonal), 100 pruebas en verde
+- [x] Dominio y puertos (hexagonal), 106 pruebas en verde
 - [x] Interfaz web sin frameworks: ideas, notas, código, bitácora y chat
 - [x] Chat persistente sobre **ACP**: streaming por deltas, cancelación real y
       memoria que sobrevive al reinicio

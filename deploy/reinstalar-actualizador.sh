@@ -21,8 +21,19 @@
 # ============================================================
 set -uo pipefail
 
-ORIGEN="${JARVIS_UPDATER_SOURCE:-/home/jarvis/jarvis/jarvis/scripts/autoactualizar.sh}"
-DESTINO="${JARVIS_UPDATER_INSTALLED:-/usr/local/sbin/jarvis-actualizar}"
+# La configuración del sistema es la que dice dónde está el repositorio: este
+# script corre desde el directorio de binarios, así que no puede deducirlo de su
+# propia ubicación.
+[ -f /etc/jarvis/jarvis.conf ] && . /etc/jarvis/jarvis.conf
+
+ORIGEN="${JARVIS_UPDATER_SOURCE:-${JARVIS_CODE_DIR:+$JARVIS_CODE_DIR/scripts/autoactualizar.sh}}"
+DESTINO="${JARVIS_UPDATER_INSTALLED:-${JARVIS_SBIN_DIR:-/usr/local/sbin}/jarvis-actualizar}"
+
+if [ -z "$ORIGEN" ]; then
+  echo "AVISO: no sé dónde está el repositorio (falta /etc/jarvis/jarvis.conf y" >&2
+  echo "       JARVIS_CODE_DIR). Se sigue con el actualizador instalado." >&2
+  exit 0
+fi
 
 if [ ! -f "$ORIGEN" ]; then
   echo "AVISO: no encuentro $ORIGEN; se sigue con el actualizador instalado." >&2

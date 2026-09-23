@@ -1,6 +1,6 @@
 [Unit]
 Description=Jarvis · comprobación diaria de actualizaciones
-Documentation=file:/home/jarvis/jarvis/jarvis/docs/autoactualizacion.md
+Documentation=file:@JARVIS_CODE_DIR@/docs/autoactualizacion.md
 
 [Timer]
 # De madrugada y con holgura tras el arranque: una actualización reinicia
