@@ -23,6 +23,7 @@
       <div class="topbar-actions">
         <span id="git-status" class="pill" title="Estado del respaldo Git">git · …</span>
         <button id="system-pill" class="pill pill-btn" title="Versión y actualización de Jarvis">v…</button>
+        <button id="admin-btn" class="pill pill-btn" title="Administración de modelos: salud y re-comprobación">⚙ Admin</button>
         <button id="new-project-btn" class="btn btn-primary btn-sm">+ Idea</button>
       </div>
     </header>
@@ -169,6 +170,19 @@
         <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
         <button type="button" id="system-check" class="btn">Buscar novedades</button>
         <button type="button" id="system-update" class="btn btn-primary">Actualizar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Modal: administración de modelos -->
+  <dialog id="admin-dialog" class="dialog dialog-wide">
+    <div class="dialog-body">
+      <h2>Administración de modelos</h2>
+      <p id="admin-summary" class="muted">Cargando…</p>
+      <div id="admin-models" class="admin-models"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
+        <button type="button" id="models-refresh" class="btn btn-primary">⟳ Restablecer y comprobar</button>
       </div>
     </div>
   </dialog>

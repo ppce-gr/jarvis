@@ -92,6 +92,25 @@ export class ConversationPort {
     throw new Error('METHOD_NOT_IMPLEMENTED');
   }
 
+  /**
+   * Salud conocida de los modelos: qué funciona, qué se agotó por cuota y
+   * qué se retiró por no existir o no estar disponible.
+   * @returns {Promise<{checking: boolean, checkedAt: string|null, results: object, progress?: object}>}
+   */
+  async getModelHealth() {
+    return { checking: false, checkedAt: null, results: {} };
+  }
+
+  /**
+   * Restablece el registro de salud y vuelve a comprobar todos los modelos
+   * que publica el motor. Debe arrancar en segundo plano y no bloquear:
+   * la interfaz sigue el avance con `getModelHealth()`.
+   * @returns {Promise<{started: boolean, checking: boolean}>}
+   */
+  async refreshModels() {
+    return { started: false, checking: false };
+  }
+
   /** Cierra todas las sesiones y libera los procesos. */
   async closeAll() {
     throw new Error('METHOD_NOT_IMPLEMENTED');

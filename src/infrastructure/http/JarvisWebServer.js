@@ -31,6 +31,8 @@ export class JarvisWebServer {
     cancelChatTurnUseCase,
     getChatConfigUseCase,
     setChatConfigUseCase,
+    getModelHealthUseCase,
+    refreshModelsUseCase,
     getSystemStatusUseCase,
     requestSystemUpdateUseCase,
     checkForUpdatesUseCase,
@@ -53,6 +55,8 @@ export class JarvisWebServer {
     this.cancelChatTurnUseCase = cancelChatTurnUseCase;
     this.getChatConfigUseCase = getChatConfigUseCase;
     this.setChatConfigUseCase = setChatConfigUseCase;
+    this.getModelHealthUseCase = getModelHealthUseCase;
+    this.refreshModelsUseCase = refreshModelsUseCase;
     this.getSystemStatusUseCase = getSystemStatusUseCase;
     this.requestSystemUpdateUseCase = requestSystemUpdateUseCase;
     this.checkForUpdatesUseCase = checkForUpdatesUseCase;
@@ -163,6 +167,27 @@ export class JarvisWebServer {
     // GET /api/health
     if (req.method === 'GET' && pathname === '/api/health') {
       return this._sendJson(res, 200, { status: 'ok', service: 'jarvis-core' });
+    }
+
+    // --- Modelos: salud y re-comprobación (sección de administración) ---
+    // GET /api/models/health  → qué modelos funcionan, cuáles no tienen cuota
+    //                           y cuáles se retiraron por no existir.
+    if (req.method === 'GET' && pathname === '/api/models/health') {
+      try {
+        return this._sendJson(res, 200, await this.getModelHealthUseCase.execute());
+      } catch (error) {
+        return this._sendJson(res, 500, { error: error.message });
+      }
+    }
+
+    // POST /api/models/refresh  → restablece y vuelve a comprobar (202: sigue
+    //                             en segundo plano; se consulta con /health).
+    if (req.method === 'POST' && pathname === '/api/models/refresh') {
+      try {
+        return this._sendJson(res, 202, await this.refreshModelsUseCase.execute());
+      } catch (error) {
+        return this._sendJson(res, 400, { error: error.message });
+      }
     }
 
     // --- Sistema: actualización de Jarvis ---

@@ -95,6 +95,7 @@ const RESPUESTAS_BASE = {
     commitCorto: 'abc1234', runningCommitCorto: 'abc1234',
     branch: 'main', dirty: false, lastGoodCorto: null
   },
+  '/models/health': { checking: false, checkedAt: null, results: {} },
   '/git/status': { git: { isRepository: true, dirty: false, files: [] } }
 };
 

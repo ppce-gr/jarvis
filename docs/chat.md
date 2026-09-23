@@ -96,8 +96,7 @@ reanuda desde el disco.
 ## Elegir modelo y esfuerzo de razonamiento
 
 DSH publica un **catálogo** de modelos en cada sesión (en esta instalación:
-**26 modelos** de `deepseek-official` y `google`) más el selector de esfuerzo
-(`off`, `low`, `high`, `max`).
+**26 modelos** de `deepseek-official` y `google`).
 
 Jarvis lo expone y ofrece un **selector en la cabecera del chat**. La elección se
 guarda en `chat-config.json` (versionado a propósito: es parte de «cómo tengo el
@@ -106,6 +105,42 @@ vivas en el siguiente turno.
 
 Sin elegir nada, el valor inicial sale de `JARVIS_CHAT_MODEL` y
 `JARVIS_CHAT_EFFORT`.
+
+### Qué modelos funcionan y cuáles no
+
+Al poner una API key, el motor descubre **muchos** modelos y no todos valen.
+Jarvis mantiene un registro de salud (`<memoria>/model-health.json`) y actúa
+según el tipo de fallo:
+
+| Estado | Qué significa | Qué hace Jarvis |
+|---|---|---|
+| `ok` | Responde | Se queda en la lista |
+| `quota` | Se agotó la cuota/el saldo de la cuenta | **Se conserva** (puede volver) |
+| `broken` | No existe, no está disponible o no es accesible | **Se retira** del selector |
+| `unknown` | Fallo transitorio (red, credencial, límite temporal) | Se conserva |
+
+El registro se alimenta de dos formas:
+
+1. **De los fallos reales**: si un turno del chat falla porque el modelo no
+   existe, se retira solo; si falla por cuota, se marca pero se conserva.
+2. **De una comprobación activa**: la sección **Admin** lanza un turno mínimo
+   contra cada modelo y clasifica el resultado, sin esperar a que falle una
+   conversación.
+
+### El esfuerzo no es universal
+
+DSH publica la opción `reasoning_effort` **solo para los modelos que la
+admiten**. Jarvis respeta eso: no envía el parámetro a un modelo que no lo
+soporta (hacerlo hace fallar el turno) y **oculta el selector de esfuerzo**
+cuando el modelo elegido no lo admite.
+
+### Sección de administración
+
+El botón **⚙ Admin** de la barra superior abre el panel de modelos: muestra el
+estado de cada uno, cuándo se comprobó y el motivo del fallo. El botón
+**«⟳ Restablecer y comprobar»** borra el registro aprendido y vuelve a probar
+todos los modelos, de uno en uno y en segundo plano. La comprobación consume
+algo de cuota, así que no se lanza sola.
 
 ## Comportamiento observado en la Pi 3B
 
@@ -130,6 +165,8 @@ Vale la pena distinguir **medido** de **esperado**:
 | `POST` | `/api/projects/:id/chat/config` | Cambia modelo o esfuerzo |
 | `POST` | `/api/projects/:id/chat/reset` | Empieza conversación nueva |
 | `GET` | `/api/projects/:id/chat/stream` | Server-Sent Events |
+| `GET` | `/api/models/health` | Salud de los modelos (Admin) |
+| `POST` | `/api/models/refresh` | Restablece y re-comprueba → `202` |
 
 ## Configuración
 
@@ -143,6 +180,7 @@ Vale la pena distinguir **medido** de **esperado**:
 | `JARVIS_CHAT_IDLE_MS` | `900000` | Inactividad antes de dormir el proceso. |
 | `JARVIS_PERMISSION_TIMEOUT_MS` | `120000` | Tope para contestar un permiso. |
 | `JARVIS_STALL_TIMEOUT_MS` | `600000` | Aviso si un turno lleva mucho sin emitir. |
+| `JARVIS_MODEL_PROBE_TIMEOUT_MS` | `45000` | Tope por modelo en la comprobación de Admin. |
 
 Al dormirse, el proceso se cierra por EOF de stdin (cierre limpio de ACP) y las
 sesiones quedan persistidas para reanudarse al siguiente mensaje.

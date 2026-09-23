@@ -16,7 +16,6 @@ const state = {
   editing: false,
   chat: { projectId: null, source: null, messages: [], busy: false, streaming: '' }
 };
-
 /* ---------------- Utilidades DOM ---------------- */
 const $ = (sel) => document.querySelector(sel);
 
@@ -535,16 +534,25 @@ async function loadChatConfig() {
   const effortSel = $('#chat-effort');
   modelSel.classList.add('loading');
   try {
-    const { options, current } = await api(
+    const config = await api(
       `/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/config`
     );
-    fillModelSelect(modelSel, options, current);
-    fillSimpleSelect(effortSel, options, 'reasoning_effort', current);
+    fillModelSelect(modelSel, config.options, config.current);
+    fillSimpleSelect(effortSel, config.options, 'reasoning_effort', config.current);
     modelSel.classList.remove('loading');
-    if (current.error) toast(`Aviso del motor: ${current.error}`, 'err');
+    if (config.current?.error) toast(`Aviso del motor: ${config.current.error}`, 'err');
   } catch {
     modelSel.classList.remove('loading');
   }
+}
+
+/** Sufijo de aviso para un modelo: sin cuota, sin soporte de esfuerzo… */
+function modelHealthSuffix(item) {
+  const health = item?.health || {};
+  const marcas = [];
+  if (health.status === 'quota') marcas.push('sin cuota');
+  if (health.supportsEffort === false) marcas.push('sin esfuerzo');
+  return marcas.length ? ` (${marcas.join(', ')})` : '';
 }
 
 function fillModelSelect(sel, options, current) {
@@ -561,9 +569,10 @@ function fillModelSelect(sel, options, current) {
       og.label = group.name || group.group;
       for (const item of group.options) {
         const o = document.createElement('option');
+        const sufijo = modelHealthSuffix(item);
         o.value = item.value;
-        o.textContent = item.description ? `${item.name} — ${item.description}` : item.name;
-        o.title = item.description || item.name;
+        o.textContent = (item.description ? `${item.name} — ${item.description}` : item.name) + sufijo;
+        o.title = (item.description || item.name) + sufijo;
         if (item.value === current.model) o.selected = true;
         og.appendChild(o);
       }
@@ -571,7 +580,7 @@ function fillModelSelect(sel, options, current) {
     } else {
       const o = document.createElement('option');
       o.value = group.value;
-      o.textContent = group.name;
+      o.textContent = group.name + modelHealthSuffix(group);
       if (group.value === current.model) o.selected = true;
       sel.appendChild(o);
     }
@@ -581,7 +590,9 @@ function fillModelSelect(sel, options, current) {
 function fillSimpleSelect(sel, options, id, current) {
   const opt = (options || []).find((o) => o.id === id || o.category === 'thought_level');
   sel.innerHTML = '';
-  if (!opt?.options?.length) {
+  // El modelo actual puede no admitir esfuerzo: en ese caso no se enseña el
+  // selector, porque DSH rechazaría el parámetro.
+  if (!opt?.options?.length || current?.supportsEffort === false) {
     sel.classList.add('hidden');
     return;
   }
@@ -604,6 +615,8 @@ async function saveChatConfig(configId, value) {
       body: JSON.stringify({ configId, value })
     });
     toast('Ajuste guardado: se aplica al siguiente mensaje', 'ok');
+    // El esfuerzo disponible cambia con el modelo: hay que repintarlo.
+    await loadChatConfig();
   } catch (error) {
     toast(`No se pudo guardar: ${error.message}`, 'err');
     loadChatConfig();
@@ -1023,6 +1036,117 @@ async function createNote(event) {
   }
 }
 
+/* ---------------- Administración de modelos ---------------- */
+let adminPoll = null;
+
+function modeloHealthLabel(status) {
+  switch (status) {
+    case 'ok': return { texto: 'funciona', clase: 'ok' };
+    case 'quota': return { texto: 'sin cuota', clase: 'warn' };
+    case 'broken': return { texto: 'retirado', clase: 'err' };
+    default: return { texto: 'sin confirmar', clase: '' };
+  }
+}
+
+/** Nombre legible de la clave de un modelo (`["proveedor","modelo"]`). */
+function modelKeyLabel(value, entry) {
+  if (entry?.provider && entry?.model) return `${entry.provider}/${entry.model}`;
+  try {
+    const [provider, model] = JSON.parse(value);
+    if (provider && model) return `${provider}/${model}`;
+  } catch { /* no era JSON */ }
+  return String(value);
+}
+
+async function abrirAdmin() {
+  const dialog = $('#admin-dialog');
+  if (!dialog) return;
+  try { dialog.showModal(); } catch { /* ya abierto */ }
+  await cargarSaludModelos();
+}
+
+async function cargarSaludModelos() {
+  try {
+    const salud = await api('/api/models/health');
+    renderAdminModelos(salud);
+    if (salud.checking) programarSondeoAdmin();
+  } catch (error) {
+    const resumen = $('#admin-summary');
+    if (resumen) resumen.textContent = `No se pudo leer la salud de los modelos: ${error.message}`;
+  }
+}
+
+function renderAdminModelos(salud) {
+  const cont = $('#admin-models');
+  const resumen = $('#admin-summary');
+  const results = salud?.results || {};
+  const entradas = Object.entries(results).map(([value, r]) => ({ value, ...r }));
+  const orden = { ok: 0, quota: 1, unknown: 2, broken: 3 };
+  entradas.sort((a, b) => (orden[a.status] ?? 2) - (orden[b.status] ?? 2));
+
+  const cuenta = { ok: 0, quota: 0, broken: 0, unknown: 0 };
+  for (const e of entradas) cuenta[e.status] = (cuenta[e.status] || 0) + 1;
+
+  if (resumen) {
+    if (salud?.checking) {
+      const p = salud.progress || {};
+      resumen.textContent = `Comprobando modelos… ${p.done ?? 0}/${p.total ?? '?'}`
+        + (p.current ? ` · ${modelKeyLabel(p.current)}` : '');
+    } else if (!entradas.length) {
+      resumen.textContent = 'Sin datos. Pulsa «Restablecer y comprobar» para analizar los modelos.';
+    } else {
+      const fecha = salud.checkedAt ? new Date(salud.checkedAt).toLocaleString() : '—';
+      resumen.textContent = `Última comprobación: ${fecha} · ${cuenta.ok || 0} funcionan · `
+        + `${cuenta.quota || 0} sin cuota · ${cuenta.broken || 0} retirados · ${cuenta.unknown || 0} sin confirmar`;
+    }
+  }
+
+  if (!cont) return;
+  cont.innerHTML = '';
+  for (const e of entradas) {
+    const etiqueta = modeloHealthLabel(e.status);
+    const fila = document.createElement('div');
+    fila.className = 'model-row';
+    fila.innerHTML = `<span class="model-name">${escapeHtml(modelKeyLabel(e.value, e))}</span>`
+      + `<span class="model-status ${etiqueta.clase}">${etiqueta.texto}</span>`
+      + (e.error ? `<span class="model-error" title="${escapeHtml(e.error)}">${escapeHtml(String(e.error).slice(0, 90))}</span>` : '');
+    cont.appendChild(fila);
+  }
+}
+
+function programarSondeoAdmin() {
+  if (adminPoll) return;
+  adminPoll = setInterval(async () => {
+    try {
+      const salud = await api('/api/models/health');
+      renderAdminModelos(salud);
+      if (!salud.checking) {
+        clearInterval(adminPoll);
+        adminPoll = null;
+        if (state.chat.projectId) loadChatConfig();
+      }
+    } catch {
+      clearInterval(adminPoll);
+      adminPoll = null;
+    }
+  }, 1500);
+}
+
+async function comprobarModelos() {
+  const btn = $('#models-refresh');
+  if (btn) btn.disabled = true;
+  try {
+    await api('/api/models/refresh', { method: 'POST' });
+    toast('Comprobando modelos; esto puede tardar y consume algo de cuota', 'warn');
+    await cargarSaludModelos();
+    programarSondeoAdmin();
+  } catch (error) {
+    toast(`No se pudo comprobar: ${error.message}`, 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 /* ---------------- UI móvil ---------------- */
 function closeMobileSidebar() {
   $('#sidebar').classList.remove('open');
@@ -1099,6 +1223,16 @@ function bindEvents() {
   on('#system-pill', 'click', abrirSistema);
   on('#system-update', 'click', pedirActualizacion);
   on('#system-check', 'click', buscarNovedades);
+
+  // --- Administración de modelos ---
+  on('#admin-btn', 'click', abrirAdmin);
+  on('#models-refresh', 'click', comprobarModelos);
+  const adminDialog = $('#admin-dialog');
+  if (adminDialog) {
+    adminDialog.addEventListener('close', () => {
+      if (adminPoll) { clearInterval(adminPoll); adminPoll = null; }
+    });
+  }
 }
 
 async function boot() {

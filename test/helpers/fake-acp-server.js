@@ -14,6 +14,14 @@
  *   FAKE_ACP_SESSIONS  sesiones que devolverá session/list (JSON)
  *   FAKE_ACP_NO_PERM   si vale "1", no pide permisos
  *   FAKE_ACP_CANCEL_SILENT si vale "1", no responde al prompt tras cancelar
+ *   FAKE_ACP_MODELS    catálogo alternativo (JSON). Ejemplo:
+ *     { "providers": [ { "id": "p1", "name": "P1", "models": [
+ *       { "id": "bueno", "name": "Bueno", "reasoning": true },
+ *       { "id": "roto", "name": "Roto", "fail": "notfound" },
+ *       { "id": "sin-cuota", "name": "Sin cuota", "reasoning": true, "fail": "quota" },
+ *       { "id": "sin-esfuerzo", "name": "Sin esfuerzo", "reasoning": false }
+ *     ] } ] }
+ *     `fail` puede ser "quota", "notfound" o "auth"; sin él, el modelo responde.
  */
 import readline from 'node:readline';
 import fs from 'node:fs';
@@ -23,6 +31,58 @@ const NO_PERM = process.env.FAKE_ACP_NO_PERM === '1';
 const PRESET_SESSIONS = process.env.FAKE_ACP_SESSIONS
   ? JSON.parse(process.env.FAKE_ACP_SESSIONS)
   : [];
+const PRESET_MODELS = process.env.FAKE_ACP_MODELS
+  ? JSON.parse(process.env.FAKE_ACP_MODELS)
+  : null;
+
+const DEFAULT_MODEL = '["deepseek-official","deepseek-v4-flash"]';
+const modelValue = (provider, model) => JSON.stringify([provider, model]);
+
+/** Catálogo plano del preset, con el proveedor ya incorporado. */
+function flattenPreset() {
+  const out = [];
+  for (const p of PRESET_MODELS?.providers || []) {
+    for (const m of p.models || []) out.push({ ...m, provider: p.id, providerName: p.name });
+  }
+  return out;
+}
+const PRESET_FLAT = PRESET_MODELS ? flattenPreset() : [];
+const modelByValue = (value) => PRESET_FLAT.find((m) => modelValue(m.provider, m.id) === value) || null;
+let currentModel = PRESET_MODELS && PRESET_FLAT[0]
+  ? modelValue(PRESET_FLAT[0].provider, PRESET_FLAT[0].id)
+  : DEFAULT_MODEL;
+let currentEffort = 'high';
+
+/** Estado de configuración que publicaría DSH para el modelo vigente. */
+function buildOptions() {
+  if (!PRESET_MODELS) {
+    return [
+      { id: 'model', category: 'model', currentValue: DEFAULT_MODEL },
+      { id: 'reasoning_effort', category: 'thought_level', currentValue: 'high' }
+    ];
+  }
+  const groups = (PRESET_MODELS.providers || []).map((p) => ({
+    group: p.id,
+    name: p.name || p.id,
+    options: (p.models || []).map((m) => ({ value: modelValue(p.id, m.id), name: m.name || m.id }))
+  }));
+  const options = [{ id: 'model', name: 'Model', category: 'model', currentValue: currentModel, options: groups }];
+  if (modelByValue(currentModel)?.reasoning) {
+    options.push({
+      id: 'reasoning_effort',
+      name: 'Reasoning effort',
+      category: 'thought_level',
+      currentValue: currentEffort,
+      options: [
+        { value: 'off', name: 'Off' },
+        { value: 'low', name: 'Low' },
+        { value: 'high', name: 'High' },
+        { value: 'max', name: 'Max' }
+      ]
+    });
+  }
+  return options;
+}
 
 let nextServerId = 9000;
 const knownSessions = new Set(PRESET_SESSIONS.map((s) => s.sessionId));
@@ -84,10 +144,7 @@ rl.on('line', async (line) => {
       knownSessions.add(sessionId);
       respond(message.id, {
         sessionId,
-        configOptions: [
-          { id: 'model', category: 'model', currentValue: '["deepseek-official","deepseek-v4-flash"]' },
-          { id: 'reasoning_effort', category: 'thought_level', currentValue: 'high' }
-        ]
+        configOptions: buildOptions()
       });
       return;
     }
@@ -105,9 +162,28 @@ rl.on('line', async (line) => {
       respond(message.id, { sessions: PRESET_SESSIONS });
       return;
 
-    case 'session/set_config_option':
-      respond(message.id, { configs: [] });
+    case 'session/set_config_option': {
+      if (!PRESET_MODELS) {
+        respond(message.id, { configs: [] });
+        return;
+      }
+      const { configId, value } = message.params || {};
+      if (configId === 'model') {
+        if (!modelByValue(value)) {
+          respondError(message.id, -32602, `unknown model option: ${value}`);
+          return;
+        }
+        currentModel = value;
+      } else if (configId === 'reasoning_effort') {
+        if (!modelByValue(currentModel)?.reasoning) {
+          respondError(message.id, -32602, `provider model does not support reasoning effort "${value}"`);
+          return;
+        }
+        currentEffort = value;
+      }
+      respond(message.id, { configOptions: buildOptions() });
       return;
+    }
 
     case 'session/close':
       respond(message.id, {});
@@ -123,6 +199,21 @@ rl.on('line', async (line) => {
       const sessionId = message.params.sessionId;
       const promptText = (message.params.prompt || [])
         .map((b) => b.text || '').join('');
+
+      // Fallo simulado del modelo elegido (catálogo alternativo).
+      const actual = PRESET_MODELS ? modelByValue(currentModel) : null;
+      if (actual?.fail === 'quota') {
+        respondError(message.id, -32000, 'insufficient quota: your balance is exhausted');
+        return;
+      }
+      if (actual?.fail === 'notfound') {
+        respondError(message.id, -32000, `model not found: ${currentModel}`);
+        return;
+      }
+      if (actual?.fail === 'auth') {
+        respondError(message.id, -32000, 'invalid api key');
+        return;
+      }
 
       if (!NO_PERM) {
         const answer = await serverRequest('session/request_permission', {

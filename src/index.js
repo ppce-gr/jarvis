@@ -37,6 +37,8 @@ import { SubscribeChatUseCase } from './application/SubscribeChatUseCase.js';
 import { CancelChatTurnUseCase } from './application/CancelChatTurnUseCase.js';
 import { GetChatConfigUseCase } from './application/GetChatConfigUseCase.js';
 import { SetChatConfigUseCase } from './application/SetChatConfigUseCase.js';
+import { GetModelHealthUseCase } from './application/GetModelHealthUseCase.js';
+import { RefreshModelsUseCase } from './application/RefreshModelsUseCase.js';
 import { GetSystemStatusUseCase } from './application/GetSystemStatusUseCase.js';
 import { RequestSystemUpdateUseCase } from './application/RequestSystemUpdateUseCase.js';
 import { CheckForUpdatesUseCase } from './application/CheckForUpdatesUseCase.js';
@@ -124,6 +126,8 @@ const subscribeChatUseCase = new SubscribeChatUseCase(conversationAdapter);
 const cancelChatTurnUseCase = new CancelChatTurnUseCase(conversationAdapter);
 const getChatConfigUseCase = new GetChatConfigUseCase(conversationAdapter);
 const setChatConfigUseCase = new SetChatConfigUseCase(conversationAdapter);
+const getModelHealthUseCase = new GetModelHealthUseCase(conversationAdapter);
+const refreshModelsUseCase = new RefreshModelsUseCase(conversationAdapter);
 // Fija la versión que este proceso carga en memoria, antes de nada.
 await systemUpdateAdapter.captureRunningCommit();
 
@@ -148,6 +152,8 @@ const webServer = new JarvisWebServer({
   cancelChatTurnUseCase,
   getChatConfigUseCase,
   setChatConfigUseCase,
+  getModelHealthUseCase,
+  refreshModelsUseCase,
   getSystemStatusUseCase,
   requestSystemUpdateUseCase,
   checkForUpdatesUseCase,

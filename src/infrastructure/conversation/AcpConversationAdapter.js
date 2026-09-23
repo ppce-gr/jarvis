@@ -2,6 +2,13 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ConversationPort } from '../../domain/ports/ConversationPort.js';
+import {
+  MODEL_STATUS,
+  classifyModelFailure,
+  applyModelHealth,
+  effortOption,
+  flattenModels
+} from '../../domain/ModelHealth.js';
 import { JsonRpcStdioClient } from './JsonRpcStdioClient.js';
 
 /**
@@ -55,6 +62,8 @@ export class AcpConversationAdapter extends ConversationPort {
     stallTimeoutMs = Number(process.env.JARVIS_STALL_TIMEOUT_MS
       || AcpConversationAdapter.DEFAULT_STALL_MS),
     configFile = null,
+    healthFile = null,
+    probeTimeoutMs = Number(process.env.JARVIS_MODEL_PROBE_TIMEOUT_MS || 45 * 1000),
     spawnFn = nodeSpawn
   } = {}) {
     super();
@@ -75,6 +84,16 @@ export class AcpConversationAdapter extends ConversationPort {
       reasoning_effort: reasoningEffort
     };
     this._preferredLoaded = false;
+
+    // Registro de salud de modelos. Vive junto a la memoria, no en el repo
+    // público. Se carga de disco en la primera consulta.
+    this.healthFile = healthFile || path.join(brainDir, 'model-health.json');
+    this.probeTimeoutMs = probeTimeoutMs;
+    this._health = { checkedAt: null, results: {} };
+    this._healthLoaded = false;
+    this._checking = false;
+    this._checkProgress = null;
+    this._probeSessionId = null;
 
     /** @type {null | {child: any, rpc: JsonRpcStdioClient}} */
     this._client = null;
@@ -204,6 +223,8 @@ export class AcpConversationAdapter extends ConversationPort {
       rpc.on('close', () => {
         client.dead = true;
         this._clearClientIdle(client);
+        // La sesión de sondeo muere con el proceso: se pedirá otra.
+        this._probeSessionId = null;
         for (const session of this._sessions.values()) {
           session.sessionId = session.sessionId; // se conserva: es resumible
           session.ready = false;
@@ -374,23 +395,62 @@ export class AcpConversationAdapter extends ConversationPort {
   async _applyPreferredConfig(client, record) {
     if (!record.sessionId) return;
     await this._loadPreferred();
+    await this._loadHealth();
+
     const set = async (configId, value) => {
-      if (value === undefined || value === null || value === '') return;
+      if (value === undefined || value === null || value === '') return false;
       try {
         const res = await client.rpc.request('session/set_config_option', {
           sessionId: record.sessionId,
           configId,
           value
         });
-        // DSH devuelve el estado completo; se guarda para que la interfaz
-        // muestre el valor real, no el que creíamos haber puesto.
         if (res?.configOptions) record.configOptions = res.configOptions;
+        return true;
       } catch (error) {
         record.configError = `${configId}: ${error.message}`;
+        return false;
       }
     };
-    await set('model', this.preferred.model);
-    await set('reasoning_effort', this.preferred.reasoning_effort);
+
+    const modelOk = await set('model', this.preferred.model);
+    if (!modelOk) {
+      // El motor no acepta el modelo guardado: se anota para que desaparezca
+      // del selector sin volver a intentarlo.
+      const fallo = classifyModelFailure(record.configError);
+      if (fallo.status === MODEL_STATUS.BROKEN) {
+        await this._noteHealth(this.preferred.model, { status: fallo.status, kind: fallo.kind, error: record.configError });
+      }
+      return;
+    }
+
+    // El esfuerzo SÓLO se envía si el modelo elegido lo admite. DSH publica la
+    // opción `reasoning_effort` únicamente para modelos con razonamiento;
+    // mandarla a uno que no lo soporta hace fallar el turno.
+    const effort = effortOption(record.configOptions);
+    if (!effort) {
+      record.configError = null;
+      await this._noteHealth(this.preferred.model, { supportsEffort: false });
+      return;
+    }
+
+    const allowed = (effort.options || []).map((o) => String(o.value));
+    let wanted = this.preferred.reasoning_effort;
+    if (wanted === undefined || wanted === null || wanted === '') {
+      wanted = effort.currentValue;
+    } else if (allowed.length && !allowed.includes(String(wanted))) {
+      // El valor guardado no vale para este modelo: se usa el suyo por defecto.
+      wanted = effort.currentValue;
+    }
+    if (wanted !== undefined && wanted !== null && String(wanted) !== '') {
+      const applied = await set('reasoning_effort', String(wanted));
+      if (applied && this.preferred.reasoning_effort !== String(wanted)) {
+        this.preferred.reasoning_effort = String(wanted);
+        await this._savePreferred();
+      }
+    }
+    record.configError = null;
+    await this._noteHealth(this.preferred.model, { supportsEffort: true });
   }
 
   async _readStoredSession(projectId) {
@@ -670,6 +730,9 @@ export class AcpConversationAdapter extends ConversationPort {
       session.busy = false;
       session.turnBuffer = '';
       this._clearStallWatchdog(session);
+      // Aprender del fallo real: si el modelo no existe o no está disponible
+      // se retira de la lista; si fue cuota, se conserva y se avisa.
+      this._learnFromFailure(this._currentSelection(session).model, error, projectId).catch(() => {});
       this._emit(projectId, { type: 'error', text: error.message });
       this._emit(projectId, { type: 'status', status: 'idle' });
     });
@@ -770,8 +833,12 @@ export class AcpConversationAdapter extends ConversationPort {
           try { await client.rpc.request('session/close', { sessionId: session.sessionId }); } catch { /* ya cerrada */ }
         }
       }
+      if (this._probeSessionId) {
+        try { await client.rpc.request('session/close', { sessionId: this._probeSessionId }); } catch { /* ya cerrada */ }
+      }
     }
     this._pendingPermissions.clear();
+    this._probeSessionId = null;
     this._shutdownClient();
     this._sessions.clear();
   }
@@ -788,6 +855,7 @@ export class AcpConversationAdapter extends ConversationPort {
   async getConfig(projectId) {
     if (!projectId) throw new Error('PROJECT_ID_REQUIRED');
     await this._loadPreferred();
+    await this._loadHealth();
 
     // El catálogo lo publica DSH al crear la sesión. Si todavía no hay ninguna
     // se prepara una: sin catálogo no habría selector de modelo.
@@ -799,20 +867,35 @@ export class AcpConversationAdapter extends ConversationPort {
     }
 
     const session = this._sessions.get(projectId);
-    const options = session?.configOptions?.length ? session.configOptions : (this._catalog || []);
-    return { options, current: this._currentSelection(session) };
+    const raw = session?.configOptions?.length ? session.configOptions : (this._catalog || []);
+    return {
+      options: this._decoratedOptions(raw),
+      current: this._currentSelection(session, raw),
+      health: this._healthSnapshot()
+    };
+  }
+
+  /** Copia del catálogo con los modelos rotos retirados y su salud anotada. */
+  _decoratedOptions(options) {
+    return applyModelHealth(options, this._health.results);
   }
 
   /** Selección vigente, tal como debe verla la interfaz. */
-  _currentSelection(session) {
+  _currentSelection(session, rawOptions = null) {
     let provider = '';
     let model = '';
     try { [provider, model] = JSON.parse(this.preferred.model); } catch { /* formato inesperado */ }
+    const options = rawOptions
+      || session?.configOptions
+      || this._catalog
+      || [];
     return {
       model: this.preferred.model,
       provider,
       modelName: model,
       reasoning_effort: this.preferred.reasoning_effort,
+      // Si el catálogo no trae `reasoning_effort`, el modelo no la admite.
+      supportsEffort: Boolean(effortOption(options)),
       error: session?.configError || null
     };
   }
@@ -829,30 +912,307 @@ export class AcpConversationAdapter extends ConversationPort {
       throw new Error('CONFIG_VALUE_REQUIRED');
     }
     await this._loadPreferred();
+    await this._loadHealth();
+
+    const session = [...this._sessions.values()].find((s) => s.sessionId) || null;
+    const liveOptions = session?.configOptions?.length ? session.configOptions : (this._catalog || []);
+
+    // El esfuerzo sólo tiene sentido si el modelo elegido lo admite. Se
+    // comprueba contra el catálogo real, no contra lo que creamos.
+    if (configId === 'reasoning_effort') {
+      const effort = effortOption(liveOptions);
+      if (liveOptions.length && !effort) {
+        throw new Error('REASONING_NOT_SUPPORTED: el modelo actual no admite esfuerzo');
+      }
+      const allowed = (effort?.options || []).map((o) => String(o.value));
+      if (allowed.length && !allowed.includes(String(value))) {
+        throw new Error(`CONFIG_VALUE_NOT_SUPPORTED: ${value}`);
+      }
+    }
+
     this.preferred[configId] = String(value);
     await this._savePreferred();
 
     // Aplicar a las sesiones vivas: el cambio rige para el siguiente turno.
+    let supportChanged = false;
+    let supportsEffort = null;
     if (this._client && !this._client.dead) {
-      for (const session of this._sessions.values()) {
-        if (!session.sessionId) continue;
+      for (const s of this._sessions.values()) {
+        if (!s.sessionId) continue;
         try {
           const res = await this._client.rpc.request('session/set_config_option', {
-            sessionId: session.sessionId,
+            sessionId: s.sessionId,
             configId,
             value: String(value)
           });
           if (res?.configOptions) {
-            session.configOptions = res.configOptions;
+            s.configOptions = res.configOptions;
             this._catalog = res.configOptions;
+            if (configId === 'model') {
+              supportsEffort = Boolean(effortOption(res.configOptions));
+              supportChanged = true;
+            }
           }
-          session.configError = null;
+          s.configError = null;
         } catch (error) {
-          session.configError = `${configId}: ${error.message}`;
+          s.configError = `${configId}: ${error.message}`;
         }
       }
     }
-    const session = [...this._sessions.values()].find((s) => s.sessionId) || null;
-    return { options: this._catalog || [], current: this._currentSelection(session) };
+
+    if (configId === 'model') {
+      await this._noteHealth(value, { supportsEffort: supportChanged ? supportsEffort : undefined });
+    } else {
+      await this._noteHealth(this.preferred.model, { supportsEffort: true });
+    }
+
+    const raw = this._catalog || [];
+    return {
+      options: this._decoratedOptions(raw),
+      current: this._currentSelection(session, raw),
+      health: this._healthSnapshot()
+    };
+  }
+
+  /* ------------------------------------------------------------------
+   * Salud de modelos
+   * ------------------------------------------------------------------ */
+
+  async _loadHealth() {
+    if (this._healthLoaded) return this._health;
+    this._healthLoaded = true;
+    try {
+      const raw = await fs.readFile(this.healthFile, 'utf8');
+      const saved = JSON.parse(raw);
+      if (saved && typeof saved === 'object' && saved.results && typeof saved.results === 'object') {
+        this._health = { checkedAt: saved.checkedAt || null, results: saved.results };
+      }
+    } catch { /* sin registro previo: todo es desconocido */ }
+    return this._health;
+  }
+
+  async _saveHealth() {
+    try {
+      await fs.mkdir(path.dirname(this.healthFile), { recursive: true });
+      await fs.writeFile(this.healthFile, JSON.stringify({
+        checkedAt: this._health.checkedAt,
+        updatedAt: new Date().toISOString(),
+        results: this._health.results
+      }, null, 2));
+    } catch { /* no es crítico */ }
+  }
+
+  /** Fusiona un resultado en el registro de salud y lo persiste. */
+  async _noteHealth(value, patch = {}) {
+    if (!value) return;
+    const key = String(value);
+    const prev = this._health.results[key] || {};
+    const next = { ...prev };
+    for (const [campo, dato] of Object.entries(patch)) {
+      if (dato !== undefined) next[campo] = dato;
+    }
+    if (next.status === undefined) next.status = MODEL_STATUS.UNKNOWN;
+    next.checkedAt = new Date().toISOString();
+    this._health.results[key] = next;
+    await this._saveHealth();
+  }
+
+  /** Etiqueta legible de un valor de modelo (`["p","m"]`). */
+  static modelLabel(value) {
+    try {
+      const [provider, model] = JSON.parse(value);
+      return provider && model ? `${provider}/${model}` : String(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  /**
+   * Aprende del fallo de un turno real. Sin esto, la lista seguiría
+   * ofreciendo modelos que ya sabemos que no funcionan.
+   */
+  async _learnFromFailure(value, error, projectId = null) {
+    if (!value) return null;
+    const fallo = classifyModelFailure(error?.message);
+    if (fallo.kind === 'effort') {
+      await this._noteHealth(value, { supportsEffort: false });
+      return fallo;
+    }
+    if (fallo.status === MODEL_STATUS.QUOTA || fallo.status === MODEL_STATUS.BROKEN) {
+      await this._noteHealth(value, {
+        status: fallo.status,
+        kind: fallo.kind,
+        error: String(error?.message || '').slice(0, 400)
+      });
+      if (projectId) {
+        this._emit(projectId, {
+          type: 'log',
+          text: fallo.status === MODEL_STATUS.BROKEN
+            ? `Modelo retirado de la lista (${AcpConversationAdapter.modelLabel(value)}): ${fallo.kind}`
+            : `Modelo sin cuota (${AcpConversationAdapter.modelLabel(value)}); se conserva para cuando se restablezca.`
+        });
+      }
+    }
+    return fallo;
+  }
+
+  _healthSnapshot() {
+    return {
+      checking: this._checking,
+      checkedAt: this._health.checkedAt,
+      progress: this._checkProgress,
+      results: this._health.results
+    };
+  }
+
+  /** Salud conocida de los modelos (sin exponer nada interno). */
+  async getModelHealth() {
+    await this._loadHealth();
+    return this._healthSnapshot();
+  }
+
+  /**
+   * Restablece el registro y vuelve a comprobar TODOS los modelos contra el
+   * motor, en segundo plano. Cada comprobación es un turno mínimo, así que
+   * se hace de uno en uno para no saturar la Pi ni la cuota.
+   */
+  async refreshModels() {
+    await this._loadHealth();
+    await this._loadPreferred();
+    if (this._checking) return { started: false, checking: true };
+
+    this._health = { checkedAt: this._health.checkedAt, results: {} };
+    this._healthLoaded = true;
+    await this._saveHealth();
+
+    this._checking = true;
+    this._checkProgress = { done: 0, total: 0, current: null };
+    this._runModelCheck()
+      .catch(() => { /* cada modelo registra su propio fallo */ })
+      .finally(async () => {
+        this._checking = false;
+        this._checkProgress = null;
+        this._health.checkedAt = new Date().toISOString();
+        // Si el modelo elegido resultó roto, no dejar al usuario atrapado:
+        // se pasa al primero que funcione. La cuota no cuenta (puede volver).
+        await this._preferHealthyModel();
+        await this._saveHealth();
+      });
+    return { started: true, checking: true };
+  }
+
+  /** Cambia la preferencia a un modelo sano si el actual se retiró. */
+  async _preferHealthyModel() {
+    const actual = this._health.results[this.preferred.model];
+    if (!actual || actual.status !== MODEL_STATUS.BROKEN) return;
+    const sano = Object.entries(this._health.results)
+      .find(([, r]) => r.status === MODEL_STATUS.OK);
+    if (!sano) return;
+    this.preferred.model = sano[0];
+    await this._savePreferred();
+  }
+
+  /** Sesión dedicada al sondeo: no contamina las conversaciones reales. */
+  async _ensureProbeSession(client) {
+    if (this._probeSessionId) return this._probeSessionId;
+    const cwd = path.join(this.brainDir, '.model-check');
+    await fs.mkdir(cwd, { recursive: true });
+    const created = await client.rpc.request('session/new', { cwd, mcpServers: [] });
+    this._probeSessionId = created?.sessionId || null;
+    if (created?.configOptions?.length) this._catalog = created.configOptions;
+    return this._probeSessionId;
+  }
+
+  async _runModelCheck() {
+    const client = await this._ensureClient();
+    let sessionId = await this._ensureProbeSession(client);
+    if (!sessionId) throw new Error('No se pudo abrir la sesión de comprobación');
+
+    const models = flattenModels(this._catalog || []);
+    this._checkProgress = { done: 0, total: models.length, current: null };
+
+    for (const item of models) {
+      if (this._client !== client || client.dead) break;
+      // El sondeo puede durar minutos: que el proceso no se duerma a mitad.
+      this._touchClient();
+      this._checkProgress.current = item.value;
+      const outcome = await this._probeModel(client, sessionId, item.value);
+      await this._noteHealth(item.value, {
+        status: outcome.status,
+        kind: outcome.kind,
+        error: outcome.error || null,
+        supportsEffort: outcome.supportsEffort
+      });
+      this._checkProgress.done += 1;
+      if (outcome.resetSession) {
+        this._probeSessionId = null;
+        sessionId = await this._ensureProbeSession(client);
+      }
+    }
+
+    // La sesión de sondeo no hace falta para nada más.
+    const probe = this._probeSessionId;
+    this._probeSessionId = null;
+    if (probe) {
+      try { await client.rpc.request('session/close', { sessionId: probe }); } catch { /* da igual */ }
+    }
+  }
+
+  /**
+   * Comprueba un modelo con un turno mínimo. Devuelve su estado y si admite
+   * esfuerzo. Un timeout cancela el turno y pide sesión nueva.
+   */
+  async _probeModel(client, sessionId, value) {
+    let supportsEffort = null;
+    try {
+      const res = await client.rpc.request('session/set_config_option', {
+        sessionId,
+        configId: 'model',
+        value
+      });
+      if (res?.configOptions) supportsEffort = Boolean(effortOption(res.configOptions));
+    } catch (error) {
+      const fallo = classifyModelFailure(error.message);
+      if (fallo.kind === 'effort') {
+        return { status: MODEL_STATUS.OK, kind: fallo.kind, error: error.message, supportsEffort: false };
+      }
+      return {
+        // Si el catálogo lo listaba y el motor no lo acepta, está roto.
+        status: fallo.status === MODEL_STATUS.UNKNOWN ? MODEL_STATUS.BROKEN : fallo.status,
+        kind: fallo.kind,
+        error: error.message,
+        supportsEffort: false
+      };
+    }
+
+    let timer = null;
+    try {
+      await Promise.race([
+        client.rpc.request('session/prompt', {
+          sessionId,
+          prompt: [{ type: 'text', text: 'Responde únicamente con la palabra OK.' }]
+        }),
+        new Promise((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('PROBE_TIMEOUT: el modelo no respondió a tiempo')),
+            this.probeTimeoutMs
+          );
+          if (typeof timer.unref === 'function') timer.unref();
+        })
+      ]);
+      return { status: MODEL_STATUS.OK, kind: 'ok', supportsEffort };
+    } catch (error) {
+      if (String(error.message).startsWith('PROBE_TIMEOUT')) {
+        try { client.rpc.notify('session/cancel', { sessionId }); } catch { /* da igual */ }
+        return { status: MODEL_STATUS.UNKNOWN, kind: 'timeout', error: error.message, supportsEffort, resetSession: true };
+      }
+      const fallo = classifyModelFailure(error.message);
+      if (fallo.kind === 'effort') {
+        return { status: MODEL_STATUS.OK, kind: fallo.kind, error: error.message, supportsEffort: false };
+      }
+      return { status: fallo.status, kind: fallo.kind, error: error.message, supportsEffort };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 }
