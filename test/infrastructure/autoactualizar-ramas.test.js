@@ -220,10 +220,13 @@ test('deja post-mortem y revierte cuando la verificación falla', async (t) => {
   assert.ok(texto, 'debe dejar el post-mortem por escrito');
 
   const campo = (clave) => (texto.match(new RegExp(`^${clave}: (.*)$`, 'm')) || [])[1];
+  // El extracto va DESPUÉS del separador, no como campo: es texto crudo.
+  const extracto = (texto.split('---extracto---')[1] || '').trim();
+
   assert.equal(campo('fase'), '4a-pruebas');
   assert.equal(campo('revertido'), 'si');
   assert.match(campo('mensaje'), /verificación/);
-  assert.ok(campo('extracto').length > 0, 'el extracto no puede quedar vacío');
+  assert.ok(extracto.length > 0, 'el extracto no puede quedar vacío');
   assert.notEqual(
     campo('commit_intentado'),
     campo('commit_revertido'),

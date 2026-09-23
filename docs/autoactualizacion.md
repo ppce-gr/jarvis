@@ -159,13 +159,10 @@ comodidad, y conviene saberlo.
   notas, hace falta una migración aparte. Actualizar sólo cambia el código.
 - **No toca la memoria.** El repositorio del cerebro es otro, así que una
   actualización de código no puede perder notas. Eso es por diseño.
-- **No reinstala el propio actualizador.** Si `scripts/autoactualizar.sh` cambia,
-  hay que volver a ejecutar `--autoupdate`. Es deliberado: systemd ejecuta una
-  copia en `/usr/local/sbin` que es de **root**, así que el actualizador no puede
-  escribir ahí, y reescribirse a sí mismo mientras bash lo interpreta sería
-  peligroso. Para que no vuelva a pasar inadvertido, tanto el actualizador como
-  el panel **comparan la copia instalada con la del repositorio y avisan** si no
-  coinciden (campos `actualizadorComprobado` y `actualizadorDesfasado`).
+- **No reinstala las unidades systemd ni la regla de sudoers.** El *script* del
+  actualizador sí se pone al día solo (ver «El actualizador se pone al día solo»),
+  pero si cambia una unidad o la regla de sudoers hay que volver a ejecutar
+  `--autoupdate`: eso escribe en `/etc` y necesita root de verdad.
 
 ## Cuando algo va mal
 
@@ -174,7 +171,8 @@ comodidad, y conviene saberlo.
 | «hay cambios sin commitear» | Commitea o descarta en el repositorio de código |
 | Commits locales sin subir | Nada: se respaldan solos antes de actualizar |
 | «las ramas han divergido DE VERDAD» | Hay commits en local **y** en el remoto que no están en el otro. No se toca nada: resuélvelo a mano |
-| «el ACTUALIZADOR INSTALADO no coincide con el del repositorio» | No se actualiza solo: `sudo bash deploy/instalar.sh --autoupdate` |
+| «el ACTUALIZADOR INSTALADO no coincide con el del repositorio» | Se refresca solo en la siguiente actualización. Si persiste: `sudo bash deploy/instalar.sh --autoupdate` |
+| «La última actualización FALLÓ» | Mira el post-mortem: `/home/jarvis/mantenimiento.sh fallo` |
 | «el servicio no está instalado» | `sudo bash deploy/instalar.sh --jarvis` |
 | Se revirtió solo | Mira el registro: `.update-state/autoactualizacion.log` |
 | Ni con el commit probado arranca | Intervención manual: `journalctl -u jarvis` |
@@ -196,6 +194,49 @@ se subían nunca: bloqueo definitivo, con trabajo real sin respaldar.
 
 Sólo el último caso es irresoluble de forma automática; los otros tres se
 resuelven sin intervención.
+
+## El actualizador se pone al día solo
+
+El actualizador vive en `/usr/local/sbin/jarvis-actualizar`, que es de **root**,
+así que no puede reescribirse a sí mismo. Durante un tiempo eso obligaba a
+reinstalarlo a mano cada vez que cambiaba, y como nada lo comprobaba, la copia
+instalada podía quedarse vieja —con sus bugs— en silencio.
+
+Ahora se refresca en cada actualización. La unidad
+`jarvis-autoupdate.service` lleva un paso previo:
+
+```
+ExecStartPre=+/usr/local/sbin/jarvis-reinstalar-actualizador
+```
+
+El prefijo `+` hace que ese paso corra con privilegios completos, y va **antes**
+de `ExecStart`, o sea antes de que bash abra el script: cuando lo abra, ya es el
+nuevo. No hay automodificación posible.
+
+Ese ayudante **nunca bloquea**: si la copia del repositorio no está o tiene la
+sintaxis rota, avisa y se queda la instalada, que funciona. Es preferible seguir
+actualizándose con una versión antigua del actualizador que quedarse sin
+actualizaciones.
+
+Queda además una comprobación pasiva por si algo se desalinea: el actualizador,
+la API (`actualizadorComprobado`, `actualizadorDesfasado`) y el panel comparan la
+copia instalada con la del repositorio y avisan si no coinciden.
+
+## Cuando una actualización falla
+
+El actualizador deja un **post-mortem** en `.update-state/ultimo-fallo.txt`: qué
+commit se intentaba, en qué fase falló, a cuál se volvió, si el servicio quedó
+vivo y un extracto del error. Se borra en cuanto una actualización sale bien, así
+que **si el fichero está, es que hay algo pendiente de mirar**.
+
+Se ve en el panel, en `GET /api/system/status` (campo `ultimoFallo`) y a mano:
+
+```
+/home/jarvis/mantenimiento.sh fallo
+```
+
+Está pensado para que se lo puedas dar a Jarvis y te proponga el arreglo sin
+tener que rebuscar en un registro de cientos de líneas.
 
 El registro completo de cada intento está en
 `/home/jarvis/jarvis/.update-state/autoactualizacion.log`, y cada resultado se

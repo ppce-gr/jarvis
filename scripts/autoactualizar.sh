@@ -207,6 +207,37 @@ limpiar_bandera() {
 }
 trap limpiar_bandera EXIT
 
+# ---------------------------------------------------------------
+# Volver el CÓDIGO a un commit anterior.
+# ---------------------------------------------------------------
+# Se llama en cuatro sitios y es la pieza que sostiene toda la promesa de
+# "si algo falla, revierte sola". Hasta ahora NO ESTABA DEFINIDA: el script
+# decía "se ha vuelto a X" y "✅ Revertido y funcionando" sin revertir nada,
+# porque bash sólo avisa de una función inexistente cuando llega a ejecutarla.
+# Y sólo se ejecuta cuando algo ha ido mal, así que no se notó nunca.
+#
+# --hard porque hay que deshacer un fast-forward ya aplicado. No se pierde nada:
+# el árbol estaba limpio (barrera 1) y lo que se deshace ya está en origin
+# (barrera 3) y en el respaldo (barrera 2).
+revertir_codigo() {
+  local destino="${1:-}"
+  if [ -z "$destino" ]; then
+    log "ERROR: no me han dicho a qué commit revertir."
+    return 1
+  fi
+  if ! git cat-file -e "${destino}^{commit}" 2>/dev/null; then
+    log "ERROR: el commit $destino no existe; no puedo revertir."
+    return 1
+  fi
+  log "Revirtiendo el código a $(git rev-parse --short "$destino")..."
+  if ! git reset --hard "$destino" >>"$LOG_FICHERO" 2>&1; then
+    log "ERROR: 'git reset --hard $destino' falló. El código NO se ha revertido."
+    return 1
+  fi
+  log "Código de vuelta en $(git rev-parse --short HEAD)."
+  return 0
+}
+
 # Reinicia el servicio y espera a que responda de verdad: no basta con que el
 # proceso exista, tiene que servir /api/health Y poder leer la memoria.
 # Se define aquí arriba porque el modo --rollback también la usa.
