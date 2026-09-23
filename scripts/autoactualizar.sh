@@ -150,7 +150,11 @@ verificar_codigo() {
 
   log "Barrera 4a: ejecutando la suite de pruebas..."
   # Se ve en directo en el registro y a la vez se guarda para el post-mortem.
-  if ! timeout 300 npm test 2>&1 | tee -a "$LOG_FICHERO" > "$salida"; then
+  # Margen amplio a propósito: en la Pi la suite tarda ~25 s, pero bajo presión de
+  # memoria se ha visto dispararse. Un falso rechazo por lentitud —dejar sin
+  # actualizar código que está bien— es peor que esperar de más. El tope real lo
+  # pone TimeoutStartSec de la unidad (900 s).
+  if ! timeout 600 npm test 2>&1 | tee -a "$LOG_FICHERO" > "$salida"; then
     FALLO_FASE="4a-pruebas"
     FALLO_EXTRACTO="$(tail -n 40 "$salida")"
     FALLO_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"

@@ -77,7 +77,7 @@ cd jarvis
 # La memoria, en una carpeta hermana
 git clone <tu-repo-privado>/jarvis-vault.git ../jarvis-vault
 
-npm test         # 66 pruebas
+npm test         # 100 pruebas
 npm start        # http://<ip>:3081
 ```
 
@@ -93,9 +93,46 @@ src/
 └── index.js           raíz de composición (aquí se inyecta todo)
 public/                interfaz web (HTML/CSS/JS sin frameworks)
 docs/                  arquitectura, integración, manual y guía de migración
-deploy/                unidades systemd, zram y guía de despliegue
-scripts/               respaldo y despliegue
-test/                  pruebas (node:test), 66 en verde
+deploy/                unidades systemd, zram, mantenimiento y guía de despliegue
+scripts/               actualizador con reversión y respaldo en Git
+test/                  pruebas (node:test), 100 en verde
+```
+
+## Actualización y automodificación
+
+Jarvis **se actualiza sola**, y está pensada para poder modificar su propio
+código sin que un cambio roto deje la máquina inservible. Todo el mecanismo vive
+en [`deploy/`](deploy/) y [`scripts/`](scripts/).
+
+- **Pedir una actualización no necesita privilegios:** basta con escribir
+  `/home/jarvis/jarvis/.update-request` (o pulsar el botón del panel). Un `.path`
+  de systemd lo detecta y lanza el actualizador **fuera** del árbol de procesos
+  de Jarvis, para que sobreviva al reinicio del servicio y pueda comprobar si el
+  arranque funcionó.
+- **Cinco barreras, en orden de coste:** árbol limpio → respaldo → `--ff-only` →
+  `npm test` **y** un arranque real en un puerto aparte → reinicio verificado.
+  Si algo falla, revierte al último commit bueno.
+- **Lo único con privilegios** es una regla de sudoers que permite
+  `systemctl restart jarvis.service`, y nada más.
+- **El actualizador se pone al día a sí mismo** justo antes de ejecutarse, así que
+  no hay que reinstalarlo a mano cada vez que cambia.
+- **Cuando algo falla deja un post-mortem** legible
+  (`.update-state/ultimo-fallo.txt`) con la fase, el error y a dónde se volvió,
+  pensado para poder pedirle a Jarvis que lo revise y lo arregle.
+
+Para instalarlo, usarlo y entenderlo:
+
+| Documento | Qué encontrarás |
+|---|---|
+| [`deploy/README.md`](deploy/README.md) | **La guía práctica**: qué se instala, el script de mantenimiento y todas sus órdenes, y el post-mortem. |
+| [`docs/autoactualizacion.md`](docs/autoactualizacion.md) | **El diseño**: las barreras, las relaciones entre ramas, los riesgos y el porqué de cada decisión. |
+
+El script de mantenimiento reúne las operaciones en un solo sitio:
+
+```bash
+./deploy/mantenimiento.sh ayuda      # lista todas las órdenes
+./deploy/mantenimiento.sh estado     # empieza siempre por aquí
+./deploy/mantenimiento.sh instalar   # lo copia a ~/mantenimiento.sh
 ```
 
 ## Documentación
@@ -109,7 +146,7 @@ test/                  pruebas (node:test), 66 en verde
 | [`docs/manual-interfaz.md`](docs/manual-interfaz.md) | Uso desde el móvil. |
 | [`docs/autoactualizacion.md`](docs/autoactualizacion.md) | **Autoactualización con reversión**: método, barreras y riesgos. |
 | [`docs/guia-migracion.md`](docs/guia-migracion.md) | Llevarlo a otro hardware y restaurarlo. |
-| [`deploy/README.md`](deploy/README.md) | Instalación de servicios y zram. |
+| [`deploy/README.md`](deploy/README.md) | Instalación de servicios, zram, **autoactualización** y guía del script de mantenimiento. |
 
 ## Configuración
 
@@ -128,14 +165,16 @@ test/                  pruebas (node:test), 66 en verde
 
 ## Estado
 
-- [x] Dominio y puertos (hexagonal), 66 pruebas en verde
+- [x] Dominio y puertos (hexagonal), 100 pruebas en verde
 - [x] Interfaz web sin frameworks: ideas, notas, código, bitácora y chat
 - [x] Chat persistente sobre **ACP**: streaming por deltas, cancelación real y
       memoria que sobrevive al reinicio
 - [x] Selector de modelo alimentado por el catálogo que publica el motor
 - [x] Orquestación con agentes, cola de uno y bitácora en vivo
-- [x] Respaldo automático de los dos repositorios
-- [x] **Autoactualización con reversión**: cinco barreras, verificación de arranque y reversión automática
+- [x] Respaldo automático de los dos repositorios: la memoria se autosalva, el
+      código sólo se sube (se commitea a propósito)
+- [x] **Autoactualización con reversión**: cinco barreras, verificación de arranque
+      en un puerto aparte, reversión real y post-mortem de los fallos
 - [ ] Capa de voz
 
 ## Licencia

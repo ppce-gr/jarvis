@@ -45,7 +45,8 @@ uso() {
   parar          Para el servicio.
   arrancar       Arranca el servicio.
   reiniciar      Reinicia el servicio, sin actualizar nada.
-  respaldo       Fuerza un respaldo de los dos repositorios ahora mismo.
+  respaldo       Respalda los dos repositorios ahora, y SÍ commitea el código.
+                 (El temporizador automático sólo sube lo ya commiteado.)
   actualizar     Dispara la actualización y espera a que termine.
   revertir       Vuelve al último commit bueno.
   fallo          Muestra el post-mortem de la última actualización fallida.
@@ -188,7 +189,12 @@ orden_todo() {
 
 orden_respaldo() {
   paso "Respaldando los dos repositorios"
+  # A mano SÍ se commitea el código: pedir un respaldo es exactamente decir
+  # "guarda lo que tengo ahora". El temporizador automático, en cambio, sólo sube
+  # lo que ya esté commiteado, para no ensuciar la historia del repositorio
+  # público con el trabajo a medias de un agente.
   como_jarvis env JARVIS_BRAIN_DIR="${JARVIS_BRAIN_DIR:-/home/jarvis/jarvis/jarvis-vault}" \
+    JARVIS_BACKUP_COMMIT_CODE=1 \
     bash "$REPO_DIR/scripts/backup.sh" "chore: respaldo manual"
 }
 

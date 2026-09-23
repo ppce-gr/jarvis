@@ -16,18 +16,30 @@
 #  Importante: un commit local NO es un respaldo, vive en la misma
 #  tarjeta que queremos proteger. Por eso el script falla con código
 #  1 si no consigue empujar, para que el fallo se note.
+#
+#  QUIÉN CREA COMMITS
+#  La memoria (privada) se autosalva: son notas irremplazables y da
+#  igual que la historia tenga ruido.
+#  El código (público) NO: sólo se sube lo que ya esté commiteado. Su
+#  historia la lee gente, y un "autosave" cada media hora con el
+#  trabajo a medias de un agente la ensucia y puede dejar main sin
+#  pasar las pruebas. El código se commitea a propósito.
+#  Si hay trabajo sin commitear, se avisa para que no se dé por
+#  respaldado lo que no lo está. Para forzar el autosalvado también en
+#  el código:  JARVIS_BACKUP_COMMIT_CODE=1
 # ============================================================
 set -uo pipefail
 
 CODE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BRAIN_DIR="${JARVIS_BRAIN_DIR:-$(cd "$CODE_DIR/.." && pwd)/jarvis-vault}"
 MESSAGE="${1:-chore(jarvis): autosave $(date '+%Y-%m-%d %H:%M:%S')}"
+COMMIT_CODE="$( [ "${JARVIS_BACKUP_COMMIT_CODE:-0}" = "1" ] && echo si || echo no )"
 
 FALLOS=0
 
-# Respalda un repositorio: commit de lo que haya y push de lo pendiente.
+# Respalda un repositorio: commit de lo que haya (si se permite) y push de lo pendiente.
 respaldar_repo() {
-  local dir="$1" etiqueta="$2"
+  local dir="$1" etiqueta="$2" commitear="${3:-si}"
   echo "[backup] ── ${etiqueta}: ${dir}"
 
   if [ ! -d "$dir/.git" ]; then
@@ -44,7 +56,17 @@ respaldar_repo() {
   }
 
   # --- Commit de los cambios pendientes ---
-  if [ -n "$(git -C "$dir" status --porcelain)" ]; then
+  # Con el árbol limpio NO se crea ningún commit: nunca ha habido commits
+  # vacíos, pero conviene que quede explícito.
+  local sucios
+  sucios="$(git -C "$dir" status --porcelain | wc -l)"
+  if [ "$sucios" -eq 0 ]; then
+    echo "[backup]    sin cambios en el árbol de trabajo"
+  elif [ "$commitear" != "si" ]; then
+    echo "[backup]    ${sucios} fichero(s) sin commitear que NO se respaldan, a propósito:"
+    echo "[backup]    el código se commitea a propósito, no por temporizador."
+    echo "[backup]    Para autosalvarlo también aquí:  JARVIS_BACKUP_COMMIT_CODE=1"
+  else
     git -C "$dir" add -A
 
     # Guarda: si se cuela algo sensible, se aborta SIN commitear.
@@ -68,8 +90,6 @@ respaldar_repo() {
       return
     fi
     echo "[backup]    commit $(git -C "$dir" rev-parse --short HEAD)"
-  else
-    echo "[backup]    sin cambios en el árbol de trabajo"
   fi
 
   # --- Push de lo pendiente (aunque no haya cambios nuevos) ---
@@ -108,8 +128,8 @@ respaldar_repo() {
   fi
 }
 
-respaldar_repo "$CODE_DIR"  "código (público)"
-respaldar_repo "$BRAIN_DIR" "memoria (privada)"
+respaldar_repo "$CODE_DIR"  "código (público)" "$COMMIT_CODE"
+respaldar_repo "$BRAIN_DIR" "memoria (privada)" "si"
 
 echo
 if [ "$FALLOS" -gt 0 ]; then
