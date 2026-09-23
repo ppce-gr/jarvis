@@ -78,6 +78,9 @@ done
 
 mkdir -p "$STATE_DIR"
 LOG_FICHERO="$STATE_DIR/autoactualizacion.log"
+# Post-mortem de la última actualización fallida: qué se intentaba, dónde falló y
+# a dónde se volvió. Lo lee la interfaz, y lo puede leer Jarvis para arreglarlo.
+FALLO_FICHERO="$STATE_DIR/ultimo-fallo.txt"
 
 log() {
   local linea="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
@@ -93,6 +96,41 @@ bitacora() {
 morir() { log "ERROR: $*"; bitacora "FALLÓ: $*"; exit 1; }
 
 # ---------------------------------------------------------------
+# Post-mortem de un fallo.
+# ---------------------------------------------------------------
+# Deja por escrito QUÉ se intentaba, DÓNDE falló, A DÓNDE se volvió y si el
+# servicio quedó vivo. La idea es que no haya que rebuscar en un registro de
+# cientos de líneas: se lee de un vistazo, y Jarvis puede leerlo para proponer
+# el arreglo. Se borra en cuanto una actualización sale bien.
+registrar_fallo() {   # $1 fase · $2 mensaje · $3 revertido(si/no) · $4 servicio_vivo(si/no)
+  local fase="$1" mensaje="$2" revertido="$3" vivo="$4" intentado
+  intentado="${FALLO_COMMIT:-$(git rev-parse HEAD 2>/dev/null || echo "${PREV:-}")}"
+  {
+    echo "fecha: $(date -Is)"
+    echo "fase: $fase"
+    echo "commit_intentado: $intentado"
+    echo "commit_intentado_corto: $(git rev-parse --short "$intentado" 2>/dev/null || echo "$intentado")"
+    echo "commit_revertido: ${LAST_GOOD:-}"
+    echo "commit_revertido_corto: $(git rev-parse --short "${LAST_GOOD:-HEAD}" 2>/dev/null || echo "${LAST_GOOD:-}")"
+    echo "revertido: $revertido"
+    echo "servicio_vivo: $vivo"
+    echo "registro: $LOG_FICHERO"
+    echo "mensaje: $mensaje"
+    echo "---extracto---"
+    if [ -n "${FALLO_EXTRACTO:-}" ]; then
+      printf '%s\n' "$FALLO_EXTRACTO"
+    else
+      echo "(sin extracto)"
+    fi
+  } > "$FALLO_FICHERO" 2>/dev/null \
+    || log "AVISO: no pude escribir el post-mortem en $FALLO_FICHERO"
+}
+
+# Una actualización que sale bien borra el post-mortem anterior: si sigue ahí,
+# es que sigue habiendo algo pendiente de mirar.
+olvidar_fallo() { rm -f "$FALLO_FICHERO"; }
+
+# ---------------------------------------------------------------
 # Barreras 4a y 4b: pruebas y arranque REAL, antes de tocar el servicio.
 # Se usan en los DOS caminos: cuando hay código nuevo que traer y cuando el
 # servicio simplemente va por detrás del repositorio. En el segundo caso es
@@ -101,18 +139,34 @@ morir() { log "ERROR: $*"; bitacora "FALLÓ: $*"; exit 1; }
 # health check no lo detectaría. Por eso se verifican siempre.
 # ---------------------------------------------------------------
 verificar_codigo() {
+  # Dónde falló, con qué salida y con qué commit: lo usará el post-mortem.
+  # El commit se fija AQUÍ, al fallar, y no al registrar: en medio puede haber
+  # una reversión, y entonces HEAD ya no sería el que falló.
+  FALLO_FASE=""
+  FALLO_EXTRACTO=""
+  FALLO_COMMIT=""
+  local salida
+  salida="$(mktemp)"
+
   log "Barrera 4a: ejecutando la suite de pruebas..."
-  if ! timeout 300 npm test >>"$LOG_FICHERO" 2>&1; then
+  # Se ve en directo en el registro y a la vez se guarda para el post-mortem.
+  if ! timeout 300 npm test 2>&1 | tee -a "$LOG_FICHERO" > "$salida"; then
+    FALLO_FASE="4a-pruebas"
+    FALLO_EXTRACTO="$(tail -n 40 "$salida")"
+    FALLO_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
+    rm -f "$salida"
     log "Las pruebas FALLAN con este código."
     return 1
   fi
+  rm -f "$salida"
   log "Barrera 4a OK: pruebas en verde."
 
   log "Barrera 4b: comprobando que el servidor arranca de verdad..."
   local brain_temporal smoke_pid arranca
   brain_temporal="$(mktemp -d)"
+  salida="$(mktemp)"
   JARVIS_PORT="$SMOKE_PORT" JARVIS_BRAIN_DIR="$brain_temporal" \
-    node src/index.js >>"$LOG_FICHERO" 2>&1 &
+    node src/index.js > "$salida" 2>&1 &
   smoke_pid=$!
 
   arranca=0
@@ -127,11 +181,19 @@ verificar_codigo() {
   kill "$smoke_pid" 2>/dev/null
   wait "$smoke_pid" 2>/dev/null
   rm -rf "$brain_temporal"
+  cat "$salida" >> "$LOG_FICHERO"
 
   if [ "$arranca" -ne 1 ]; then
+    # La salida del arranque es EXACTAMENTE lo que hace falta para diagnosticar:
+    # un error de sintaxis, un puerto ocupado, una dependencia que falta.
+    FALLO_FASE="4b-arranque"
+    FALLO_EXTRACTO="$(tail -n 40 "$salida")"
+    FALLO_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
+    rm -f "$salida"
     log "El servidor NO arranca con este código."
     return 1
   fi
+  rm -f "$salida"
   log "Barrera 4b OK: el servidor arranca y responde."
   return 0
 }
@@ -358,12 +420,15 @@ if [ "$REMOTE" = "$PREV" ]; then
       # El servicio NO se toca: sigue con lo que ya tenia cargado y funcionaba.
       # Se devuelve el repositorio al ultimo commit bueno.
       revertir_codigo "$LAST_GOOD"
+      registrar_fallo "${FALLO_FASE:-4-verificacion}" \
+        "el código del repositorio no pasa la verificación" "si" "si"
       bitacora "RECHAZADO el codigo sin verificar; se vuelve a $(git rev-parse --short "$LAST_GOOD")"
       morir "el codigo del repositorio no pasa la verificacion. El servicio sigue intacto y el codigo se ha devuelto a $(git rev-parse --short "$LAST_GOOD")."
     fi
 
   if reiniciar_y_verificar; then
     echo "$(git rev-parse HEAD)" > "$LAST_GOOD_FILE"
+    olvidar_fallo
     log "✅ Servicio reiniciado con el código al día ($(git rev-parse --short HEAD))."
     bitacora "OK · reinicio para aplicar $(git rev-parse --short HEAD)"
     exit 0
@@ -372,8 +437,12 @@ if [ "$REMOTE" = "$PREV" ]; then
   revertir_codigo "$LAST_GOOD"
   if reiniciar_y_verificar; then
     log "Revertido a $(git rev-parse --short "$LAST_GOOD") y funcionando."
+    registrar_fallo "5-reinicio" \
+      "el servicio no respondió tras reiniciar; se revirtió y volvió a funcionar" "si" "si"
   else
     log "🚨 CRÍTICO: ni con el commit probado arranca. Intervención manual."
+    registrar_fallo "5-reinicio" \
+      "el servicio no respondió tras reiniciar y tampoco tras revertir" "si" "no"
   fi
   exit 1
 fi
@@ -419,6 +488,8 @@ log "Barrera 3 OK: código en $(git rev-parse --short HEAD)."
 log "Verificando el código nuevo antes de tocar nada..."
 if ! verificar_codigo; then
   revertir_codigo "$PREV"
+  registrar_fallo "${FALLO_FASE:-4-verificacion}" \
+    "el código nuevo no pasa la verificación" "si" "si"
   morir "el código nuevo no pasa la verificación. Se ha vuelto a $(git rev-parse --short "$PREV") y Jarvis sigue con lo anterior, intacto."
 fi
 
@@ -427,6 +498,7 @@ fi
 # ---------------------------------------------------------------
 if reiniciar_y_verificar; then
   echo "$(git rev-parse HEAD)" > "$LAST_GOOD_FILE"
+  olvidar_fallo
   log "✅ Actualización completada. Nuevo ancla: $(git rev-parse --short HEAD)"
   bitacora "OK · actualizado de $(git rev-parse --short "$PREV") a $(git rev-parse --short HEAD)"
   exit 0
@@ -438,6 +510,8 @@ revertir_codigo "$LAST_GOOD"
 
 if reiniciar_y_verificar; then
   log "✅ Revertido a $(git rev-parse --short "$LAST_GOOD") y funcionando."
+  registrar_fallo "5-reinicio" \
+    "el código nuevo no arrancó; se revirtió y el servicio volvió a funcionar" "si" "si"
   bitacora "REVERTIDO a $(git rev-parse --short "$LAST_GOOD") y funcionando"
   exit 1
 fi
@@ -447,5 +521,7 @@ log "   Intervención manual necesaria. Estado:"
 log "     código en $(git rev-parse --short HEAD)"
 log "     último bueno $(git rev-parse --short "$LAST_GOOD")"
 log "     log completo en $LOG_FICHERO"
+registrar_fallo "5-reinicio" \
+  "ni con el commit probado arranca el servicio" "si" "no"
 bitacora "CRÍTICO: ni con el commit probado arranca. Hace falta intervención manual."
 exit 2

@@ -212,6 +212,41 @@ test('getStatus avisa si la copia instalada del actualizador está desfasada', a
   assert.equal(estado.actualizadorDesfasado, false, 'no se avisa de lo que no se ha podido comprobar');
 });
 
+test('getStatus lee el post-mortem de la última actualización fallida', async () => {
+  const { adapter } = await repoDePrueba();
+
+  // Sin fichero no hay nada que contar.
+  assert.equal((await adapter.getStatus()).ultimoFallo, null);
+
+  await fs.mkdir(adapter.stateDir, { recursive: true });
+  await fs.writeFile(path.join(adapter.stateDir, 'ultimo-fallo.txt'), [
+    'fecha: 2026-09-23T12:00:00+02:00',
+    'fase: 4a-pruebas',
+    'commit_intentado: abc1234def5678',
+    'commit_intentado_corto: abc1234',
+    'commit_revertido: 9876543abc0123',
+    'commit_revertido_corto: 9876543',
+    'revertido: si',
+    'servicio_vivo: si',
+    'registro: /tmp/registro.log',
+    'mensaje: el código nuevo no pasa la verificación',
+    '---extracto---',
+    'not ok 1 - algo se rompió',
+    'Error: esperaba 2 y llegó 3'
+  ].join('\n'));
+
+  const fallo = (await adapter.getStatus()).ultimoFallo;
+  assert.equal(fallo.fase, '4a-pruebas');
+  assert.equal(fallo.commitIntentadoCorto, 'abc1234');
+  assert.equal(fallo.commitRevertidoCorto, '9876543');
+  assert.equal(fallo.revertido, true);
+  assert.equal(fallo.servicioVivo, true);
+  assert.match(fallo.mensaje, /no pasa la verificación/);
+  // El extracto es lo que de verdad permite diagnosticar: no debe perderse.
+  assert.match(fallo.extracto, /not ok 1/);
+  assert.match(fallo.extracto, /esperaba 2 y llegó 3/);
+});
+
 test('requestUpdate retira una bandera vieja antes de escribir la nueva', async () => {
   const { adapter } = await repoDePrueba();
 

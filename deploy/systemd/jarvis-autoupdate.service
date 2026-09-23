@@ -15,8 +15,22 @@ Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=JARVIS_BRAIN_DIR=/home/jarvis/jarvis/jarvis-vault
 Environment=JARVIS_CODE_DIR=/home/jarvis/jarvis/jarvis
 
+# ---------------------------------------------------------------
+# El actualizador se pone al día A SÍ MISMO, aquí. Sin sudo para ti.
+# ---------------------------------------------------------------
+# /usr/local/sbin es de root y el actualizador corre como jarvis, así que no
+# puede reescribirse: un cambio en scripts/autoactualizar.sh no llegaba nunca a
+# la copia instalada, y eso obligaba a reinstalarlo a mano (y si te olvidabas,
+# se quedaba viejo con sus bugs, en silencio).
+#
+# El prefijo '+' hace que este paso corra con privilegios COMPLETOS, y va ANTES
+# de ExecStart, o sea antes de que bash abra el script: cuando lo abra, ya es el
+# nuevo. No hay automodificación posible.
+ExecStartPre=+/usr/local/sbin/jarvis-reinstalar-actualizador
+
 # Se ejecuta la COPIA INSTALADA, no la del repositorio: una actualización no
-# debe modificar el script que la está ejecutando.
+# debe modificar el script que la está ejecutando. Y como el paso de arriba la
+# refresca justo antes, la copia instalada siempre es la del repositorio.
 ExecStart=/usr/local/sbin/jarvis-actualizar
 
 # Una actualización no debe repetirse sin control: si falla, se avisa y se

@@ -194,3 +194,78 @@ test('avisa si la copia instalada del actualizador está desfasada', async (t) =
   const segunda = await correr(entorno, ['--check'], { JARVIS_UPDATER_INSTALLED: instalado });
   assert.doesNotMatch(segunda.salida, /ACTUALIZADOR INSTALADO/);
 });
+
+test('deja post-mortem y revierte cuando la verificación falla', async (t) => {
+  try {
+    await execFileAsync('systemctl', ['list-unit-files', 'jarvis.service']);
+  } catch {
+    t.skip('sin systemd/jarvis.service: no se puede probar el camino completo');
+    return;
+  }
+
+  const entorno = await crearEntorno();
+  t.after(() => fs.rm(entorno.dir, { recursive: true, force: true }));
+  const revParse = async () => (await entorno.git(['rev-parse', 'HEAD'])).stdout.trim();
+  const antes = await revParse();
+
+  // El remoto trae un commit nuevo, así que se llega hasta la verificación. En
+  // este repositorio temporal no hay package.json, de modo que `npm test` falla.
+  await commitRemoto(entorno, 'remoto.txt');
+
+  const { code } = await correr(entorno);
+
+  const texto = await fs
+    .readFile(path.join(entorno.dir, 'state', 'ultimo-fallo.txt'), 'utf8')
+    .catch(() => null);
+  assert.ok(texto, 'debe dejar el post-mortem por escrito');
+
+  const campo = (clave) => (texto.match(new RegExp(`^${clave}: (.*)$`, 'm')) || [])[1];
+  assert.equal(campo('fase'), '4a-pruebas');
+  assert.equal(campo('revertido'), 'si');
+  assert.match(campo('mensaje'), /verificación/);
+  assert.ok(campo('extracto').length > 0, 'el extracto no puede quedar vacío');
+  assert.notEqual(
+    campo('commit_intentado'),
+    campo('commit_revertido'),
+    'el commit que falló no es el mismo al que se revirtió'
+  );
+
+  assert.equal(await revParse(), antes, 'el código que falla no debe quedarse aplicado');
+  assert.equal(code, 1);
+});
+
+test('el ayudante de reinstalación no instala un script roto, y sí uno válido', async (t) => {
+  const AYUDANTE = fileURLToPath(new URL('../../deploy/reinstalar-actualizador.sh', import.meta.url));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'jarvis-reinst-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+
+  const origen = path.join(dir, 'origen.sh');
+  const destino = path.join(dir, 'instalado.sh');
+  const correrAyudante = () =>
+    execFileAsync('bash', [AYUDANTE], {
+      env: {
+        ...process.env,
+        JARVIS_UPDATER_SOURCE: origen,
+        JARVIS_UPDATER_INSTALLED: destino
+      }
+    }).catch((error) => ({ stdout: error.stdout || '', stderr: error.stderr || '' }));
+
+  // 1) Con la sintaxis rota NO se instala, y el ayudante no falla: es preferible
+  //    seguir con el actualizador instalado que quedarse sin actualizaciones.
+  await fs.writeFile(origen, 'if [ ; then\n');
+  const roto = await correrAyudante();
+  assert.match(roto.stderr || '', /sintaxis rota/);
+  await assert.rejects(() => fs.access(destino), 'no debe instalar un script roto');
+
+  // 2) Un origen válido sí se instala, ejecutable.
+  await fs.writeFile(origen, '#!/usr/bin/env bash\necho hola\n');
+  await correrAyudante();
+  assert.equal(await fs.readFile(destino, 'utf8'), '#!/usr/bin/env bash\necho hola\n');
+  assert.equal((await fs.stat(destino)).mode & 0o777, 0o755);
+
+  // 3) Si el origen desaparece, no rompe ni borra lo que ya estaba.
+  await fs.rm(origen);
+  const ausente = await correrAyudante();
+  assert.match(ausente.stderr || '', /no encuentro/);
+  await fs.access(destino);
+});

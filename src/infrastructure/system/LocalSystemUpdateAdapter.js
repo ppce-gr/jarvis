@@ -98,6 +98,50 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
     }
   }
 
+  /**
+   * Post-mortem de la última actualización fallida, si lo hay.
+   *
+   * El actualizador deja un fichero de texto llano (clave: valor y, al final,
+   * el extracto del error) cuando algo falla, y lo borra en cuanto una
+   * actualización sale bien. Así que si el fichero está, es que sigue pendiente
+   * de mirar. Se devuelve estructurado para que la interfaz lo muestre y para
+   * que Jarvis pueda leerlo y proponer el arreglo.
+   */
+  async _leerUltimoFallo() {
+    const SEPARADOR = '---extracto---';
+    const texto = await this._leerFichero(path.join(this.stateDir, 'ultimo-fallo.txt'));
+    if (!texto) return null;
+
+    const corte = texto.indexOf(SEPARADOR);
+    const cabecera = corte === -1 ? texto : texto.slice(0, corte);
+    const extracto = corte === -1 ? '' : texto.slice(corte + SEPARADOR.length).trim();
+
+    const campos = {};
+    for (const linea of cabecera.split('\n')) {
+      const posicion = linea.indexOf(':');
+      if (posicion === -1) continue;
+      const clave = linea.slice(0, posicion).trim();
+      if (clave) campos[clave] = linea.slice(posicion + 1).trim();
+    }
+
+    // Sin fecha ni mensaje no es un post-mortem: será un fichero a medias.
+    if (!campos.fecha && !campos.mensaje) return null;
+
+    return {
+      fecha: campos.fecha || null,
+      fase: campos.fase || null,
+      commitIntentado: campos.commit_intentado || null,
+      commitIntentadoCorto: campos.commit_intentado_corto || null,
+      commitRevertido: campos.commit_revertido || null,
+      commitRevertidoCorto: campos.commit_revertido_corto || null,
+      revertido: campos.revertido === 'si',
+      servicioVivo: campos.servicio_vivo === 'si',
+      registro: campos.registro || null,
+      mensaje: campos.mensaje || null,
+      extracto: extracto || null
+    };
+  }
+
   async getStatus() {
     const estado = {
       commit: null,
@@ -113,6 +157,7 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
       lastRun: null,
       actualizadorComprobado: false,
       actualizadorDesfasado: false,
+      ultimoFallo: null,
       canUpdate: false
     };
 
@@ -157,6 +202,10 @@ export class LocalSystemUpdateAdapter extends SystemUpdatePort {
     const actualizador = await this._comprobarActualizador();
     estado.actualizadorComprobado = actualizador.comprobado;
     estado.actualizadorDesfasado = actualizador.desfasado;
+
+    // ¿Queda algún fallo sin resolver? Si el fichero está, es que la última
+    // actualización no salió bien y nadie lo ha mirado todavía.
+    estado.ultimoFallo = await this._leerUltimoFallo();
 
     // Sólo se puede actualizar con el árbol limpio: es la primera barrera del
     // actualizador, así que conviene saberlo antes de pedirlo.

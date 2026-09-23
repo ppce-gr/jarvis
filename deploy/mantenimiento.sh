@@ -12,8 +12,8 @@
 #     sudo ./mantenimiento.sh actualizador
 #     sudo ./mantenimiento.sh actualizar
 #
-#  Para tenerlo siempre a mano en tu carpeta:
-#     sudo ./mantenimiento.sh instalar
+#  Para tenerlo siempre a mano en tu carpeta (esto NO necesita sudo):
+#     ./mantenimiento.sh instalar
 # ============================================================
 set -uo pipefail
 
@@ -22,6 +22,7 @@ AQUI="$(readlink -f "${BASH_SOURCE[0]}")"
 ESTADO_DIR="${JARVIS_UPDATE_STATE:-/home/jarvis/jarvis/.update-state}"
 REGISTRO="$ESTADO_DIR/autoactualizacion.log"
 LAST_GOOD="$ESTADO_DIR/last-good"
+FALLO="$ESTADO_DIR/ultimo-fallo.txt"
 INSTALADO="${JARVIS_UPDATER_INSTALLED:-/usr/local/sbin/jarvis-actualizar}"
 BANDERA="${JARVIS_UPDATE_FLAG:-/home/jarvis/jarvis/.update-request}"
 SERVICIO="${JARVIS_SERVICE:-jarvis.service}"
@@ -37,12 +38,17 @@ uso() {
 Órdenes:
   estado         Resumen: versiones, servicio, y si el actualizador instalado
                  coincide con el del repositorio. Empieza siempre por aquí.
-  actualizador   Reinstala el actualizador (deploy/instalar.sh --autoupdate).
-                 Es lo único que no se actualiza solo.
+  actualizador   Reinstala las unidades y el ayudante del actualizador
+                 (deploy/instalar.sh --autoupdate). El script del actualizador
+                 como tal ya se refresca solo en cada actualización.
   servicio       Reinstala y arranca jarvis.service (--jarvis).
+  parar          Para el servicio.
+  arrancar       Arranca el servicio.
+  reiniciar      Reinicia el servicio, sin actualizar nada.
   respaldo       Fuerza un respaldo de los dos repositorios ahora mismo.
   actualizar     Dispara la actualización y espera a que termine.
   revertir       Vuelve al último commit bueno.
+  fallo          Muestra el post-mortem de la última actualización fallida.
   registro       Últimas 60 líneas del registro del actualizador.
   todo           Todo lo instalable (--all). Para una instalación completa.
   instalar       Copia este script a ~/mantenimiento.sh para tenerlo a mano.
@@ -112,6 +118,14 @@ orden_estado() {
   else
     info "no hay ninguna (correcto)"
   fi
+
+  paso "Último fallo"
+  if [ -f "$FALLO" ]; then
+    info "⚠ hay un post-mortem SIN RESOLVER"
+    info "  míralo con:  $0 fallo"
+  else
+    info "ninguno (la última actualización salió bien)"
+  fi
 }
 
 orden_actualizador() {
@@ -124,6 +138,46 @@ orden_servicio() {
   necesita_root "$@"
   paso "Reinstalando el servicio"
   bash "$REPO_DIR/deploy/instalar.sh" --jarvis
+}
+
+orden_parar() {
+  necesita_root "$@"
+  paso "Parando $SERVICIO"
+  systemctl stop "$SERVICIO"
+  info "estado: $(systemctl is-active "$SERVICIO" 2>/dev/null || true)"
+}
+
+orden_arrancar() {
+  necesita_root "$@"
+  paso "Arrancando $SERVICIO"
+  systemctl start "$SERVICIO"
+  sleep 2
+  info "estado: $(systemctl is-active "$SERVICIO" 2>/dev/null || true)"
+}
+
+orden_reiniciar() {
+  necesita_root "$@"
+  paso "Reiniciando $SERVICIO (sin actualizar nada)"
+  systemctl restart "$SERVICIO"
+  local i
+  for i in $(seq 1 15); do
+    sleep 2
+    if curl -fsS --max-time 3 "$SALUD" >/dev/null 2>&1; then
+      info "responde correctamente (intento $i)"
+      return 0
+    fi
+  done
+  error "no responde tras el reinicio. Mira: journalctl -u $SERVICIO -n 50"
+  return 1
+}
+
+orden_fallo() {
+  paso "Post-mortem de la última actualización fallida"
+  if [ ! -f "$FALLO" ]; then
+    info "no hay ninguno: la última actualización salió bien."
+    return 0
+  fi
+  cat "$FALLO"
 }
 
 orden_todo() {
@@ -192,9 +246,13 @@ case "${1:-ayuda}" in
   estado)       orden_estado ;;
   actualizador) orden_actualizador "$@" ;;
   servicio)     orden_servicio "$@" ;;
+  parar)        orden_parar "$@" ;;
+  arrancar)     orden_arrancar "$@" ;;
+  reiniciar)    orden_reiniciar "$@" ;;
   respaldo)     orden_respaldo ;;
   actualizar)   orden_actualizar ;;
   revertir)     orden_revertir "$@" ;;
+  fallo)        orden_fallo ;;
   registro)     orden_registro ;;
   todo)         orden_todo "$@" ;;
   instalar)     orden_instalar ;;

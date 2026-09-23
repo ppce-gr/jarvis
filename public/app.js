@@ -360,7 +360,8 @@ async function loadSystemStatus() {
       + ` · repositorio ${st.commitCorto}`
       + (st.dirty ? ' · cambios sin commitear' : '');
     pill.classList.toggle('update', Boolean(
-      st.updateRequested || st.dirty || st.reinicioPendiente || st.actualizadorDesfasado
+      st.updateRequested || st.dirty || st.reinicioPendiente
+        || st.actualizadorDesfasado || st.ultimoFallo
     ));
     return st;
   } catch {
@@ -407,6 +408,17 @@ function pintarSistema(st) {
   if (st.dirty) {
     html += `<div class="fila aviso">No se puede actualizar con cambios sin commitear:
       el actualizador se negaría por seguridad.</div>`;
+  }
+  if (st.ultimoFallo) {
+    const f = st.ultimoFallo;
+    html += `<div class="fila aviso">La última actualización FALLÓ en la fase
+      «${escapeHtml(f.fase || 'desconocida')}»: ${escapeHtml(f.mensaje || '')}
+      ${f.revertido ? `Se volvió a ${escapeHtml(f.commitRevertidoCorto || '?')}.` : ''}
+      ${f.servicioVivo ? 'El servicio quedó funcionando.' : '⚠ El servicio NO quedó funcionando.'}</div>`;
+    if (f.extracto) {
+      html += `<div class="fila"><span class="clave">Detalle del fallo (${escapeHtml(f.commitIntentadoCorto || '?')})</span></div>`
+        + `<pre>${escapeHtml(f.extracto)}</pre>`;
+    }
   }
   if (st.lastRun) {
     html += `<div class="fila"><span class="clave">Última ejecución</span></div><pre>${escapeHtml(st.lastRun)}</pre>`;

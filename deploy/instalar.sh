@@ -251,6 +251,13 @@ if [ "$DO_AUTOUPDATE" -eq 1 ]; then
   run install -m 0755 -o root -g root \
       "$REPO_DIR/scripts/autoactualizar.sh" /usr/local/sbin/jarvis-actualizar
 
+  # Y este ayudante es lo que permite que el actualizador se ponga al día SOLO a
+  # partir de ahora: la unidad lo ejecuta como root justo antes de lanzarlo, así
+  # que ya no hace falta que reinstales el actualizador a mano. Es de root a
+  # propósito, para que el agente no pueda reemplazarlo por su cuenta.
+  run install -m 0755 -o root -g root \
+      "$REPO_DIR/deploy/reinstalar-actualizador.sh" /usr/local/sbin/jarvis-reinstalar-actualizador
+
   run cp "$REPO_DIR/deploy/systemd/jarvis-autoupdate.service" /etc/systemd/system/
   run cp "$REPO_DIR/deploy/systemd/jarvis-autoupdate.path" /etc/systemd/system/
   run cp "$REPO_DIR/deploy/systemd/jarvis-autoupdate.timer" /etc/systemd/system/
@@ -279,6 +286,7 @@ if [ "$DO_AUTOUPDATE" -eq 1 ]; then
   echo "   Comprobar:   systemctl status jarvis-autoupdate.path"
   echo "   Actualizar:  touch /home/jarvis/jarvis/.update-request"
   echo "   Sólo mirar:  sudo -u jarvis /usr/local/sbin/jarvis-actualizar --check"
+  echo "   A mano:      /home/jarvis/mantenimiento.sh ayuda"
   echo
 fi
 
