@@ -255,7 +255,12 @@ if [ "$DO_DSH_GLOBAL" -eq 1 ]; then
   echo "   ('cannot create effect on inactive context'). Instala SIEMPRE la más"
   echo "   nueva de la familia, no una anterior."
   run npm install -g "@deepseek-ai/dsh@${DSH_VERSION}"
-  DSH_BIN_PATH="${JARVIS_DSH_BIN:-${DSH_BIN_PATH:-$(command -v dsh 2>/dev/null || echo "$(npm config get prefix 2>/dev/null || echo /usr/local)/bin/dsh")}}"
+  # Se acaba de instalar en global, así que ÉSA es la buena. Se fija aquí para
+  # que la unidad la use aunque la configuración dijera otra cosa: pedir
+  # --dsh-global es exactamente pedir la instalación global.
+  PREFIJO_NPM="$(npm config get prefix 2>/dev/null || echo /usr/local)"
+  JARVIS_DSH_BIN="$PREFIJO_NPM/bin/dsh"
+  DSH_BIN_PATH="$JARVIS_DSH_BIN"
   echo "   Binario: $DSH_BIN_PATH"
 
   # Verificación de verdad: que DSH arranque y responda. Habría detectado el
@@ -311,27 +316,56 @@ fi
 # ------------------------------------------------------------
 if [ "$DO_JARVIS" -eq 1 ]; then
   echo "== 3/6 · servicio Jarvis (puerto 3081) =="
-  # La ruta del binario dsh se inyecta en la unidad, para no depender de que
-  # coincida con la que viene por defecto en el fichero del repositorio.
-  # Prioridad: lo que diga el entorno > lo que haya en el PATH > lo instalado.
-  # Así se puede apuntar a una instalación local sin root (por ejemplo
-  # /home/jarvis/jarvis/.tools/bin/dsh) sin tener que tocar el PATH del sistema.
-  DSH_BIN_PATH="${JARVIS_DSH_BIN:-${DSH_BIN_PATH:-$(command -v dsh 2>/dev/null || echo /usr/local/bin/dsh)}}"
+  # ---------------------------------------------------------------
+  # ¿Qué binario de dsh se escribe en la unidad?
+  # ---------------------------------------------------------------
+  # El ORDEN importa, y la penúltima opción es la que evita romper algo que ya
+  # funciona. El motivo: quien ejecuta el instalador es root (con sudo), y el
+  # PATH de root no incluye instalaciones locales ni la caché de npx. Resolver
+  # solo con `command -v dsh` puede dar una ruta INEXISTENTE, y Jarvis arrancaría
+  # igual —el health check no usa dsh— para fallar solo al conversar. Silencioso.
+  #
+  #   1. lo que diga la configuración o el entorno  (explícito manda)
+  #   2. una instalación global /usr/local/bin/dsh   (la canónica y estable)
+  #   3. el binario de la unidad YA instalada        (lo probado, se conserva)
+  #   4. lo que haya en el PATH de quien instala     (último recurso)
+  DSH_INSTALADO=""
+  if [ -r /etc/systemd/system/jarvis.service ]; then
+    DSH_INSTALADO="$(grep -E '^Environment=JARVIS_DSH_BIN=' \
+      /etc/systemd/system/jarvis.service 2>/dev/null | tail -1 | cut -d= -f3-)"
+  fi
+
+  if [ -n "${JARVIS_DSH_BIN:-}" ] && [ -x "$JARVIS_DSH_BIN" ]; then
+    DSH_BIN_PATH="$JARVIS_DSH_BIN"; DSH_ORIGEN="lo dice la configuración"
+  elif [ -x /usr/local/bin/dsh ]; then
+    DSH_BIN_PATH="/usr/local/bin/dsh"; DSH_ORIGEN="instalación global"
+  elif [ -n "$DSH_INSTALADO" ] && [ -x "$DSH_INSTALADO" ]; then
+    DSH_BIN_PATH="$DSH_INSTALADO"; DSH_ORIGEN="la unidad que ya estaba, y funciona"
+  elif command -v dsh >/dev/null 2>&1; then
+    DSH_BIN_PATH="$(command -v dsh)"; DSH_ORIGEN="el PATH de $(id -un), último recurso"
+  else
+    DSH_BIN_PATH="/usr/local/bin/dsh"; DSH_ORIGEN=""
+  fi
   echo "   JARVIS_DSH_BIN=$DSH_BIN_PATH"
+  [ -n "$DSH_ORIGEN" ] && echo "   ($DSH_ORIGEN)"
+
+  if [ ! -x "$DSH_BIN_PATH" ]; then
+    echo "   ⚠ AVISO: '$DSH_BIN_PATH' NO existe o no es ejecutable." >&2
+    echo "     Jarvis arrancará igual, pero el chat y la orquestación fallarán." >&2
+    echo "     Instálalo con '--dsh-global' o fija JARVIS_DSH_BIN." >&2
+  elif [ -n "$DSH_INSTALADO" ] && [ "$DSH_BIN_PATH" != "$DSH_INSTALADO" ]; then
+    echo "   (cambia respecto a la unidad instalada, que usaba $DSH_INSTALADO)"
+  fi
+
   case "$DSH_BIN_PATH" in
     *"/_npx/"*)
       echo "   ⚠ AVISO: esa ruta está en la caché de npx, que puede vaciarse y"
       echo "     cambia al actualizar dsh. Fíjala con '--dsh-global' o apuntando"
       echo "     JARVIS_DSH_BIN a una instalación estable."
       ;;
-    *)
-      if [ ! -x "$DSH_BIN_PATH" ]; then
-        echo "   ⚠ AVISO: '$DSH_BIN_PATH' no existe o no es ejecutable."
-      fi
-      ;;
   esac
-  # El binario de dsh se resuelve justo aquí (entorno > PATH > instalado) y se
-  # pasa a la plantilla, que es quien lo escribe dentro de la unidad.
+
+  # Se pasa a la plantilla, que es quien lo escribe dentro de la unidad.
   JARVIS_DSH_BIN="$DSH_BIN_PATH"
   instalar_unidad jarvis.service
   run systemctl daemon-reload
