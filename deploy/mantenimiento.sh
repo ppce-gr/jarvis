@@ -122,7 +122,8 @@ orden_estado() {
     info "⚠ DESFASADO respecto al repositorio"
     info "  instalado:   $INSTALADO"
     info "  repositorio: $origen"
-    info "  → sudo bash $REPO_DIR/deploy/instalar.sh --autoupdate"
+    info "  Se pondrá al día solo en la próxima actualización."
+    info "  Para forzarlo ahora:  sudo bash $REPO_DIR/deploy/instalar.sh --autoupdate"
   fi
 
   paso "Bandera de actualización"
@@ -237,7 +238,15 @@ orden_actualizar() {
 orden_revertir() {
   necesita_root "$@"
   paso "Revirtiendo al último commit bueno"
-  como_jarvis "$INSTALADO" --rollback
+  # Se le pasan las rutas explícitamente: la copia instalada vive en el
+  # directorio de binarios y no puede deducir de ahí dónde está el repositorio.
+  # Así funciona aunque todavía no exista /etc/jarvis/jarvis.conf.
+  como_jarvis env \
+    JARVIS_CODE_DIR="$REPO_DIR" \
+    JARVIS_BRAIN_DIR="$BRAIN_DIR" \
+    JARVIS_UPDATE_STATE="$ESTADO_DIR" \
+    JARVIS_UPDATE_FLAG="$BANDERA" \
+    "$INSTALADO" --rollback
 }
 
 orden_registro() {

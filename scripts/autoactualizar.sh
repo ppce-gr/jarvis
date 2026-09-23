@@ -305,8 +305,9 @@ avisar_si_actualizador_desfasado() {
   log "⚠️  AVISO: el ACTUALIZADOR INSTALADO no coincide con el del repositorio."
   log "    instalado   : $INSTALADO"
   log "    repositorio : $origen"
-  log "    No se actualiza solo (es una copia de root, y a propósito)."
-  log "    Para ponerlo al día:  sudo bash $CODE_DIR/deploy/instalar.sh --autoupdate"
+  log "    Se pondrá al día solo en la próxima actualización: la unidad lo"
+  log "    refresca justo antes de ejecutarlo. Para forzarlo ahora mismo:"
+  log "      sudo bash $CODE_DIR/deploy/instalar.sh --autoupdate"
   bitacora "AVISO: el actualizador instalado está desfasado. Hace falta: sudo bash deploy/instalar.sh --autoupdate"
   return 0
 }
@@ -328,7 +329,7 @@ fi
 # ---------------------------------------------------------------
 # Comprobaciones previas
 # ---------------------------------------------------------------
-[ -d "$CODE_DIR/.git" ] || morir "no encuentro el repositorio de código en $CODE_DIR"
+[ -d "$CODE_DIR/.git" ] || morir "no encuentro el repositorio de código en $CODE_DIR. Si estás ejecutando la copia instalada a mano, es que falta /etc/jarvis/jarvis.conf: déjalo con 'sudo bash deploy/instalar.sh --all', o pasa JARVIS_CODE_DIR."
 cd "$CODE_DIR" || morir "no puedo entrar en $CODE_DIR"
 
 if [ "$MODO" = "actualizar" ]; then
