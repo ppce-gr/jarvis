@@ -585,6 +585,17 @@ function modelStatusInfo(item) {
 }
 
 /**
+ * Pista que ve el ratón al pasar por encima: el nombre COMPLETO del modelo y su
+ * estado. En pantalla el nombre puede quedar recortado con puntos suspensivos
+ * (la fila es una rejilla y el menú tiene ancho máximo), así que la pista es el
+ * único sitio donde se lee entero.
+ */
+function modelTooltip(item) {
+  const nombre = item?.name || item?.value || '';
+  return `${nombre} - ${modelStatusInfo(item).title}`;
+}
+
+/**
  * Un modelo es "disponible" si funciona o sólo está sin cuota. Los que no
  * están confirmados cuentan como no disponibles: no sabemos si funcionan.
  */
@@ -599,13 +610,18 @@ function renderModelPicker(options, current) {
   const grupos = (opt?.options || []).filter((g) => Array.isArray(g.options));
   const seleccionado = current?.model || null;
 
+  const item = buscarModelo(grupos, seleccionado);
   const label = $('#chat-model-label');
   if (label) {
-    const item = buscarModelo(grupos, seleccionado);
     label.textContent = item
       ? `${modelStatusInfo(item).icon} ${item.name || item.value}`
       : (current?.modelName || 'Elegir modelo…');
   }
+  // La pista del botón cerrado: mismo formato que las filas, para que el
+  // modelo elegido (que en pantalla puede ir recortado) se lea completo con su
+  // estado sin abrir el menú.
+  const btn = $('#chat-model-btn');
+  if (btn && item) btn.title = modelTooltip(item);
 
   const menu = $('#chat-model-menu');
   if (!menu) return;
@@ -650,7 +666,7 @@ function filaModeloHtml(item, seleccionado) {
   const valor = escapeHtml(item.value);
   const nombre = escapeHtml(item.name || item.value);
   const actual = item.value === seleccionado;
-  return `<div class="model-row${actual ? ' selected' : ''}" role="option" data-model="${valor}" aria-selected="${actual}" title="${escapeHtml(info.title)}">`
+  return `<div class="model-row${actual ? ' selected' : ''}" role="option" data-model="${valor}" aria-selected="${actual}" title="${escapeHtml(modelTooltip(item))}">`
     + `<span class="model-icon" aria-hidden="true">${info.icon}</span>`
     + `<span class="model-name">${nombre}</span>`
     + `<span class="model-flags">${escapeHtml(flags.join(' · '))}</span>`

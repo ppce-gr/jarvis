@@ -219,6 +219,29 @@ test('el botón del desplegable muestra el modelo elegido con su icono', async (
   assert.match(registro.get('#chat-model-label').textContent, /🟢 Bueno/);
 });
 
+/*
+ * La pista del ratón debe dar el NOMBRE COMPLETO y el estado. En pantalla el
+ * nombre puede quedar recortado con puntos suspensivos (la fila es una rejilla
+ * con ancho máximo), así que el `title` es el único sitio donde se lee entero.
+ */
+test('la pista de cada modelo da el nombre completo y el estado', async () => {
+  const { registro } = await arrancarConModelos();
+  const html = registro.get('#chat-model-menu').innerHTML;
+  assert.match(html, /title="Bueno - Se puede usar"/, 'disponible: nombre y estado');
+  assert.match(
+    html,
+    /title="Sin cuota - Sin cuota: podrá usarse cuando se restablezca"/,
+    'sin cuota: nombre y explicación'
+  );
+  assert.match(html, /title="Roto - model not found"/, 'roto: nombre y error');
+  assert.match(html, /title="Sin confirmar - Sin comprobar"/, 'sin confirmar: nombre y estado');
+});
+
+test('el botón cerrado del selector da nombre y estado del modelo actual', async () => {
+  const { registro } = await arrancarConModelos();
+  assert.equal(registro.get('#chat-model-btn').title, 'Bueno - Se puede usar');
+});
+
 /* ================================================================
    Traza de actividad: herramientas y razonamiento plegables
    ================================================================ */
