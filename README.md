@@ -158,6 +158,7 @@ El script de mantenimiento reúne las operaciones en un solo sitio:
 | [`docs/chat.md`](docs/chat.md) | El chat: ACP, streaming, permisos y límites. |
 | [`docs/integracion-dsh.md`](docs/integracion-dsh.md) | Cómo se conecta con DSH, con mediciones reales. |
 | [`docs/manual-interfaz.md`](docs/manual-interfaz.md) | Uso desde el móvil. |
+| [`docs/proveedores.md`](docs/proveedores.md) | Configurar proveedores y claves de API (Claude, GPT, Gemini…). |
 | [`docs/autoactualizacion.md`](docs/autoactualizacion.md) | **Autoactualización con reversión**: método, barreras y riesgos. |
 | [`docs/guia-migracion.md`](docs/guia-migracion.md) | Llevarlo a otro hardware y restaurarlo. |
 | [`deploy/README.md`](deploy/README.md) | Instalación de servicios, zram, **autoactualización** y guía del script de mantenimiento. |
@@ -183,6 +184,43 @@ además `deploy/jarvis.conf` para las rutas del sistema, que genera el asistente
 | `JARVIS_CHAT_IDLE_MS` | `900000` | Inactividad antes de dormir la conversación. |
 | `JARVIS_PERMISSION_TIMEOUT_MS` | `120000` | Tope para contestar un permiso. |
 | `JARVIS_STALL_TIMEOUT_MS` | `600000` | Aviso si un turno lleva mucho sin emitir. |
+
+## Proveedores y modelos
+
+Jarvis no trae modelos: se los pide a **DeepSeek Harness (DSH)**, que soporta
+muchos proveedores (Anthropic/Claude, OpenAI/GPT, Google/Gemini, OpenRouter,
+Groq, Mistral…). Si haces un **fork**, configura el tuyo en dos ficheros de DSH
+(fuera del repositorio, para no subir claves):
+
+1. **El proveedor**, en `~/.dsh/settings.yaml`:
+
+   ```yaml
+   llm-pi-ai:
+     providers:
+       anthropic:
+         apiKeyEnv: ANTHROPIC_API_KEY
+   ```
+
+   Con `apiKeyEnv` basta para los proveedores que DSH ya conoce (lista completa
+   en [`docs/proveedores.md`](docs/proveedores.md)).
+
+2. **La clave**, en `~/.dsh/.credentials.yaml` con permisos `600`:
+
+   ```yaml
+   version: 1
+   refs:
+     ANTHROPIC_API_KEY: "sk-ant-..."
+   ```
+
+   También vale exportar `ANTHROPIC_API_KEY` antes de arrancar el servicio.
+
+DSH **vigila** esos ficheros y los aplica en caliente. Después, en Jarvis,
+**⚙ Admin → «Restablecer y comprobar»** relee el catálogo y aparecen los modelos
+del proveedor nuevo.
+
+> Las claves **nunca** van al repositorio (es público). El detalle, los 39
+> proveedores de serie y los endpoints personalizados están en
+> [`docs/proveedores.md`](docs/proveedores.md).
 
 ## Estado
 
