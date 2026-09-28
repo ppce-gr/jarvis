@@ -541,3 +541,36 @@ test('el diálogo de nueva idea ofrece el catálogo de modelos', async () => {
   assert.match(sel.innerHTML, /Modelo por defecto/);
   assert.match(sel.innerHTML, /Bueno/, 'el catálogo debe rellenar el selector');
 });
+
+/* ================================================================
+   Adjuntos: ficheros que el usuario le pasa a la idea
+   ================================================================ */
+
+test('la pestaña de adjuntos lista los ficheros y su historial', async () => {
+  const base = { ...RESPUESTAS_BASE };
+  delete base['/adjuntos'];
+  const { registro, errores, jarvis } = await arrancarInterfaz({
+    respuestas: {
+      '/adjuntos': {
+        adjuntos: [
+          { nombre: 'foto.png', bytes: 2048, subidoEn: '2026-01-01T00:00:00.000Z', presente: true }
+        ],
+        historial: [
+          { accion: 'subido', nombre: 'foto.png', at: '2026-01-01T00:00:00.000Z', bytes: 2048 }
+        ]
+      },
+      ...base
+    }
+  });
+  await abrirIdea(jarvis, 'idea-uno');
+  assert.deepEqual(errores, []);
+  await jarvis.cargarAdjuntos();
+
+  const lista = registro.get('#adjuntos-list').innerHTML;
+  assert.match(lista, /foto\.png/);
+  assert.match(lista, /2\.0 KB/);
+  assert.match(lista, /data-adj-mover/);
+  assert.match(lista, /data-adj-desasociar/);
+  assert.match(lista, /data-adj-borrar/);
+  assert.match(registro.get('#adjuntos-historial').innerHTML, /subido/);
+});

@@ -22,6 +22,7 @@ export class JarvisWebServer {
     createProjectUseCase,
     saveNoteUseCase,
     browseProjectFilesUseCase,
+    manageAttachmentsUseCase,
     getGitStatusUseCase,
     listOrchestratorTasksUseCase,
     sendChatMessageUseCase,
@@ -46,6 +47,7 @@ export class JarvisWebServer {
     this.createProjectUseCase = createProjectUseCase;
     this.saveNoteUseCase = saveNoteUseCase;
     this.browseProjectFilesUseCase = browseProjectFilesUseCase;
+    this.manageAttachmentsUseCase = manageAttachmentsUseCase;
     this.getGitStatusUseCase = getGitStatusUseCase;
     this.listOrchestratorTasksUseCase = listOrchestratorTasksUseCase;
     this.sendChatMessageUseCase = sendChatMessageUseCase;
@@ -104,6 +106,29 @@ export class JarvisWebServer {
           reject(new Error('INVALID_JSON'));
         }
       });
+      req.on('error', reject);
+    });
+  }
+
+  /**
+   * Lee el cuerpo BINARIO de una petición (subida de adjuntos) con tope de
+   * tamaño. No se usa multipart: el frontend manda los bytes tal cual y el
+   * nombre del fichero viaja en la query.
+   */
+  async _readRawBody(req, maxBytes = 12 * 1024 * 1024) {
+    return new Promise((resolve, reject) => {
+      const trozos = [];
+      let size = 0;
+      req.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > maxBytes) {
+          reject(new Error('PAYLOAD_TOO_LARGE'));
+          req.destroy();
+          return;
+        }
+        trozos.push(chunk);
+      });
+      req.on('end', () => resolve(Buffer.concat(trozos)));
       req.on('error', reject);
     });
   }
@@ -296,6 +321,65 @@ export class JarvisWebServer {
           if (!relPath) return this._sendJson(res, 400, { error: 'PATH_REQUIRED' });
           const content = await this.browseProjectFilesUseCase.read(projectId, zone, relPath);
           return this._sendJson(res, 200, { projectId, zone, path: relPath, content });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // ---- Adjuntos de la idea ---------------------------------------------
+      // GET /api/projects/:id/adjuntos        → lista + historial
+      if (req.method === 'GET' && segments[3] === 'adjuntos' && !segments[4]) {
+        try {
+          const data = await this.manageAttachmentsUseCase.list(projectId);
+          return this._sendJson(res, 200, { projectId, ...data });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/adjuntos?nombre=…   (cuerpo binario, sin multipart)
+      if (req.method === 'POST' && segments[3] === 'adjuntos' && !segments[4]) {
+        try {
+          const nombre = url.searchParams.get('nombre') || url.searchParams.get('name');
+          if (!nombre) return this._sendJson(res, 400, { error: 'ATTACHMENT_NAME_REQUIRED' });
+          const contenido = await this._readRawBody(req);
+          const adjunto = await this.manageAttachmentsUseCase.save(projectId, nombre, contenido);
+          return this._sendJson(res, 201, { projectId, adjunto });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/adjuntos/mover   { nombre, destino }
+      if (req.method === 'POST' && segments[3] === 'adjuntos' && segments[4] === 'mover') {
+        try {
+          const body = await this._readJsonBody(req);
+          const adjunto = await this.manageAttachmentsUseCase.move(projectId, body.nombre, body.destino);
+          return this._sendJson(res, 200, { projectId, adjunto });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/adjuntos/desasociar   { nombre }
+      if (req.method === 'POST' && segments[3] === 'adjuntos' && segments[4] === 'desasociar') {
+        try {
+          const body = await this._readJsonBody(req);
+          const adjunto = await this.manageAttachmentsUseCase.detach(projectId, body.nombre);
+          return this._sendJson(res, 200, { projectId, adjunto });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST|DELETE /api/projects/:id/adjuntos/borrar   { nombre } o ?nombre=
+      if ((req.method === 'POST' || req.method === 'DELETE')
+          && segments[3] === 'adjuntos' && segments[4] === 'borrar') {
+        try {
+          const body = req.method === 'POST' ? await this._readJsonBody(req) : {};
+          const nombre = body.nombre || url.searchParams.get('nombre');
+          const adjunto = await this.manageAttachmentsUseCase.remove(projectId, nombre);
+          return this._sendJson(res, 200, { projectId, adjunto });
         } catch (error) {
           return this._sendJson(res, 400, { error: error.message });
         }

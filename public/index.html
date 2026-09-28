@@ -74,6 +74,7 @@
             <button class="tab" data-tab="preguntas" role="tab">Preguntas<span id="badge-preguntas" class="tab-badge hidden" title="Preguntas pendientes de evaluar">!</span></button>
             <button class="tab" data-tab="clave" role="tab" title="Puntos clave de la idea">Clave<span id="badge-clave" class="tab-badge hidden" title="Puntos clave pendientes de evaluar">!</span></button>
             <button class="tab" data-tab="dudas" role="tab" title="Dudas del agente sin responder">Dudas<span id="badge-dudas" class="tab-badge hidden" title="Dudas del agente sin responder">!</span></button>
+            <button class="tab" data-tab="adjuntos" role="tab" title="Ficheros que le pasas a la idea">Adjuntos</button>
             <button class="tab" data-tab="mapa" role="tab" title="Mapa mental de la idea">Mapa</button>
             <button class="tab" data-tab="code" role="tab">Código</button>
             <button class="tab" data-tab="logs" role="tab">Bitácora</button>
@@ -166,6 +167,26 @@
             </div>
             <div id="mapa-graph" class="mapa-graph"></div>
             <div id="mapa-leyenda" class="mapa-leyenda"></div>
+          </section>
+
+          <!-- Adjuntos: ficheros que el usuario le pasa a la idea -->
+          <section id="pane-adjuntos" class="pane hidden">
+            <div class="mapa-head">
+              <h2>Adjuntos</h2>
+              <p class="muted">Ficheros que le pasas a la idea (imágenes, PDF, datos…). Viven en
+                <code>adjuntos/</code>; el agente puede moverlos a su sitio. <strong>Desasociar</strong>
+                los quita de la lista sin borrarlos del disco; <strong>Borrar</strong> sí los elimina.</p>
+            </div>
+            <div id="adjuntos-drop" class="adjuntos-drop">
+              <input type="file" id="adjuntos-input" multiple hidden />
+              <button type="button" id="adjuntos-elegir" class="btn btn-primary">Elegir ficheros…</button>
+              <span class="muted">…o arrástralos aquí</span>
+            </div>
+            <div id="adjuntos-list" class="adjuntos-list"></div>
+            <details class="adjuntos-historial">
+              <summary>Historial de ficheros</summary>
+              <div id="adjuntos-historial"></div>
+            </details>
           </section>
 
           <section id="pane-code" class="pane hidden">

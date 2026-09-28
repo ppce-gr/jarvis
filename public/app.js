@@ -849,6 +849,131 @@ async function openZoneFile(zone, filePath, li) {
   }
 }
 
+/* ================================================================
+   Adjuntos: ficheros que el usuario le pasa a la idea
+   ----------------------------------------------------------------
+   Viven en `<idea>/adjuntos/`. El agente los mueve a su sitio; aquí se
+   pueden subir, mover, desasociar (sin borrar del disco) o borrar, con
+   historial de todo.
+   ================================================================ */
+let adjuntosActuales = [];
+
+function formatBytes(n) {
+  const b = Number(n) || 0;
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function cargarAdjuntos() {
+  if (!state.currentProjectId) return;
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/adjuntos`);
+    adjuntosActuales = Array.isArray(data.adjuntos) ? data.adjuntos : [];
+    renderAdjuntos(data.historial || []);
+  } catch (error) {
+    const cont = $('#adjuntos-list');
+    if (cont) {
+      cont.innerHTML = `<div class="empty-state"><p class="muted">No se pudieron leer los adjuntos: ${escapeHtml(error.message)}</p></div>`;
+    }
+  }
+}
+
+function renderAdjuntos(historial = []) {
+  const cont = $('#adjuntos-list');
+  if (cont) {
+    if (!adjuntosActuales.length) {
+      cont.innerHTML = '<div class="empty-state"><p class="muted">Sin adjuntos todavía. Sube el primero con «Elegir ficheros…».</p></div>';
+    } else {
+      cont.innerHTML = adjuntosActuales.map((a) => `
+        <div class="adjunto-item">
+          <span class="adjunto-ico" aria-hidden="true">📎</span>
+          <span class="adjunto-nombre" title="${escapeHtml(a.nombre)}">${escapeHtml(a.nombre)}</span>
+          <span class="adjunto-meta">${formatBytes(a.bytes)}${a.presente === false ? ' · ya no está' : ''}</span>
+          <span class="adjunto-acciones">
+            <button class="seg-btn" data-adj-mover="${escapeHtml(a.nombre)}" title="Mover a su sitio (p. ej. code/)">➜</button>
+            <button class="seg-btn" data-adj-desasociar="${escapeHtml(a.nombre)}" title="Desasociar sin borrar del disco">⤺</button>
+            <button class="seg-btn seg-del" data-adj-borrar="${escapeHtml(a.nombre)}" title="Borrar del disco">✕</button>
+          </span>
+        </div>`).join('');
+    }
+  }
+  const hist = $('#adjuntos-historial');
+  if (hist) {
+    if (!historial.length) hist.innerHTML = '<p class="muted">Sin historial.</p>';
+    else {
+      hist.innerHTML = historial.map((h) => {
+        const cuando = h.at ? new Date(h.at).toLocaleString() : '';
+        const extra = h.destino ? ` → ${h.destino}` : (h.bytes ? ` (${formatBytes(h.bytes)})` : '');
+        return `<div class="hist-item"><span class="hist-accion">${escapeHtml(h.accion || '')}</span> `
+          + `<span class="hist-nombre">${escapeHtml(h.nombre || '')}</span>${escapeHtml(extra)} `
+          + `<span class="hist-fecha">${escapeHtml(cuando)}</span></div>`;
+      }).join('');
+    }
+  }
+}
+
+async function subirAdjuntos(fileList) {
+  if (!state.currentProjectId) return;
+  const archivos = Array.from(fileList || []);
+  if (!archivos.length) return;
+  let subidos = 0;
+  for (const archivo of archivos) {
+    try {
+      const respuesta = await fetch(
+        `/api/projects/${encodeURIComponent(state.currentProjectId)}/adjuntos?nombre=${encodeURIComponent(archivo.name)}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: archivo }
+      );
+      const datos = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok) throw new Error(datos.error || `HTTP ${respuesta.status}`);
+      subidos += 1;
+    } catch (error) {
+      toast(`No se pudo subir ${archivo.name}: ${error.message}`, 'err');
+    }
+  }
+  if (subidos) toast(`${subidos} fichero(s) subido(s)`, 'ok');
+  await cargarAdjuntos();
+}
+
+async function accionAdjunto(accion, nombre) {
+  if (!state.currentProjectId) return;
+  try {
+    if (accion === 'mover') {
+      const destino = window.prompt('¿A qué carpeta de la idea lo muevo? (code, conceptual, code/imagenes…)', 'code');
+      if (!destino) return;
+      await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/adjuntos/mover`, {
+        method: 'POST', body: JSON.stringify({ nombre, destino })
+      });
+      toast(`Movido a ${destino}`, 'ok');
+    } else if (accion === 'desasociar') {
+      if (typeof window.confirm === 'function'
+        && !window.confirm(`¿Desasociar «${nombre}»? El fichero NO se borra del disco.`)) return;
+      await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/adjuntos/desasociar`, {
+        method: 'POST', body: JSON.stringify({ nombre })
+      });
+      toast('Desasociado (el fichero sigue en el disco)', 'ok');
+    } else if (accion === 'borrar') {
+      if (typeof window.confirm === 'function'
+        && !window.confirm(`¿Borrar «${nombre}» del disco? No se puede deshacer.`)) return;
+      await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/adjuntos/borrar`, {
+        method: 'POST', body: JSON.stringify({ nombre })
+      });
+      toast('Borrado del disco', 'ok');
+    }
+    await cargarAdjuntos();
+  } catch (error) {
+    toast(`No se pudo: ${error.message}`, 'err');
+  }
+}
+
+function manejarAdjuntos(event) {
+  const btn = event.target.closest('[data-adj-mover],[data-adj-desasociar],[data-adj-borrar]');
+  if (!btn) return;
+  if (btn.dataset.adjMover) accionAdjunto('mover', btn.dataset.adjMover);
+  else if (btn.dataset.adjDesasociar) accionAdjunto('desasociar', btn.dataset.adjDesasociar);
+  else if (btn.dataset.adjBorrar) accionAdjunto('borrar', btn.dataset.adjBorrar);
+}
+
 /* ---------------- Pestañas ---------------- */
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
@@ -858,6 +983,7 @@ function switchTab(tab) {
   $('#pane-clave').classList.toggle('hidden', tab !== 'clave');
   $('#pane-dudas').classList.toggle('hidden', tab !== 'dudas');
   $('#pane-mapa').classList.toggle('hidden', tab !== 'mapa');
+  $('#pane-adjuntos').classList.toggle('hidden', tab !== 'adjuntos');
   $('#pane-code').classList.toggle('hidden', tab !== 'code');
   $('#pane-logs').classList.toggle('hidden', tab !== 'logs');
   $('#edit-toggle').classList.toggle('hidden', tab !== 'conceptual' || !state.currentNoteId);
@@ -865,6 +991,7 @@ function switchTab(tab) {
   if (tab === 'chat') scrollChatToEnd();
   if (tab === 'preguntas' || tab === 'clave' || tab === 'dudas') renderSeguimiento(tab);
   if (tab === 'mapa') renderMapa();
+  if (tab === 'adjuntos') cargarAdjuntos();
 }
 
 /* ================================================================
@@ -2118,6 +2245,24 @@ function bindEvents() {
   on('#dudas-list', 'click', manejarSeguimiento);
   on('#dudas-list', 'submit', manejarRespuestaDuda);
 
+  // Adjuntos: subir (selector o arrastrar), mover / desasociar / borrar
+  on('#adjuntos-elegir', 'click', () => { const i = $('#adjuntos-input'); if (i) i.click(); });
+  on('#adjuntos-input', 'change', (event) => {
+    subirAdjuntos(event.target.files);
+    event.target.value = '';
+  });
+  on('#adjuntos-list', 'click', manejarAdjuntos);
+  const zonaAdjuntos = $('#adjuntos-drop');
+  if (zonaAdjuntos) {
+    for (const ev of ['dragover', 'dragenter']) {
+      zonaAdjuntos.addEventListener(ev, (e) => { e.preventDefault(); zonaAdjuntos.classList.add('dragover'); });
+    }
+    for (const ev of ['dragleave', 'drop']) {
+      zonaAdjuntos.addEventListener(ev, (e) => { e.preventDefault(); zonaAdjuntos.classList.remove('dragover'); });
+    }
+    zonaAdjuntos.addEventListener('drop', (e) => subirAdjuntos(e.dataTransfer?.files));
+  }
+
   // Mapa: arrastrar los nodos y abrir la nota al pulsarla
   on('#mapa-graph', 'pointerdown', mapaPointerDown);
   if (typeof window.addEventListener === 'function') {
@@ -2276,6 +2421,9 @@ window.Jarvis = {
   renderIdeaGrid,
   abrirNuevaIdea,
   llenarSelectModelos,
+  cargarAdjuntos,
+  renderAdjuntos,
+  subirAdjuntos,
   switchTab,
   parseChecklist,
   construirGrafo,

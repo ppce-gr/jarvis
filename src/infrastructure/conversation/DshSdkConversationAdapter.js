@@ -380,6 +380,12 @@ export class DshSdkConversationAdapter extends ConversationPort {
       'Mantén estas listas al día al final del turno en que haya algo que anotar, sin',
       'reescribir lo que ya está.',
       '',
+      'Ficheros que te pasa el usuario:',
+      '- Llegan a `adjuntos/`. Cuando uses uno, muévelo a su sitio dentro del',
+      '  proyecto (p. ej. `code/` o `conceptual/`) sin borrarlo del disco.',
+      '- La pestaña Adjuntos permite al usuario subir, mover, desasociar (quitar de',
+      '  la idea sin borrar) y borrar. El historial queda registrado.',
+      '',
       'Mensaje del usuario:',
       text
     ].join('\n');

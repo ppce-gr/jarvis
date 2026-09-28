@@ -57,6 +57,12 @@ ocurre en **tu navegador** (móvil o PC), así que la Pi no sufre.
 - **Mapa:** grafo de notas y sus enlaces `[[…]]` (estilo Obsidian). Arrastra los
   nodos para recolocarlos y pulsa uno para abrir la nota. El color agrupa por
   punto clave.
+- **Adjuntos:** ficheros que le pasas a la idea (imágenes, PDF, datos…). «Elegir
+  ficheros…» o arrastrar y soltar; viven en `<memoria>/<idea>/adjuntos/` y el
+  agente puede **moverlos** a su sitio (`code/`, `conceptual/`…). Cada adjunto se
+  puede **mover** (➜), **desasociar** (⤺, lo quita de la idea pero **no** lo borra
+  del disco) o **borrar** (✕, sí lo elimina). Abajo, el **historial** de subidas,
+  movimientos, desasociaciones y borrados. Tope: 12 MB por fichero.
 - **Código:** explora `<memoria>/<idea>/code/`.
 - **Bitácora:** explora `<memoria>/<idea>/logs/` (registro del orquestador).
 
