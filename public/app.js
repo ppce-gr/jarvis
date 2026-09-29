@@ -283,28 +283,129 @@ function manejarGridIdea(event) {
 }
 
 /** Duplicar / renombrar / fusionar / borrar / jerarquía de una idea. */
+/** Descendientes de una idea (para no ofrecer un padre que cree un ciclo). */
+function descendientesDe(id) {
+  const out = new Set();
+  const pila = [id];
+  while (pila.length) {
+    const actual = pila.pop();
+    for (const p of (state.projects || [])) {
+      if ((state.parentes[p.id] || null) === actual && !out.has(p.id)) {
+        out.add(p.id);
+        pila.push(p.id);
+      }
+    }
+  }
+  return out;
+}
+
+/** Ideas válidas como padre: ni ella misma ni sus descendientes. */
+function candidatosPadre(id) {
+  const prohibidos = descendientesDe(id);
+  prohibidos.add(id);
+  return (state.projects || [])
+    .filter((p) => !prohibidos.has(p.id))
+    .map((p) => ({ valor: p.id, etiqueta: p.id }));
+}
+
+/**
+ * Diálogo de idea: escribe un identificador o elige una idea de un desplegable.
+ * Devuelve el valor elegido, o null si se cancela.
+ */
+function abrirDialogoIdea({ titulo = 'Idea', texto = '', tipo = 'texto', valor = '', opciones = [] } = {}) {
+  return new Promise((resolve) => {
+    const dlg = $('#idea-dialog');
+    const input = $('#idea-dialog-input');
+    const inputWrap = $('#idea-dialog-input-wrap');
+    const select = $('#idea-dialog-select');
+    const selectWrap = $('#idea-dialog-select-wrap');
+    const btnOk = $('#idea-dialog-ok');
+    const btnCancel = $('#idea-dialog-cancel');
+    if (!dlg || !input || !select || !btnOk || !btnCancel) return resolve(null);
+
+    $('#idea-dialog-title').textContent = titulo;
+    $('#idea-dialog-text').textContent = texto;
+    if (tipo === 'lista') {
+      inputWrap.classList.add('hidden');
+      selectWrap.classList.remove('hidden');
+      select.innerHTML = opciones
+        .map((o) => `<option value="${escapeHtml(o.valor)}">${escapeHtml(o.etiqueta)}</option>`)
+        .join('');
+      if (valor) select.value = valor;
+    } else {
+      selectWrap.classList.add('hidden');
+      inputWrap.classList.remove('hidden');
+      input.value = valor || '';
+      try { input.focus(); input.select(); } catch { /* sin foco */ }
+    }
+
+    let resultado = null;
+    const limpiar = () => {
+      btnOk.removeEventListener('click', aceptar);
+      btnCancel.removeEventListener('click', cancelar);
+      dlg.removeEventListener('close', alCerrar);
+    };
+    const aceptar = () => {
+      resultado = tipo === 'lista' ? select.value : (input.value.trim() || null);
+      dlg.close();
+    };
+    const cancelar = () => { resultado = null; dlg.close(); };
+    const alCerrar = () => { limpiar(); resolve(resultado); };
+    btnOk.addEventListener('click', aceptar);
+    btnCancel.addEventListener('click', cancelar);
+    dlg.addEventListener('close', alCerrar);
+    try { dlg.showModal(); } catch { limpiar(); resolve(null); }
+  });
+}
+
+/** Duplicar / renombrar / fusionar / borrar / jerarquía de una idea. */
 async function accionIdea(accion, id) {
   try {
     if (accion === 'duplicar') {
-      const nuevo = window.prompt(`Id para la copia de «${id}»:`, `${id}-copia`);
+      const nuevo = await abrirDialogoIdea({
+        titulo: 'Duplicar idea',
+        texto: `Copia completa de «${id}», con este identificador:`,
+        tipo: 'texto',
+        valor: `${id}-copia`
+      });
       if (!nuevo) return;
       await api(`/api/projects/${encodeURIComponent(id)}/duplicar`, { method: 'POST', body: JSON.stringify({ nuevoId: nuevo }) });
       toast('Idea duplicada', 'ok');
     } else if (accion === 'renombrar') {
-      const nuevo = window.prompt(`Nuevo id para «${id}»:`, id);
+      const nuevo = await abrirDialogoIdea({
+        titulo: 'Renombrar idea',
+        texto: `Nuevo identificador para «${id}» (cambia la carpeta):`,
+        tipo: 'texto',
+        valor: id
+      });
       if (!nuevo || nuevo === id) return;
       await api(`/api/projects/${encodeURIComponent(id)}/renombrar`, { method: 'POST', body: JSON.stringify({ nuevoId: nuevo }) });
       toast('Idea renombrada', 'ok');
     } else if (accion === 'fusionar') {
-      const destino = window.prompt(`¿Con qué idea fusiono «${id}»? (id de destino)`, '');
+      const opciones = (state.projects || [])
+        .filter((p) => p.id !== id)
+        .map((p) => ({ valor: p.id, etiqueta: p.id }));
+      if (!opciones.length) return toast('No hay otra idea con la que fusionar', 'warn');
+      const destino = await abrirDialogoIdea({
+        titulo: 'Fusionar idea',
+        texto: `«${id}» se volcará en la elegida y «${id}» irá a la papelera.`,
+        tipo: 'lista',
+        opciones
+      });
       if (!destino || destino === id) return;
-      if (typeof window.confirm === 'function'
-        && !window.confirm(`«${id}» se volcará en «${destino}» y «${id}» irá a la papelera. ¿Seguir?`)) return;
       await api(`/api/projects/${encodeURIComponent(id)}/fusionar`, { method: 'POST', body: JSON.stringify({ destino }) });
       toast(`Fusionada en ${destino}`, 'ok');
     } else if (accion === 'padre') {
-      const padre = window.prompt(`¿Bajo qué idea pongo «${id}»? (id de la idea padre)`, state.parentes[id] || '');
-      if (!padre) return;
+      const opciones = candidatosPadre(id);
+      if (!opciones.length) return toast('No hay ideas válidas como padre', 'warn');
+      const padre = await abrirDialogoIdea({
+        titulo: 'Mover bajo otra idea',
+        texto: `Elige la idea padre de «${id}». No aparecen ella ni sus descendientes.`,
+        tipo: 'lista',
+        valor: state.parentes[id] || '',
+        opciones
+      });
+      if (!padre || padre === id) return;
       await api(`/api/projects/${encodeURIComponent(id)}/padre`, { method: 'POST', body: JSON.stringify({ padre }) });
       toast('Jerarquía actualizada', 'ok');
     } else if (accion === 'soltar') {
@@ -2585,6 +2686,9 @@ window.Jarvis = {
   cargarAdjuntos,
   renderAdjuntos,
   subirAdjuntos,
+  candidatosPadre,
+  descendientesDe,
+  abrirDialogoIdea,
   switchTab,
   parseChecklist,
   construirGrafo,

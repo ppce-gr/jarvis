@@ -593,3 +593,19 @@ test('el inicio marca las ideas que dependen de otra (jerarquía)', async () => 
   assert.match(html, /data-idea-accion="borrar"/);
   assert.match(html, /data-idea-accion="padre"/);
 });
+
+test('el desplegable de padre excluye la idea y sus descendientes', async () => {
+  const base = { ...RESPUESTAS_BASE };
+  const { errores, jarvis } = await arrancarInterfaz({
+    respuestas: { '/api/ideas': { padres: { 'idea-dos': 'idea-uno' }, linaje: [] }, ...base }
+  });
+  assert.deepEqual(errores, []);
+
+  // idea-uno es el padre de idea-dos: no puede ser padre de sí misma ni de su hija.
+  assert.deepEqual(jarvis.candidatosPadre('idea-uno').map((o) => o.valor), []);
+
+  // idea-dos sí puede colgar de idea-uno; nunca de sí misma.
+  const paraDos = jarvis.candidatosPadre('idea-dos').map((o) => o.valor);
+  assert.ok(!paraDos.includes('idea-dos'));
+  assert.ok(paraDos.includes('idea-uno'));
+});

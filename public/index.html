@@ -295,6 +295,26 @@
     </div>
   </dialog>
 
+  <!-- Modal: elegir idea (padre / destino) o escribir un id -->
+  <dialog id="idea-dialog" class="dialog">
+    <div class="dialog-body">
+      <h2 id="idea-dialog-title">Idea</h2>
+      <p id="idea-dialog-text" class="muted"></p>
+      <label id="idea-dialog-input-wrap">
+        Identificador
+        <input id="idea-dialog-input" autocomplete="off" />
+      </label>
+      <label id="idea-dialog-select-wrap" class="hidden">
+        Idea
+        <select id="idea-dialog-select"></select>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="idea-dialog-cancel" class="btn btn-ghost">Cancelar</button>
+        <button type="button" id="idea-dialog-ok" class="btn btn-primary">Aceptar</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Modal: confirmar que se detiene la respuesta en curso -->
   <dialog id="stop-dialog" class="dialog">
     <div class="dialog-body">
