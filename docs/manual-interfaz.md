@@ -3,6 +3,15 @@
 La interfaz es una página web servida por la propia Raspberry. Todo el render
 ocurre en **tu navegador** (móvil o PC), así que la Pi no sufre.
 
+### Salud del servidor
+
+En la barra superior, la píldora **🌡** muestra la **temperatura** de la Pi (se
+refresca cada 30 s; en ámbar si pasa de 75 °C). Al pulsarla se abre **Salud del
+servidor** con temperatura, **disco libre**, **memoria usada**, carga media y
+tiempo encendido. Los datos salen de `GET /api/system/health`, que lee el sensor
+térmico (`/sys/class/thermal/…`), `statfs` y `/proc/meminfo` sin dependencias ni
+root.
+
 ## Acceso
 
 1. Arranca el servicio: `npm start` (o el servicio systemd, ver
