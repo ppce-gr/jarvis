@@ -1128,3 +1128,18 @@ html, body {
   background: rgba(210, 153, 34, .08);
   color: var(--warn); font-size: 12.5px;
 }
+
+/* ============================================================
+   Inicio en dos bloques: Recientes + Jerarquía
+   ============================================================ */
+.inicio { display: flex; flex-direction: column; gap: 6px; }
+.inicio-seccion { margin-top: 12px; }
+.inicio-seccion h2 { margin: 0 0 2px; font-size: 16px; letter-spacing: .01em; }
+.inicio-seccion p { margin: 0; font-size: 12.5px; }
+.idea-arbol { display: flex; flex-direction: column; gap: 14px; }
+.idea-card-top { display: flex; align-items: center; gap: 8px; }
+.idea-card-nivel {
+  font-size: 10px; font-weight: 700; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px;
+}
+.idea-card-fecha { font-size: 10.5px; color: var(--text-dim); margin-left: auto; margin-right: 8px; }

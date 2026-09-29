@@ -11,7 +11,6 @@ const state = {
   projects: [],
   parentes: {},
   linaje: [],
-  vistaIdeas: 'rejilla',
   currentProjectId: null,
   notes: [],
   currentNoteId: null,
@@ -194,22 +193,38 @@ function hijosDe(id) {
   return (state.projects || []).filter((p) => (state.parentes[p.id] || null) === id);
 }
 
+/** Fecha (ms) de la última modificación de una idea, para ordenar. */
+function fechaIdea(project) {
+  const t = Date.parse(project?.modifiedAt || project?.createdAt || '');
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** Más recientes primero. */
+function porReciente(a, b) {
+  return fechaIdea(b) - fechaIdea(a);
+}
+
 function tarjetaIdea(project, nivel = 0) {
   const inicial = (project.name || project.id || '?').trim().charAt(0).toUpperCase() || '?';
   const desc = (project.description || '').trim();
   const padre = state.parentes[project.id] || null;
+  const fecha = fechaIdea(project) ? new Date(fechaIdea(project)).toLocaleDateString() : '';
   const card = document.createElement('article');
   card.className = 'idea-card';
   card.dataset.id = project.id;
   card.setAttribute('role', 'button');
   card.tabIndex = 0;
-  if (nivel) card.style.marginLeft = `${nivel * 20}px`;
+  if (nivel) card.style.marginLeft = `${nivel * 22}px`;
   card.innerHTML =
-    `<div class="idea-card-mark">${escapeHtml(inicial)}</div>`
+    `<div class="idea-card-top">`
+    + `<div class="idea-card-mark">${escapeHtml(inicial)}</div>`
+    + (nivel ? `<span class="idea-card-nivel" title="Nivel ${nivel + 1}">N${nivel + 1}</span>` : '')
+    + `</div>`
     + (padre ? `<span class="idea-card-parent" title="Depende de ${escapeHtml(padre)}">↳ ${escapeHtml(padre)}</span>` : '')
     + `<h3 class="idea-card-title">${escapeHtml(project.name || project.id)}</h3>`
     + `<p class="idea-card-desc">${desc ? escapeHtml(desc.slice(0, 180)) : '<span class="muted">Sin descripción todavía</span>'}</p>`
     + `<div class="idea-card-foot"><span class="idea-card-tag">${escapeHtml(project.status || 'idea')}</span>`
+    + `<span class="idea-card-fecha" title="Última modificación">${escapeHtml(fecha)}</span>`
     + `<span class="idea-acciones-toggle" data-acciones="${escapeHtml(project.id)}" title="Gestionar idea">⋯</span></div>`
     + `<div class="idea-acciones hidden" data-panel="${escapeHtml(project.id)}">`
     + `<button type="button" class="seg-btn" data-idea-accion="duplicar" data-id="${escapeHtml(project.id)}">Duplicar</button>`
@@ -222,6 +237,28 @@ function tarjetaIdea(project, nivel = 0) {
   return card;
 }
 
+function tarjetaNuevaIdea() {
+  const nueva = document.createElement('button');
+  nueva.type = 'button';
+  nueva.className = 'idea-card idea-card-new';
+  nueva.innerHTML = '<span class="idea-card-new-plus" aria-hidden="true">＋</span><span>Nueva idea</span>';
+  nueva.addEventListener('click', abrirNuevaIdea);
+  return nueva;
+}
+
+function tituloInicio(titulo, sub) {
+  const el = document.createElement('div');
+  el.className = 'inicio-seccion';
+  el.innerHTML = `<h2>${escapeHtml(titulo)}</h2><p class="muted">${escapeHtml(sub)}</p>`;
+  return el;
+}
+
+/**
+ * Inicio en dos bloques:
+ *  1. **Recientes**: las últimas ideas tocadas, sueltas y sin su familia.
+ *  2. **Jerarquía**: cada idea con sus subideas (nivel a la vista).
+ * Dentro de cada grupo, lo más reciente primero.
+ */
 function renderIdeaGrid() {
   const grid = $('#idea-grid');
   if (!grid) return;
@@ -234,33 +271,38 @@ function renderIdeaGrid() {
       empty.innerHTML = '<h2>Sin ideas todavía</h2><p>Crea la primera con <strong>+ Nueva idea</strong>.</p>';
     }
   }
-  const toggle = $('#ideas-vista');
-  if (toggle) toggle.textContent = state.vistaIdeas === 'arbol' ? '▦ Rejilla' : '⤷ Árbol';
 
-  grid.className = state.vistaIdeas === 'arbol' ? 'idea-grid idea-grid-arbol' : 'idea-grid';
+  grid.className = 'inicio';
   grid.innerHTML = '';
+  if (!projects.length) { grid.appendChild(tarjetaNuevaIdea()); return; }
 
-  if (state.vistaIdeas === 'arbol') {
-    const raices = projects.filter((p) => !state.parentes[p.id] || !projects.some((q) => q.id === state.parentes[p.id]));
-    const vistos = new Set();
-    const pinta = (project, nivel) => {
-      if (vistos.has(project.id)) return;
-      vistos.add(project.id);
-      grid.appendChild(tarjetaIdea(project, nivel));
-      for (const hijo of hijosDe(project.id)) pinta(hijo, nivel + 1);
-    };
-    for (const r of raices) pinta(r, 0);
-    for (const p of projects) pinta(p, 0);
-  } else {
-    for (const project of projects) grid.appendChild(tarjetaIdea(project, 0));
-  }
+  const porFecha = [...projects].sort(porReciente);
 
-  const nueva = document.createElement('button');
-  nueva.type = 'button';
-  nueva.className = 'idea-card idea-card-new';
-  nueva.innerHTML = '<span class="idea-card-new-plus" aria-hidden="true">＋</span><span>Nueva idea</span>';
-  nueva.addEventListener('click', abrirNuevaIdea);
-  grid.appendChild(nueva);
+  // 1) Recientes: las últimas 5, sueltas (sin padres, hijas ni hermanas).
+  grid.appendChild(tituloInicio('Recientes', 'Lo último que has tocado, sin su familia alrededor.'));
+  const recientes = document.createElement('div');
+  recientes.className = 'idea-grid';
+  for (const project of porFecha.slice(0, 5)) recientes.appendChild(tarjetaIdea(project, 0));
+  grid.appendChild(recientes);
+
+  // 2) Jerarquía: cada idea padre con sus subideas, y el nivel señalado.
+  grid.appendChild(tituloInicio('Jerarquía', 'Cada idea con sus subideas; dentro de cada grupo, lo más reciente primero.'));
+  const arbol = document.createElement('div');
+  arbol.className = 'idea-arbol';
+  const raices = porFecha.filter((p) => !(state.parentes[p.id] || null)
+    || !projects.some((q) => q.id === state.parentes[p.id]));
+  const vistos = new Set();
+  const pinta = (project, nivel) => {
+    if (vistos.has(project.id)) return;
+    vistos.add(project.id);
+    arbol.appendChild(tarjetaIdea(project, nivel));
+    for (const hijo of hijosDe(project.id).sort(porReciente)) pinta(hijo, nivel + 1);
+  };
+  for (const r of raices) pinta(r, 0);
+  for (const p of porFecha) pinta(p, 0);
+  grid.appendChild(arbol);
+
+  grid.appendChild(tarjetaNuevaIdea());
 }
 
 /** Clic en la rejilla: abrir idea, desplegar el menú ⋯ o ejecutar una acción. */
@@ -2610,10 +2652,6 @@ function bindEvents() {
 
   on('#new-project-btn', 'click', abrirNuevaIdea);
   on('#new-idea-btn', 'click', abrirNuevaIdea);
-  on('#ideas-vista', 'click', () => {
-    state.vistaIdeas = state.vistaIdeas === 'arbol' ? 'rejilla' : 'arbol';
-    renderIdeaGrid();
-  });
   on('#ideas-grafo-btn', 'click', renderGrafoIdeas);
   on('#idea-grid', 'click', manejarGridIdea);
   on('#ideas-grafo', 'click', (event) => {

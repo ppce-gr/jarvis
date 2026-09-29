@@ -57,11 +57,49 @@ export class FileSystemProjectRepository extends ProjectRepositoryPort {
         id: projectId,
         name: projectId,
         description: description.trim(),
-        status: 'activa'
+        status: 'activa',
+        createdAt: stats.birthtime,
+        modifiedAt: await this._ultimaModificacion(projectDir)
       });
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Fecha de la última modificación REAL de la idea: la del fichero más
+   * reciente que contiene. Mirar sólo la carpeta no sirve: editar una nota no
+   * cambia la fecha de su carpeta. Se limita la profundidad y el número de
+   * entradas para no castigar a la Pi con ideas grandes.
+   */
+  async _ultimaModificacion(dir, { maxProfundidad = 4, limite = 600 } = {}) {
+    let ultima = 0;
+    let vistos = 0;
+    const pila = [{ dir, nivel: 0 }];
+    while (pila.length && vistos < limite) {
+      const { dir: actual, nivel } = pila.pop();
+      let entries;
+      try {
+        entries = await fs.readdir(actual, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        vistos += 1;
+        if (vistos > limite) break;
+        const full = path.join(actual, entry.name);
+        if (entry.isDirectory()) {
+          if (nivel < maxProfundidad) pila.push({ dir: full, nivel: nivel + 1 });
+        } else {
+          try {
+            const st = await fs.stat(full);
+            if (st.mtimeMs > ultima) ultima = st.mtimeMs;
+          } catch { /* ignorar */ }
+        }
+      }
+    }
+    return ultima ? new Date(ultima) : null;
   }
 
   async save(project) {
