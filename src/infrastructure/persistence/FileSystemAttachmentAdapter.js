@@ -133,7 +133,17 @@ export class FileSystemAttachmentAdapter extends AttachmentPort {
       });
     }
     adjuntos.sort((a, b) => String(b.subidoEn || '').localeCompare(String(a.subidoEn || '')));
-    return { adjuntos, historial: await this._historial(projectId) };
+
+    // Huérfanos: ficheros que están en `adjuntos/` pero ya no en el registro
+    // (típicamente tras «desasociar»). Se avisa, no se tocan.
+    let presentes = [];
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      presentes = entries.filter((e) => e.isFile() && !e.name.startsWith('.')).map((e) => e.name);
+    } catch { /* sin carpeta */ }
+    const orfaNos = presentes.filter((n) => !(n in registro));
+
+    return { adjuntos, historial: await this._historial(projectId), orfaNos };
   }
 
   async save(projectId, nombre, contenido) {

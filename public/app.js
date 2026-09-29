@@ -9,6 +9,9 @@
 const state = {
   view: 'home',
   projects: [],
+  parentes: {},
+  linaje: [],
+  vistaIdeas: 'rejilla',
   currentProjectId: null,
   notes: [],
   currentNoteId: null,
@@ -143,6 +146,14 @@ function renderMarkdown(md = '') {
 async function loadProjects() {
   const { projects } = await api('/api/projects');
   state.projects = Array.isArray(projects) ? projects : [];
+  try {
+    const meta = await api('/api/ideas');
+    state.parentes = (meta && meta.padres) || {};
+    state.linaje = (meta && meta.linaje) || [];
+  } catch {
+    state.parentes = {};
+    state.linaje = [];
+  }
   renderIdeaGrid();
 }
 
@@ -179,6 +190,38 @@ async function goHome() {
 }
 
 /* ---------------- Inicio: tarjetas de ideas (tipo Obsidian) ---------------- */
+function hijosDe(id) {
+  return (state.projects || []).filter((p) => (state.parentes[p.id] || null) === id);
+}
+
+function tarjetaIdea(project, nivel = 0) {
+  const inicial = (project.name || project.id || '?').trim().charAt(0).toUpperCase() || '?';
+  const desc = (project.description || '').trim();
+  const padre = state.parentes[project.id] || null;
+  const card = document.createElement('article');
+  card.className = 'idea-card';
+  card.dataset.id = project.id;
+  card.setAttribute('role', 'button');
+  card.tabIndex = 0;
+  if (nivel) card.style.marginLeft = `${nivel * 20}px`;
+  card.innerHTML =
+    `<div class="idea-card-mark">${escapeHtml(inicial)}</div>`
+    + (padre ? `<span class="idea-card-parent" title="Depende de ${escapeHtml(padre)}">↳ ${escapeHtml(padre)}</span>` : '')
+    + `<h3 class="idea-card-title">${escapeHtml(project.name || project.id)}</h3>`
+    + `<p class="idea-card-desc">${desc ? escapeHtml(desc.slice(0, 180)) : '<span class="muted">Sin descripción todavía</span>'}</p>`
+    + `<div class="idea-card-foot"><span class="idea-card-tag">${escapeHtml(project.status || 'idea')}</span>`
+    + `<span class="idea-acciones-toggle" data-acciones="${escapeHtml(project.id)}" title="Gestionar idea">⋯</span></div>`
+    + `<div class="idea-acciones hidden" data-panel="${escapeHtml(project.id)}">`
+    + `<button type="button" class="seg-btn" data-idea-accion="duplicar" data-id="${escapeHtml(project.id)}">Duplicar</button>`
+    + `<button type="button" class="seg-btn" data-idea-accion="renombrar" data-id="${escapeHtml(project.id)}">Renombrar</button>`
+    + `<button type="button" class="seg-btn" data-idea-accion="fusionar" data-id="${escapeHtml(project.id)}">Fusionar</button>`
+    + `<button type="button" class="seg-btn" data-idea-accion="padre" data-id="${escapeHtml(project.id)}">Mover bajo</button>`
+    + (padre ? `<button type="button" class="seg-btn" data-idea-accion="soltar" data-id="${escapeHtml(project.id)}">Soltar</button>` : '')
+    + `<button type="button" class="seg-btn seg-del" data-idea-accion="borrar" data-id="${escapeHtml(project.id)}">Borrar</button>`
+    + '</div>';
+  return card;
+}
+
 function renderIdeaGrid() {
   const grid = $('#idea-grid');
   if (!grid) return;
@@ -191,36 +234,134 @@ function renderIdeaGrid() {
       empty.innerHTML = '<h2>Sin ideas todavía</h2><p>Crea la primera con <strong>+ Nueva idea</strong>.</p>';
     }
   }
+  const toggle = $('#ideas-vista');
+  if (toggle) toggle.textContent = state.vistaIdeas === 'arbol' ? '▦ Rejilla' : '⤷ Árbol';
 
+  grid.className = state.vistaIdeas === 'arbol' ? 'idea-grid idea-grid-arbol' : 'idea-grid';
   grid.innerHTML = '';
-  for (const project of projects) {
-    const inicial = (project.name || project.id || '?').trim().charAt(0).toUpperCase() || '?';
-    const desc = (project.description || '').trim();
-    const card = document.createElement('article');
-    card.className = 'idea-card';
-    card.dataset.id = project.id;
-    card.setAttribute('role', 'button');
-    card.tabIndex = 0;
-    card.innerHTML =
-      `<div class="idea-card-mark">${escapeHtml(inicial)}</div>`
-      + `<h3 class="idea-card-title">${escapeHtml(project.name || project.id)}</h3>`
-      + `<p class="idea-card-desc">${desc ? escapeHtml(desc.slice(0, 180)) : '<span class="muted">Sin descripción todavía</span>'}</p>`
-      + `<div class="idea-card-foot"><span class="idea-card-tag">${escapeHtml(project.status || 'idea')}</span><span class="idea-card-arrow" aria-hidden="true">→</span></div>`;
-    const abrir = () => selectProject(project.id);
-    card.addEventListener('click', abrir);
-    card.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); abrir(); }
-    });
-    grid.appendChild(card);
+
+  if (state.vistaIdeas === 'arbol') {
+    const raices = projects.filter((p) => !state.parentes[p.id] || !projects.some((q) => q.id === state.parentes[p.id]));
+    const vistos = new Set();
+    const pinta = (project, nivel) => {
+      if (vistos.has(project.id)) return;
+      vistos.add(project.id);
+      grid.appendChild(tarjetaIdea(project, nivel));
+      for (const hijo of hijosDe(project.id)) pinta(hijo, nivel + 1);
+    };
+    for (const r of raices) pinta(r, 0);
+    for (const p of projects) pinta(p, 0);
+  } else {
+    for (const project of projects) grid.appendChild(tarjetaIdea(project, 0));
   }
 
-  // Tarjeta de nueva idea: el acceso a crear está siempre a la vista.
   const nueva = document.createElement('button');
   nueva.type = 'button';
   nueva.className = 'idea-card idea-card-new';
   nueva.innerHTML = '<span class="idea-card-new-plus" aria-hidden="true">＋</span><span>Nueva idea</span>';
   nueva.addEventListener('click', abrirNuevaIdea);
   grid.appendChild(nueva);
+}
+
+/** Clic en la rejilla: abrir idea, desplegar el menú ⋯ o ejecutar una acción. */
+function manejarGridIdea(event) {
+  const accion = event.target.closest('[data-idea-accion]');
+  if (accion) {
+    event.stopPropagation();
+    accionIdea(accion.dataset.ideaAccion, accion.dataset.id);
+    return;
+  }
+  const toggle = event.target.closest('[data-acciones]');
+  if (toggle) {
+    event.stopPropagation();
+    const panel = document.querySelector(`[data-panel="${toggle.dataset.acciones}"]`);
+    if (panel) panel.classList.toggle('hidden');
+    return;
+  }
+  const card = event.target.closest('.idea-card[data-id]');
+  if (card) selectProject(card.dataset.id);
+}
+
+/** Duplicar / renombrar / fusionar / borrar / jerarquía de una idea. */
+async function accionIdea(accion, id) {
+  try {
+    if (accion === 'duplicar') {
+      const nuevo = window.prompt(`Id para la copia de «${id}»:`, `${id}-copia`);
+      if (!nuevo) return;
+      await api(`/api/projects/${encodeURIComponent(id)}/duplicar`, { method: 'POST', body: JSON.stringify({ nuevoId: nuevo }) });
+      toast('Idea duplicada', 'ok');
+    } else if (accion === 'renombrar') {
+      const nuevo = window.prompt(`Nuevo id para «${id}»:`, id);
+      if (!nuevo || nuevo === id) return;
+      await api(`/api/projects/${encodeURIComponent(id)}/renombrar`, { method: 'POST', body: JSON.stringify({ nuevoId: nuevo }) });
+      toast('Idea renombrada', 'ok');
+    } else if (accion === 'fusionar') {
+      const destino = window.prompt(`¿Con qué idea fusiono «${id}»? (id de destino)`, '');
+      if (!destino || destino === id) return;
+      if (typeof window.confirm === 'function'
+        && !window.confirm(`«${id}» se volcará en «${destino}» y «${id}» irá a la papelera. ¿Seguir?`)) return;
+      await api(`/api/projects/${encodeURIComponent(id)}/fusionar`, { method: 'POST', body: JSON.stringify({ destino }) });
+      toast(`Fusionada en ${destino}`, 'ok');
+    } else if (accion === 'padre') {
+      const padre = window.prompt(`¿Bajo qué idea pongo «${id}»? (id de la idea padre)`, state.parentes[id] || '');
+      if (!padre) return;
+      await api(`/api/projects/${encodeURIComponent(id)}/padre`, { method: 'POST', body: JSON.stringify({ padre }) });
+      toast('Jerarquía actualizada', 'ok');
+    } else if (accion === 'soltar') {
+      await api(`/api/projects/${encodeURIComponent(id)}/padre`, { method: 'POST', body: JSON.stringify({ padre: null }) });
+      toast('Al primer nivel', 'ok');
+    } else if (accion === 'borrar') {
+      if (typeof window.confirm === 'function'
+        && !window.confirm(`¿Borrar «${id}»? Irá a la papelera (recuperable).`)) return;
+      await api(`/api/projects/${encodeURIComponent(id)}/borrar`, { method: 'POST' });
+      toast('Idea a la papelera', 'ok');
+    }
+    await loadProjects();
+  } catch (error) {
+    toast(`No se pudo: ${error.message}`, 'err');
+  }
+}
+
+/** Grafo de TODAS las ideas: jerarquía (padre→hijo) + linaje. */
+function renderGrafoIdeas() {
+  const cont = $('#ideas-grafo');
+  if (!cont) return;
+  cont.classList.toggle('hidden');
+  if (cont.classList.contains('hidden')) return;
+  const proyectos = state.projects || [];
+  if (!proyectos.length) { cont.innerHTML = '<p class="muted">Sin ideas.</p>'; return; }
+  const ids = new Set(proyectos.map((p) => p.id));
+  const nodos = proyectos.map((p) => ({ id: p.id, title: p.id }));
+  const aristas = [];
+  const vistas = new Set();
+  const add = (a, b) => {
+    if (!a || !b || !ids.has(a) || !ids.has(b) || a === b) return;
+    const k = [a, b].sort().join('|');
+    if (vistas.has(k)) return;
+    vistas.add(k);
+    aristas.push({ origen: a, destino: b });
+  };
+  for (const [hijo, padre] of Object.entries(state.parentes)) add(padre, hijo);
+  for (const l of (state.linaje || [])) add(l.de, l.idea);
+
+  const ancho = Math.max(360, cont.clientWidth || 760);
+  const alto = Math.max(340, cont.clientHeight || 440);
+  repartir(nodos, aristas, ancho, alto, 240);
+  const porId = new Map(nodos.map((n) => [n.id, n]));
+  const lineas = aristas.map((e) => {
+    const o = porId.get(e.origen); const d = porId.get(e.destino);
+    if (!o || !d) return '';
+    return `<line x1="${o.x.toFixed(1)}" y1="${o.y.toFixed(1)}" x2="${d.x.toFixed(1)}" y2="${d.y.toFixed(1)}" />`;
+  }).join('');
+  const conHijos = new Set(Object.values(state.parentes).filter(Boolean));
+  const circulos = nodos.map((n) => {
+    const color = conHijos.has(n.id) ? 'hsl(45, 80%, 60%)' : 'hsl(205, 90%, 62%)';
+    const etiqueta = n.id.length > 16 ? `${n.id.slice(0, 15)}…` : n.id;
+    return `<g class="mapa-nodo" data-nodo="${escapeHtml(n.id)}" transform="translate(${n.x.toFixed(1)},${n.y.toFixed(1)})">`
+      + `<circle r="13" fill="${color}" /><text y="27" text-anchor="middle">${escapeHtml(etiqueta)}</text></g>`;
+  }).join('');
+  cont.innerHTML = `<svg viewBox="0 0 ${ancho} ${alto}" preserveAspectRatio="xMidYMid meet" class="mapa-svg">`
+    + `<g class="mapa-lineas">${lineas}</g>${circulos}</svg>`;
 }
 
 async function selectProject(projectId) {
@@ -870,7 +1011,7 @@ async function cargarAdjuntos() {
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/adjuntos`);
     adjuntosActuales = Array.isArray(data.adjuntos) ? data.adjuntos : [];
-    renderAdjuntos(data.historial || []);
+    renderAdjuntos(data.historial || [], data.orfaNos || []);
   } catch (error) {
     const cont = $('#adjuntos-list');
     if (cont) {
@@ -879,7 +1020,17 @@ async function cargarAdjuntos() {
   }
 }
 
-function renderAdjuntos(historial = []) {
+function renderAdjuntos(historial = [], orfaNos = []) {
+  const aviso = $('#adjuntos-aviso');
+  if (aviso) {
+    if (orfaNos.length) {
+      aviso.classList.remove('hidden');
+      aviso.textContent = `⚠ ${orfaNos.length} fichero(s) desasociado(s) siguen en adjuntos/ sin estar en la lista: ${orfaNos.join(', ')}. Bórralos o muévelos si no los quieres.`;
+    } else {
+      aviso.classList.add('hidden');
+      aviso.textContent = '';
+    }
+  }
   const cont = $('#adjuntos-list');
   if (cont) {
     if (!adjuntosActuales.length) {
@@ -2283,6 +2434,16 @@ function bindEvents() {
 
   on('#new-project-btn', 'click', abrirNuevaIdea);
   on('#new-idea-btn', 'click', abrirNuevaIdea);
+  on('#ideas-vista', 'click', () => {
+    state.vistaIdeas = state.vistaIdeas === 'arbol' ? 'rejilla' : 'arbol';
+    renderIdeaGrid();
+  });
+  on('#ideas-grafo-btn', 'click', renderGrafoIdeas);
+  on('#idea-grid', 'click', manejarGridIdea);
+  on('#ideas-grafo', 'click', (event) => {
+    const g = event.target.closest('[data-nodo]');
+    if (g) selectProject(g.dataset.nodo);
+  });
   on('#back-btn', 'click', goHome);
   on('#home-btn', 'click', goHome);
   on('#new-note-btn', 'click', () => {

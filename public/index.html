@@ -35,9 +35,14 @@
           <h1>Buenos días, <span class="accent">señor</span></h1>
           <p class="muted">Todo listo. ¿Qué idea construimos hoy?</p>
         </div>
-        <button id="new-idea-btn" class="btn btn-primary btn-lg">＋ Nueva idea</button>
+        <div class="home-head-actions">
+          <button id="ideas-vista" class="btn btn-ghost btn-sm" title="Ver las ideas como árbol (con jerarquía) o como rejilla">⤷ Árbol</button>
+          <button id="ideas-grafo-btn" class="btn btn-ghost btn-sm" title="Grafo de todas las ideas (jerarquía y linaje)">🕸 Grafo</button>
+          <button id="new-idea-btn" class="btn btn-primary btn-lg">＋ Nueva idea</button>
+        </div>
       </div>
       <div class="home-body">
+        <div id="ideas-grafo" class="mapa-graph hidden" style="height: 46vh; min-height: 320px;"></div>
         <div id="idea-grid" class="idea-grid"></div>
         <div id="home-empty" class="empty-state home-empty hidden">
           <h2>Sin ideas todavía</h2>
@@ -182,6 +187,7 @@
               <button type="button" id="adjuntos-elegir" class="btn btn-primary">Elegir ficheros…</button>
               <span class="muted">…o arrástralos aquí</span>
             </div>
+            <div id="adjuntos-aviso" class="adjuntos-aviso hidden"></div>
             <div id="adjuntos-list" class="adjuntos-list"></div>
             <details class="adjuntos-historial">
               <summary>Historial de ficheros</summary>

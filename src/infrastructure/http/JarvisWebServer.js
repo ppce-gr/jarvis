@@ -23,6 +23,7 @@ export class JarvisWebServer {
     saveNoteUseCase,
     browseProjectFilesUseCase,
     manageAttachmentsUseCase,
+    manageIdeasUseCase,
     getGitStatusUseCase,
     listOrchestratorTasksUseCase,
     sendChatMessageUseCase,
@@ -48,6 +49,7 @@ export class JarvisWebServer {
     this.saveNoteUseCase = saveNoteUseCase;
     this.browseProjectFilesUseCase = browseProjectFilesUseCase;
     this.manageAttachmentsUseCase = manageAttachmentsUseCase;
+    this.manageIdeasUseCase = manageIdeasUseCase;
     this.getGitStatusUseCase = getGitStatusUseCase;
     this.listOrchestratorTasksUseCase = listOrchestratorTasksUseCase;
     this.sendChatMessageUseCase = sendChatMessageUseCase;
@@ -261,6 +263,15 @@ export class JarvisWebServer {
       return this._sendJson(res, 200, { projects });
     }
 
+    // GET /api/ideas  → jerarquía (padres) + linaje de todas las ideas
+    if (req.method === 'GET' && pathname === '/api/ideas') {
+      try {
+        return this._sendJson(res, 200, await this.manageIdeasUseCase.meta());
+      } catch (error) {
+        return this._sendJson(res, 400, { error: error.message });
+      }
+    }
+
     // POST /api/projects
     if (req.method === 'POST' && pathname === '/api/projects') {
       try {
@@ -380,6 +391,56 @@ export class JarvisWebServer {
           const nombre = body.nombre || url.searchParams.get('nombre');
           const adjunto = await this.manageAttachmentsUseCase.remove(projectId, nombre);
           return this._sendJson(res, 200, { projectId, adjunto });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // ---- Gestión de ideas ------------------------------------------------
+      // POST /api/projects/:id/duplicar  { nuevoId }
+      if (req.method === 'POST' && segments[3] === 'duplicar') {
+        try {
+          const body = await this._readJsonBody(req);
+          return this._sendJson(res, 201, { idea: await this.manageIdeasUseCase.duplicate(projectId, body.nuevoId) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/renombrar  { nuevoId }
+      if (req.method === 'POST' && segments[3] === 'renombrar') {
+        try {
+          const body = await this._readJsonBody(req);
+          return this._sendJson(res, 200, { idea: await this.manageIdeasUseCase.rename(projectId, body.nuevoId) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/borrar  → a la papelera
+      if (req.method === 'POST' && segments[3] === 'borrar') {
+        try {
+          return this._sendJson(res, 200, { idea: await this.manageIdeasUseCase.trash(projectId) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/fusionar  { destino }
+      if (req.method === 'POST' && segments[3] === 'fusionar') {
+        try {
+          const body = await this._readJsonBody(req);
+          return this._sendJson(res, 200, { idea: await this.manageIdeasUseCase.merge(projectId, body.destino) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/padre  { padre }  (null = primer nivel)
+      if (req.method === 'POST' && segments[3] === 'padre') {
+        try {
+          const body = await this._readJsonBody(req);
+          return this._sendJson(res, 200, { idea: await this.manageIdeasUseCase.setParent(projectId, body.padre || null) });
         } catch (error) {
           return this._sendJson(res, 400, { error: error.message });
         }

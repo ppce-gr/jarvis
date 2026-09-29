@@ -16,6 +16,7 @@ import { FileSystemProjectRepository } from './infrastructure/persistence/FileSy
 import { FileSystemNoteRepository } from './infrastructure/persistence/FileSystemNoteRepository.js';
 import { FileSystemBrowserAdapter } from './infrastructure/persistence/FileSystemBrowserAdapter.js';
 import { FileSystemAttachmentAdapter } from './infrastructure/persistence/FileSystemAttachmentAdapter.js';
+import { FileSystemIdeaManagementAdapter } from './infrastructure/persistence/FileSystemIdeaManagementAdapter.js';
 import { DshHeadlessOrchestratorAdapter } from './infrastructure/orchestrator/DshHeadlessOrchestratorAdapter.js';
 import { DshSdkConversationAdapter } from './infrastructure/conversation/DshSdkConversationAdapter.js';
 import { AcpConversationAdapter } from './infrastructure/conversation/AcpConversationAdapter.js';
@@ -30,6 +31,7 @@ import { SaveNoteUseCase } from './application/SaveNoteUseCase.js';
 import { RunOrchestratorTaskUseCase } from './application/RunOrchestratorTaskUseCase.js';
 import { BrowseProjectFilesUseCase } from './application/BrowseProjectFilesUseCase.js';
 import { ManageAttachmentsUseCase } from './application/ManageAttachmentsUseCase.js';
+import { ManageIdeasUseCase } from './application/ManageIdeasUseCase.js';
 import { GetGitStatusUseCase } from './application/GetGitStatusUseCase.js';
 import { ListOrchestratorTasksUseCase } from './application/ListOrchestratorTasksUseCase.js';
 import { SendChatMessageUseCase } from './application/SendChatMessageUseCase.js';
@@ -64,6 +66,7 @@ const projectRepository = new FileSystemProjectRepository(brainDir);
 const noteRepository = new FileSystemNoteRepository(brainDir);
 const browserAdapter = new FileSystemBrowserAdapter(brainDir);
 const attachmentAdapter = new FileSystemAttachmentAdapter(brainDir);
+const ideaManagementAdapter = new FileSystemIdeaManagementAdapter(brainDir);
 const orchestratorAdapter = new DshHeadlessOrchestratorAdapter({
   brainDir,
   dshBin: process.env.JARVIS_DSH_BIN || 'dsh',
@@ -121,6 +124,7 @@ const saveNoteUseCase = new SaveNoteUseCase(noteRepository);
 const runOrchestratorTaskUseCase = new RunOrchestratorTaskUseCase(orchestratorAdapter);
 const browseProjectFilesUseCase = new BrowseProjectFilesUseCase(browserAdapter);
 const manageAttachmentsUseCase = new ManageAttachmentsUseCase(attachmentAdapter);
+const manageIdeasUseCase = new ManageIdeasUseCase(ideaManagementAdapter);
 const getGitStatusUseCase = new GetGitStatusUseCase(gitSyncAdapter);
 const listOrchestratorTasksUseCase = new ListOrchestratorTasksUseCase(orchestratorAdapter);
 const sendChatMessageUseCase = new SendChatMessageUseCase(conversationAdapter);
@@ -148,6 +152,7 @@ const webServer = new JarvisWebServer({
   runOrchestratorTaskUseCase,
   browseProjectFilesUseCase,
   manageAttachmentsUseCase,
+  manageIdeasUseCase,
   getGitStatusUseCase,
   listOrchestratorTasksUseCase,
   sendChatMessageUseCase,

@@ -51,9 +51,10 @@ test('desasociar quita de la lista pero NO borra del disco', async () => {
   await caso.save('idea', 'nota.txt', Buffer.from('hola'));
   await caso.detach('idea', 'nota.txt');
 
-  const { adjuntos, historial } = await caso.list('idea');
+  const { adjuntos, historial, orfaNos } = await caso.list('idea');
   assert.equal(adjuntos.length, 0);
   assert.equal(historial[0].accion, 'desasociado');
+  assert.deepEqual(orfaNos, ['nota.txt'], 'se avisa del huérfano');
   // Sigue donde estaba: no se ha tocado.
   assert.equal(await fs.readFile(rutaAdjunto(dir, 'nota.txt'), 'utf8'), 'hola');
 });

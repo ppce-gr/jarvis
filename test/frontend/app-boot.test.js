@@ -574,3 +574,22 @@ test('la pestaña de adjuntos lista los ficheros y su historial', async () => {
   assert.match(lista, /data-adj-borrar/);
   assert.match(registro.get('#adjuntos-historial').innerHTML, /subido/);
 });
+
+/* ================================================================
+   Gestión de ideas: jerarquía y acciones en la tarjeta
+   ================================================================ */
+
+test('el inicio marca las ideas que dependen de otra (jerarquía)', async () => {
+  const base = { ...RESPUESTAS_BASE };
+  const { registro, errores } = await arrancarInterfaz({
+    respuestas: { '/api/ideas': { padres: { 'idea-dos': 'idea-uno' }, linaje: [] }, ...base }
+  });
+  assert.deepEqual(errores, []);
+  const html = registro.get('#idea-grid').innerHTML;
+  assert.match(html, /idea-card-parent/, 'la idea hija debe mostrar su padre');
+  assert.match(html, /data-idea-accion="duplicar"/);
+  assert.match(html, /data-idea-accion="renombrar"/);
+  assert.match(html, /data-idea-accion="fusionar"/);
+  assert.match(html, /data-idea-accion="borrar"/);
+  assert.match(html, /data-idea-accion="padre"/);
+});

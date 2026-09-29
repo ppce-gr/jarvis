@@ -1095,3 +1095,36 @@ html, body {
 /* Con tantas pestañas, que la tira pueda desplazarse también en escritorio. */
 .tabs { overflow-x: auto; }
 .tab { white-space: nowrap; }
+
+/* ============================================================
+   Gestión de ideas: acciones de tarjeta, jerarquía y grafo
+   ============================================================ */
+.home-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.idea-card-parent {
+  align-self: flex-start; max-width: 100%;
+  font-size: 11px; color: var(--accent);
+  border: 1px solid var(--border-glow); border-radius: 999px;
+  padding: 1px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.idea-acciones-toggle {
+  cursor: pointer; color: var(--text-dim); font-weight: 700;
+  padding: 0 8px; border-radius: 8px; line-height: 1.4;
+}
+.idea-acciones-toggle:hover { color: var(--accent); background: var(--bg-elev); }
+.idea-acciones {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+}
+.idea-acciones .seg-btn { width: auto; height: auto; padding: 3px 9px; font-size: 11.5px; }
+
+.idea-grid-arbol { display: flex; flex-direction: column; }
+.idea-grid-arbol .idea-card { min-height: auto; }
+#ideas-grafo { margin-bottom: 16px; }
+
+.adjuntos-aviso {
+  max-width: 820px; margin-bottom: 10px;
+  padding: 8px 12px; border-radius: 10px;
+  border: 1px solid rgba(210, 153, 34, .45);
+  background: rgba(210, 153, 34, .08);
+  color: var(--warn); font-size: 12.5px;
+}
