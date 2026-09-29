@@ -22,6 +22,7 @@ import { DshSdkConversationAdapter } from './infrastructure/conversation/DshSdkC
 import { AcpConversationAdapter } from './infrastructure/conversation/AcpConversationAdapter.js';
 import { GitSyncAdapter } from './infrastructure/git/GitSyncAdapter.js';
 import { LocalSystemUpdateAdapter } from './infrastructure/system/LocalSystemUpdateAdapter.js';
+import { LocalSystemHealthAdapter } from './infrastructure/system/LocalSystemHealthAdapter.js';
 import { JarvisWebServer } from './infrastructure/http/JarvisWebServer.js';
 
 import { GetProjectsUseCase } from './application/GetProjectsUseCase.js';
@@ -44,6 +45,7 @@ import { SetChatConfigUseCase } from './application/SetChatConfigUseCase.js';
 import { GetModelHealthUseCase } from './application/GetModelHealthUseCase.js';
 import { RefreshModelsUseCase } from './application/RefreshModelsUseCase.js';
 import { GetSystemStatusUseCase } from './application/GetSystemStatusUseCase.js';
+import { GetSystemHealthUseCase } from './application/GetSystemHealthUseCase.js';
 import { RequestSystemUpdateUseCase } from './application/RequestSystemUpdateUseCase.js';
 import { CheckForUpdatesUseCase } from './application/CheckForUpdatesUseCase.js';
 
@@ -140,6 +142,8 @@ const refreshModelsUseCase = new RefreshModelsUseCase(conversationAdapter);
 await systemUpdateAdapter.captureRunningCommit();
 
 const getSystemStatusUseCase = new GetSystemStatusUseCase(systemUpdateAdapter);
+const systemHealthAdapter = new LocalSystemHealthAdapter();
+const getSystemHealthUseCase = new GetSystemHealthUseCase(systemHealthAdapter);
 const requestSystemUpdateUseCase = new RequestSystemUpdateUseCase(systemUpdateAdapter);
 const checkForUpdatesUseCase = new CheckForUpdatesUseCase(systemUpdateAdapter);
 
@@ -165,6 +169,7 @@ const webServer = new JarvisWebServer({
   getModelHealthUseCase,
   refreshModelsUseCase,
   getSystemStatusUseCase,
+  getSystemHealthUseCase,
   requestSystemUpdateUseCase,
   checkForUpdatesUseCase,
   publicDir: path.join(workspaceRoot, 'public'),

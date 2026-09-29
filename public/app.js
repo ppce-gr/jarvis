@@ -1357,6 +1357,81 @@ async function abrirSistema() {
   pintarSistema(await loadSystemStatus());
 }
 
+/* ---------------- Salud del servidor: temperatura, disco, memoria ---------------- */
+function formateaBytes(n) {
+  const b = Number(n) || 0;
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 ** 2) return `${(b / 1024).toFixed(0)} KB`;
+  if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`;
+  return `${(b / 1024 ** 3).toFixed(1)} GB`;
+}
+
+async function loadSalud() {
+  try {
+    return await api('/api/system/health');
+  } catch {
+    return null;
+  }
+}
+
+function pintarSalud(s) {
+  const box = $('#salud-info');
+  if (!box) return;
+  if (!s) { box.textContent = 'No se pudo leer la salud.'; return; }
+  const fila = (clave, valor, clase = '') =>
+    `<div class="fila"><span class="clave">${clave}</span><span class="valor ${clase}">${valor}</span></div>`;
+  let html = '';
+  const t = s.temperaturaC;
+  html += fila('Temperatura', t == null ? 'no disponible' : `${Number(t).toFixed(1)} °C`,
+    t == null ? '' : (t >= 75 ? 'aviso' : 'bien'));
+  if (s.disco) {
+    html += fila('Disco libre',
+      `${formateaBytes(s.disco.libre)} de ${formateaBytes(s.disco.total)} (${s.disco.porcentaje}% usado)`,
+      s.disco.porcentaje >= 90 ? 'aviso' : 'bien');
+  }
+  if (s.memoria) {
+    html += fila('Memoria usada',
+      `${formateaBytes(s.memoria.usada)} de ${formateaBytes(s.memoria.total)} (${s.memoria.porcentaje}%)`,
+      s.memoria.porcentaje >= 90 ? 'aviso' : 'bien');
+  }
+  if (s.carga) {
+    html += fila('Carga media',
+      `${Number(s.carga.uno).toFixed(2)} / ${Number(s.carga.cinco).toFixed(2)} / ${Number(s.carga.quince).toFixed(2)} · ${s.carga.nucleos} núcleo(s)`);
+  }
+  if (s.uptimeS != null) {
+    const horas = Math.floor(s.uptimeS / 3600);
+    const dias = Math.floor(horas / 24);
+    html += fila('Encendido desde hace', dias ? `${dias} d ${horas % 24} h` : `${horas} h`);
+  }
+  box.innerHTML = html;
+}
+
+function pintarPillSalud(s) {
+  const pill = $('#salud-pill');
+  if (!pill) return;
+  if (!s) { pill.textContent = '🌡 ?'; return; }
+  const t = s.temperaturaC;
+  pill.textContent = t == null ? '🌡 —' : `🌡 ${Number(t).toFixed(0)}°`;
+  pill.title = t == null
+    ? 'Salud del servidor: pulsa para ver disco y memoria'
+    : `Temperatura ${Number(t).toFixed(1)} °C · pulsa para ver disco y memoria`;
+  pill.classList.toggle('dirty', t != null && t >= 75);
+}
+
+async function refreshSalud() {
+  const s = await loadSalud();
+  pintarPillSalud(s);
+  return s;
+}
+
+async function abrirSalud() {
+  const box = $('#salud-info');
+  if (box) box.textContent = 'Cargando…';
+  const dlg = $('#salud-dialog');
+  if (dlg) { try { dlg.showModal(); } catch { /* ya abierto */ } }
+  pintarSalud(await loadSalud());
+}
+
 async function pedirActualizacion() {
   const boton = $('#system-update');
   boton.disabled = true;
@@ -2609,6 +2684,10 @@ function bindEvents() {
   on('#system-update', 'click', pedirActualizacion);
   on('#system-check', 'click', buscarNovedades);
 
+  // --- Salud del servidor ---
+  on('#salud-pill', 'click', abrirSalud);
+  on('#salud-refresh', 'click', abrirSalud);
+
   // --- Administración de modelos ---
   on('#admin-btn', 'click', abrirAdmin);
   on('#models-refresh', 'click', comprobarModelos);
@@ -2652,9 +2731,10 @@ async function boot() {
     // Abrir una idea es decisión del usuario, no algo automático.
     showHome();
 
-    await Promise.all([refreshGitStatus(), loadSystemStatus()]);
+    await Promise.all([refreshGitStatus(), loadSystemStatus(), refreshSalud()]);
     setInterval(refreshGitStatus, 30000);
     setInterval(loadSystemStatus, 60000);
+    setInterval(refreshSalud, 30000);
   } catch (error) {
     console.error('[jarvis] arranque falló:', error);
     mostrarAvisoArranque(`No se pudo conectar con Jarvis: ${error.message}`);
@@ -2689,6 +2769,9 @@ window.Jarvis = {
   candidatosPadre,
   descendientesDe,
   abrirDialogoIdea,
+  formateaBytes,
+  refreshSalud,
+  pintarSalud,
   switchTab,
   parseChecklist,
   construirGrafo,

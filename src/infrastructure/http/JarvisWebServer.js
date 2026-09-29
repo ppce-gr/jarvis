@@ -36,6 +36,7 @@ export class JarvisWebServer {
     getModelHealthUseCase,
     refreshModelsUseCase,
     getSystemStatusUseCase,
+    getSystemHealthUseCase,
     requestSystemUpdateUseCase,
     checkForUpdatesUseCase,
     publicDir,
@@ -62,6 +63,7 @@ export class JarvisWebServer {
     this.getModelHealthUseCase = getModelHealthUseCase;
     this.refreshModelsUseCase = refreshModelsUseCase;
     this.getSystemStatusUseCase = getSystemStatusUseCase;
+    this.getSystemHealthUseCase = getSystemHealthUseCase;
     this.requestSystemUpdateUseCase = requestSystemUpdateUseCase;
     this.checkForUpdatesUseCase = checkForUpdatesUseCase;
     this.publicDir = publicDir || path.resolve(process.cwd(), 'public');
@@ -226,6 +228,15 @@ export class JarvisWebServer {
     if (req.method === 'GET' && pathname === '/api/system/status') {
       try {
         return this._sendJson(res, 200, await this.getSystemStatusUseCase.execute());
+      } catch (error) {
+        return this._sendJson(res, 500, { error: error.message });
+      }
+    }
+
+    // GET /api/system/health  → temperatura, disco, memoria, carga
+    if (req.method === 'GET' && pathname === '/api/system/health') {
+      try {
+        return this._sendJson(res, 200, await this.getSystemHealthUseCase.execute());
       } catch (error) {
         return this._sendJson(res, 500, { error: error.message });
       }

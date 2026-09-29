@@ -22,6 +22,7 @@
       </button>
       <div class="topbar-actions">
         <span id="git-status" class="pill" title="Estado del respaldo Git">git · …</span>
+        <button id="salud-pill" class="pill pill-btn" title="Salud del servidor: temperatura, disco y memoria">🌡 …</button>
         <button id="system-pill" class="pill pill-btn" title="Versión y actualización de Jarvis">v…</button>
         <button id="admin-btn" class="pill pill-btn" title="Administración de modelos: salud y re-comprobación">⚙ Admin</button>
         <button id="new-project-btn" class="btn btn-primary btn-sm">+ Idea</button>
@@ -268,6 +269,17 @@
         <button type="submit" class="btn btn-primary">Crear nota</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="salud-dialog" class="dialog">
+    <div class="dialog-body">
+      <h2>Salud del servidor</h2>
+      <div id="salud-info" class="system-info">Cargando…</div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
+        <button type="button" id="salud-refresh" class="btn">Actualizar</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="system-dialog" class="dialog">

@@ -609,3 +609,34 @@ test('el desplegable de padre excluye la idea y sus descendientes', async () => 
   assert.ok(!paraDos.includes('idea-dos'));
   assert.ok(paraDos.includes('idea-uno'));
 });
+
+/* ================================================================
+   Salud del servidor: temperatura, disco y memoria
+   ================================================================ */
+
+test('la salud pinta temperatura, disco y memoria (y la píldora)', async () => {
+  const base = { ...RESPUESTAS_BASE };
+  const { registro, errores, jarvis } = await arrancarInterfaz({
+    respuestas: {
+      '/api/system/health': {
+        temperaturaC: 48.6,
+        disco: { total: 100 * 1024 ** 3, libre: 40 * 1024 ** 3, usado: 60 * 1024 ** 3, porcentaje: 60 },
+        memoria: { total: 1024 ** 3, libre: 300 * 1024 ** 2, usada: 724 * 1024 ** 2, porcentaje: 71 },
+        carga: { uno: 0.2, cinco: 0.1, quince: 0.05, nucleos: 4 },
+        uptimeS: 7200
+      },
+      ...base
+    }
+  });
+  assert.deepEqual(errores, []);
+
+  const salud = await jarvis.refreshSalud();
+  jarvis.pintarSalud(salud);
+
+  const html = registro.get('#salud-info').innerHTML;
+  assert.match(html, /48\.6 °C/);
+  assert.match(html, /Disco libre/);
+  assert.match(html, /Memoria usada/);
+  assert.match(html, /4 núcleo/);
+  assert.match(registro.get('#salud-pill').textContent, /🌡 49°/);
+});
