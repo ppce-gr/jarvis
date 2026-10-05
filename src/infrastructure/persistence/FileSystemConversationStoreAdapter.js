@@ -52,6 +52,14 @@ export class FileSystemConversationStoreAdapter extends ConversationStorePort {
     }
   }
 
+  /** Extracto reconocible de una conversación: primer mensaje y último. */
+  _extracto(mensajes) {
+    const limpio = (m) => String(m?.text || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+    const primero = mensajes.find((m) => m.role === 'user');
+    const ultimo = [...mensajes].reverse().find((m) => m.role === 'user' || m.role === 'assistant');
+    return { inicio: limpio(primero), ultimo: limpio(ultimo) };
+  }
+
   async list(projectId) {
     const actual = await this._leer(this._actual(projectId));
     const archivadas = [];
@@ -67,12 +75,13 @@ export class FileSystemConversationStoreAdapter extends ConversationStorePort {
       archivadas.push({
         nombre: e.name,
         mensajes: mensajes.length,
-        modificadoEn: st?.mtime?.toISOString?.() || null
+        modificadoEn: st?.mtime?.toISOString?.() || null,
+        ...this._extracto(mensajes)
       });
     }
     archivadas.sort((a, b) => String(b.modificadoEn || '').localeCompare(String(a.modificadoEn || '')));
     return {
-      actual: { nombre: 'actual', mensajes: actual.length },
+      actual: { nombre: 'actual', mensajes: actual.length, ...this._extracto(actual) },
       archivadas
     };
   }

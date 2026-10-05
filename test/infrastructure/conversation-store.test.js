@@ -36,6 +36,8 @@ test('archivar guarda la conversación, la lista y reinicia la sesión', async (
   assert.equal(list.actual.mensajes, 0);
   assert.equal(list.archivadas.length, 1);
   assert.equal(list.archivadas[0].mensajes, 2);
+  assert.equal(list.archivadas[0].inicio, 'hola', 'trae un extracto reconocible');
+  assert.equal(list.archivadas[0].ultimo, 'buenas');
 });
 
 test('continuar trae una archivada como actual, conserva la anterior y reinicia', async () => {

@@ -1531,6 +1531,7 @@ async function openChat(projectId) {
 
   await resyncChat();
   loadChatConfig();
+  actualizarBotonHilos();
 
   // Stream en vivo. EventSource reconecta solo si se cae la conexión.
   const source = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/chat/stream`);
@@ -2232,7 +2233,8 @@ async function resetChat() {
   try {
     // «Nueva» ya no tira el hilo: lo GUARDA y abre uno limpio.
     const r = await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/archivar`, { method: 'POST' });
-    if (r && r.archivada) toast('Conversación guardada; empezamos otra', 'ok');
+    if (r && r.archivada) toast('Conversación guardada; la tienes en el botón 🗂', 'ok');
+    actualizarBotonHilos();
   } catch (error) {
     toast(`Error al reiniciar: ${error.message}`, 'err');
   }
@@ -2241,14 +2243,29 @@ async function resetChat() {
 /** Opciones del selector de conversaciones (actual + archivadas). */
 function opcionesHilos(data) {
   const opciones = [];
+  const resumen = (x) => (x?.inicio ? ` · ${x.inicio}` : '');
   if (data?.actual?.mensajes) {
-    opciones.push({ valor: '', etiqueta: `Actual — ${data.actual.mensajes} mensajes` });
+    opciones.push({ valor: '', etiqueta: `Actual${resumen(data.actual)} (${data.actual.mensajes} mensajes)` });
   }
   for (const a of (data?.archivadas || [])) {
     const cuando = a.modificadoEn ? new Date(a.modificadoEn).toLocaleString() : a.nombre;
-    opciones.push({ valor: a.nombre, etiqueta: `${cuando} — ${a.mensajes} mensajes` });
+    opciones.push({ valor: a.nombre, etiqueta: `${cuando}${resumen(a)} (${a.mensajes} mensajes)` });
   }
   return opciones;
+}
+
+/** Pone en el botón 🗂 cuántas conversaciones hay guardadas. */
+async function actualizarBotonHilos() {
+  const btn = $('#chat-hilos');
+  if (!btn || !state.chat.projectId) return;
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/conversaciones`);
+    const n = (data.archivadas || []).length;
+    btn.textContent = n ? `🗂 ${n}` : '🗂';
+    btn.title = n
+      ? `Conversaciones guardadas: ${n}. Pulsa para verlas o continuar una`
+      : 'Conversaciones guardadas: todavía no hay ninguna';
+  } catch { /* sin conexión */ }
 }
 
 /** Lista las conversaciones guardadas y permite continuar una. */
@@ -2274,6 +2291,7 @@ async function abrirHilos() {
       body: JSON.stringify({ nombre: elegida })
     });
     await resyncChat();
+    actualizarBotonHilos();
     toast('Conversación recuperada', 'ok');
   } catch (error) {
     toast(`No se pudo: ${error.message}`, 'err');
