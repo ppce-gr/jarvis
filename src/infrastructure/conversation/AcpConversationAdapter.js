@@ -824,7 +824,13 @@ export class AcpConversationAdapter extends ConversationPort {
 
     const isFirstOfSession = session.turnCount === 0;
     session.turnCount += 1;
-    const outgoing = AcpConversationAdapter.buildOutgoingMessage(projectId, clean, isFirstOfSession);
+    let outgoing = AcpConversationAdapter.buildOutgoingMessage(projectId, clean, isFirstOfSession);
+    if (isFirstOfSession) {
+      // Sesión nueva (arranque de Jarvis o «continuar»): devolvemos contexto con
+      // los últimos mensajes del hilo actual, no con todo el historial.
+      const previos = await this._historialReinyeccion(projectId);
+      if (previos.length) outgoing = `${AcpConversationAdapter._preambleHistorial(previos)}\n\n${outgoing}`;
+    }
 
     // `session/prompt` NO se espera: en ACP esa petición se resuelve cuando el
     // turno termina, y puede tardar minutos. Se lanza y se sigue por eventos;
@@ -873,6 +879,32 @@ export class AcpConversationAdapter extends ConversationPort {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Últimos mensajes de usuario/Jarvis del hilo actual, para devolver contexto
+   * al abrir una sesión nueva. Se descarta el último (el mensaje recién escrito).
+   */
+  async _historialReinyeccion(projectId, limite = 20) {
+    const todos = await this.history(projectId);
+    return todos
+      .slice(0, -1)
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .slice(-limite);
+  }
+
+  /** Bloque de contexto con una conversación anterior. */
+  static _preambleHistorial(mensajes) {
+    const lineas = mensajes.map((m) => {
+      const quien = m.role === 'user' ? 'Usuario' : 'Jarvis';
+      const texto = String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+      return `${quien}: ${texto}`;
+    });
+    return [
+      'Conversación anterior de este proyecto (contexto; continúala sin repetirla):',
+      ...lineas,
+      ''
+    ].join('\n');
   }
 
   subscribe(projectId, listener) {

@@ -2230,9 +2230,53 @@ async function reintentarPregunta(texto) {
 async function resetChat() {
   if (!state.chat.projectId) return;
   try {
-    await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/reset`, { method: 'POST' });
+    // «Nueva» ya no tira el hilo: lo GUARDA y abre uno limpio.
+    const r = await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/archivar`, { method: 'POST' });
+    if (r && r.archivada) toast('Conversación guardada; empezamos otra', 'ok');
   } catch (error) {
     toast(`Error al reiniciar: ${error.message}`, 'err');
+  }
+}
+
+/** Opciones del selector de conversaciones (actual + archivadas). */
+function opcionesHilos(data) {
+  const opciones = [];
+  if (data?.actual?.mensajes) {
+    opciones.push({ valor: '', etiqueta: `Actual — ${data.actual.mensajes} mensajes` });
+  }
+  for (const a of (data?.archivadas || [])) {
+    const cuando = a.modificadoEn ? new Date(a.modificadoEn).toLocaleString() : a.nombre;
+    opciones.push({ valor: a.nombre, etiqueta: `${cuando} — ${a.mensajes} mensajes` });
+  }
+  return opciones;
+}
+
+/** Lista las conversaciones guardadas y permite continuar una. */
+async function abrirHilos() {
+  if (!state.chat.projectId) return;
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/conversaciones`);
+    const opciones = opcionesHilos(data);
+    if (!opciones.length) return toast('Todavía no hay conversaciones guardadas', 'warn');
+
+    const elegida = await abrirDialogoIdea({
+      titulo: 'Conversaciones',
+      texto: 'Elige una conversación guardada para continuarla. La actual se archivará.',
+      tipo: 'lista',
+      opciones
+    });
+    if (!elegida) return;
+    if (typeof window.confirm === 'function'
+      && !window.confirm('¿Continuar esa conversación? El agente recuperará los últimos mensajes.')) return;
+
+    await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/continuar`, {
+      method: 'POST',
+      body: JSON.stringify({ nombre: elegida })
+    });
+    await resyncChat();
+    toast('Conversación recuperada', 'ok');
+  } catch (error) {
+    toast(`No se pudo: ${error.message}`, 'err');
   }
 }
 
@@ -2680,6 +2724,7 @@ function bindEvents() {
   on('#chat-form', 'submit', sendChatMessage);
   on('#chat-messages', 'click', manejarAccionMensaje);
   on('#chat-reset', 'click', resetChat);
+  on('#chat-hilos', 'click', abrirHilos);
   on('#chat-stop', 'click', cancelChat);
   on('#stop-confirm', 'click', () => {
     const dialog = $('#stop-dialog');
@@ -2810,6 +2855,8 @@ window.Jarvis = {
   formateaBytes,
   refreshSalud,
   pintarSalud,
+  abrirHilos,
+  opcionesHilos,
   switchTab,
   parseChecklist,
   construirGrafo,

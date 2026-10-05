@@ -314,3 +314,13 @@ test('closeAll termina los procesos vivos', async () => {
   await exited;                        // si no muere, la prueba se queda colgada
   assert.equal(adapter._sessions.size, 0);
 });
+
+test('el contexto de reinyección resume la conversación anterior', () => {
+  const txt = DshSdkConversationAdapter._preambleHistorial([
+    { role: 'user', text: 'hola' },
+    { role: 'assistant', text: 'buenas' }
+  ]);
+  assert.match(txt, /Conversación anterior/);
+  assert.match(txt, /Usuario: hola/);
+  assert.match(txt, /Jarvis: buenas/);
+});

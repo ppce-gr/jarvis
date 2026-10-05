@@ -640,3 +640,26 @@ test('la salud pinta temperatura, disco y memoria (y la píldora)', async () => 
   assert.match(html, /4 núcleo/);
   assert.match(registro.get('#salud-pill').textContent, /🌡 49°/);
 });
+
+/* ================================================================
+   Conversaciones: archivar y continuar
+   ================================================================ */
+
+test('el selector de conversaciones lista la actual y las guardadas', async () => {
+  const { errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.deepEqual(errores, []);
+
+  const opciones = jarvis.opcionesHilos({
+    actual: { mensajes: 3 },
+    archivadas: [
+      { nombre: '2024-01-01T10-00-00-000Z.jsonl', mensajes: 10, modificadoEn: '2024-01-01T10:00:00.000Z' }
+    ]
+  });
+  assert.equal(opciones.length, 2);
+  assert.match(opciones[0].etiqueta, /Actual/);
+  assert.equal(opciones[1].valor, '2024-01-01T10-00-00-000Z.jsonl');
+  assert.match(opciones[1].etiqueta, /10 mensajes/);
+
+  // Sin conversación actual no se ofrece la opción «Actual».
+  assert.equal(jarvis.opcionesHilos({ actual: { mensajes: 0 }, archivadas: [] }).length, 0);
+});

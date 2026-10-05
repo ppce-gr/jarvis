@@ -434,7 +434,13 @@ export class DshSdkConversationAdapter extends ConversationPort {
 
     const isFirstOfSession = session.turnCount === 0;
     session.turnCount += 1;
-    const outgoing = DshSdkConversationAdapter.buildOutgoingMessage(projectId, clean, isFirstOfSession);
+    let outgoing = DshSdkConversationAdapter.buildOutgoingMessage(projectId, clean, isFirstOfSession);
+    if (isFirstOfSession) {
+      // Sesión nueva (arranque de Jarvis o «continuar»): contexto con los
+      // últimos mensajes del hilo actual, no con todo el historial.
+      const previos = await this._historialReinyeccion(projectId);
+      if (previos.length) outgoing = `${DshSdkConversationAdapter._preambleHistorial(previos)}\n\n${outgoing}`;
+    }
 
     try {
       const result = await session.rpc.request('session/prompt', {
@@ -464,6 +470,29 @@ export class DshSdkConversationAdapter extends ConversationPort {
     } catch {
       return [];
     }
+  }
+
+  /** Últimos mensajes de usuario/Jarvis para devolver contexto a una sesión nueva. */
+  async _historialReinyeccion(projectId, limite = 20) {
+    const todos = await this.history(projectId);
+    return todos
+      .slice(0, -1)
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .slice(-limite);
+  }
+
+  /** Bloque de contexto con una conversación anterior. */
+  static _preambleHistorial(mensajes) {
+    const lineas = mensajes.map((m) => {
+      const quien = m.role === 'user' ? 'Usuario' : 'Jarvis';
+      const texto = String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+      return `${quien}: ${texto}`;
+    });
+    return [
+      'Conversación anterior de este proyecto (contexto; continúala sin repetirla):',
+      ...lineas,
+      ''
+    ].join('\n');
   }
 
   subscribe(projectId, listener) {

@@ -37,6 +37,7 @@ export class JarvisWebServer {
     refreshModelsUseCase,
     getSystemStatusUseCase,
     getSystemHealthUseCase,
+    manageConversationsUseCase,
     requestSystemUpdateUseCase,
     checkForUpdatesUseCase,
     publicDir,
@@ -64,6 +65,7 @@ export class JarvisWebServer {
     this.refreshModelsUseCase = refreshModelsUseCase;
     this.getSystemStatusUseCase = getSystemStatusUseCase;
     this.getSystemHealthUseCase = getSystemHealthUseCase;
+    this.manageConversationsUseCase = manageConversationsUseCase;
     this.requestSystemUpdateUseCase = requestSystemUpdateUseCase;
     this.checkForUpdatesUseCase = checkForUpdatesUseCase;
     this.publicDir = publicDir || path.resolve(process.cwd(), 'public');
@@ -503,6 +505,45 @@ export class JarvisWebServer {
         try {
           const result = await this.resetChatUseCase.execute(projectId);
           return this._sendJson(res, 200, { projectId, ...result });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // ---- Conversaciones: archivar, listar, leer y continuar --------------
+      // GET /api/projects/:id/chat/conversaciones
+      if (req.method === 'GET' && segments[3] === 'chat' && segments[4] === 'conversaciones' && !segments[5]) {
+        try {
+          return this._sendJson(res, 200, { projectId, ...(await this.manageConversationsUseCase.list(projectId)) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // GET /api/projects/:id/chat/conversaciones/:nombre
+      if (req.method === 'GET' && segments[3] === 'chat' && segments[4] === 'conversaciones' && segments[5]) {
+        try {
+          const nombre = decodeURIComponent(segments[5]);
+          return this._sendJson(res, 200, { projectId, nombre, ...(await this.manageConversationsUseCase.read(projectId, nombre)) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/chat/archivar  (guarda la actual y abre chat nuevo)
+      if (req.method === 'POST' && segments[3] === 'chat' && segments[4] === 'archivar') {
+        try {
+          return this._sendJson(res, 200, { projectId, ...(await this.manageConversationsUseCase.archive(projectId)) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/chat/continuar  { nombre }
+      if (req.method === 'POST' && segments[3] === 'chat' && segments[4] === 'continuar') {
+        try {
+          const body = await this._readJsonBody(req);
+          return this._sendJson(res, 200, { projectId, ...(await this.manageConversationsUseCase.continue(projectId, body.nombre)) });
         } catch (error) {
           return this._sendJson(res, 400, { error: error.message });
         }
