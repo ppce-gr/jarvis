@@ -691,3 +691,94 @@ test('sin peticiones, la pestaña de permisos lo dice', async () => {
   jarvis.renderPermisos([], []);
   assert.match(registro.get('#permisos-list').innerHTML, /Sin peticiones pendientes/);
 });
+
+/* ================================================================
+   Reanudación, papelera y conversaciones (título/borrado)
+   ================================================================ */
+
+test('el inicio avisa de las tareas a medias', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({
+    respuestas: { ...RESPUESTAS_BASE, '/api/tareas-en-curso': { tareas: [{ projectId: 'idea-uno', extracto: 'Montaba el grafo' }] } }
+  });
+  assert.deepEqual(errores, []);
+  await sleep(60);
+  const html = registro.get('#home-tareas').innerHTML;
+  assert.match(html, /idea-uno/);
+  assert.match(html, /Montaba el grafo/);
+  assert.match(html, /data-tarea-ver="idea-uno"/);
+});
+
+test('la cabecera de la idea avisa de su tarea en curso', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.deepEqual(errores, []);
+  jarvis.pintarAvisoTarea('idea-uno', {
+    existe: true,
+    contenido: '## Qué falta\nProbar el despliegue.',
+    modificadoEn: '2026-10-09T12:00:00.000Z'
+  });
+  const html = registro.get('#tarea-aviso').innerHTML;
+  assert.match(html, /Tarea en curso/);
+  assert.match(html, /Probar el despliegue\./);
+  assert.doesNotMatch(html, /Qué falta/, 'el extracto salta las cabeceras');
+});
+
+test('la papelera de ideas pinta restaurar y borrar', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.deepEqual(errores, []);
+  jarvis.renderPapeleraList([
+    { ref: 'idea-uno__2026', idea: 'idea-uno', padre: 'raiz', borradaEn: '2026-10-09T12:00:00.000Z' }
+  ]);
+  const html = registro.get('#papelera-list').innerHTML;
+  assert.match(html, /idea-uno/);
+  assert.match(html, /bajo raiz/);
+  assert.match(html, /data-papelera="restaurar" data-ref="idea-uno__2026"/);
+  assert.match(html, /data-papelera="borrar"/);
+
+  jarvis.renderPapeleraList([]);
+  assert.match(registro.get('#papelera-list').innerHTML, /vacía/);
+});
+
+test('las conversaciones guardadas muestran título y acciones', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.deepEqual(errores, []);
+  jarvis.renderHilosList({
+    archivadas: [
+      { nombre: '2024-01-01T10-00-00-000Z.jsonl', mensajes: 10, inicio: 'hola', titulo: 'Diseño del grafo' },
+      { nombre: '2024-01-02T10-00-00-000Z.jsonl', mensajes: 2, inicio: 'otra' }
+    ]
+  });
+  const html = registro.get('#hilos-list').innerHTML;
+  assert.match(html, /Diseño del grafo/);
+  assert.match(html, /10 mensajes/);
+  assert.match(html, /data-hilo="continuar"/);
+  assert.match(html, /data-hilo="titulo"/);
+  assert.match(html, /data-hilo="borrar"/);
+
+  jarvis.renderHilosPapelera([{ ref: 'x.jsonl__2024', nombre: 'x.jsonl', titulo: 'Vieja' }]);
+  const papelera = registro.get('#hilos-papelera').innerHTML;
+  assert.match(papelera, /Vieja/);
+  assert.match(papelera, /data-hilo="recuperar"/);
+  assert.match(papelera, /data-hilo="purgar"/);
+});
+
+test('el grafo de ideas distingue jerarquía y linaje', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.deepEqual(errores, []);
+  jarvis.state.parentes = { 'idea-dos': 'idea-uno' };
+  jarvis.state.linaje = [{ accion: 'duplicada', de: 'idea-uno', idea: 'idea-tres' }];
+  jarvis.state.projects = [
+    { id: 'idea-uno', name: 'idea-uno' },
+    { id: 'idea-dos', name: 'idea-dos' },
+    { id: 'idea-tres', name: 'idea-tres' }
+  ];
+  jarvis.renderGrafoIdeas();
+
+  const html = registro.get('#ideas-grafo').innerHTML;
+  assert.match(html, /arista-jerarquia/, 'la jerarquía va aparte');
+  assert.match(html, /arista-linaje/, 'el linaje va aparte');
+  assert.match(html, /flecha-jer/);
+  assert.match(html, /flecha-lin/);
+  assert.match(html, /data-nodo="idea-uno"/);
+  assert.match(html, /Jerarquía/);
+  assert.match(html, /Linaje/);
+});

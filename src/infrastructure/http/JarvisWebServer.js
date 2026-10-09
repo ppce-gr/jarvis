@@ -39,6 +39,7 @@ export class JarvisWebServer {
     getSystemHealthUseCase,
     manageConversationsUseCase,
     managePermissionsUseCase,
+    manageResumeNoteUseCase,
     requestSystemUpdateUseCase,
     checkForUpdatesUseCase,
     publicDir,
@@ -68,6 +69,7 @@ export class JarvisWebServer {
     this.getSystemHealthUseCase = getSystemHealthUseCase;
     this.manageConversationsUseCase = manageConversationsUseCase;
     this.managePermissionsUseCase = managePermissionsUseCase;
+    this.manageResumeNoteUseCase = manageResumeNoteUseCase;
     this.requestSystemUpdateUseCase = requestSystemUpdateUseCase;
     this.checkForUpdatesUseCase = checkForUpdatesUseCase;
     this.publicDir = publicDir || path.resolve(process.cwd(), 'public');
@@ -287,6 +289,46 @@ export class JarvisWebServer {
       }
     }
 
+    // GET /api/tareas-en-curso  → ideas con nota de reanudación pendiente
+    if (req.method === 'GET' && pathname === '/api/tareas-en-curso') {
+      try {
+        const proyectos = await this.getProjectsUseCase.execute();
+        const tareas = await this.manageResumeNoteUseCase.list(proyectos.map((p) => p.id));
+        return this._sendJson(res, 200, { tareas });
+      } catch (error) {
+        return this._sendJson(res, 400, { error: error.message });
+      }
+    }
+
+    // GET /api/papelera  → ideas borradas, recuperables
+    if (req.method === 'GET' && pathname === '/api/papelera') {
+      try {
+        return this._sendJson(res, 200, { items: await this.manageIdeasUseCase.listTrash() });
+      } catch (error) {
+        return this._sendJson(res, 400, { error: error.message });
+      }
+    }
+
+    // POST /api/papelera/restaurar  { ref }
+    if (req.method === 'POST' && pathname === '/api/papelera/restaurar') {
+      try {
+        const body = await this._readJsonBody(req);
+        return this._sendJson(res, 200, { idea: await this.manageIdeasUseCase.restore(body.ref) });
+      } catch (error) {
+        return this._sendJson(res, 400, { error: error.message });
+      }
+    }
+
+    // POST /api/papelera/borrar  { ref }  (definitivo)
+    if (req.method === 'POST' && pathname === '/api/papelera/borrar') {
+      try {
+        const body = await this._readJsonBody(req);
+        return this._sendJson(res, 200, { purgada: await this.manageIdeasUseCase.purge(body.ref) });
+      } catch (error) {
+        return this._sendJson(res, 400, { error: error.message });
+      }
+    }
+
     // POST /api/projects
     if (req.method === 'POST' && pathname === '/api/projects') {
       try {
@@ -461,6 +503,25 @@ export class JarvisWebServer {
         }
       }
 
+      // ---- Nota de reanudación (la escribe el agente antes de reiniciar) ---
+      // GET /api/projects/:id/tarea-en-curso
+      if (req.method === 'GET' && segments[3] === 'tarea-en-curso' && !segments[4]) {
+        try {
+          return this._sendJson(res, 200, { projectId, ...(await this.manageResumeNoteUseCase.get(projectId)) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // DELETE /api/projects/:id/tarea-en-curso  (descartarla)
+      if (req.method === 'DELETE' && segments[3] === 'tarea-en-curso' && !segments[4]) {
+        try {
+          return this._sendJson(res, 200, { projectId, ...(await this.manageResumeNoteUseCase.clear(projectId)) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
       // GET /api/projects/:id/tasks
       if (req.method === 'GET' && segments[3] === 'tasks') {
         try {
@@ -517,6 +578,72 @@ export class JarvisWebServer {
       if (req.method === 'GET' && segments[3] === 'chat' && segments[4] === 'conversaciones' && !segments[5]) {
         try {
           return this._sendJson(res, 200, { projectId, ...(await this.manageConversationsUseCase.list(projectId)) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // GET /api/projects/:id/chat/conversaciones/papelera
+      if (req.method === 'GET' && segments[3] === 'chat' && segments[4] === 'conversaciones'
+          && segments[5] === 'papelera' && !segments[6]) {
+        try {
+          return this._sendJson(res, 200, { projectId, ...(await this.manageConversationsUseCase.listTrash(projectId)) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/chat/conversaciones/titulo  { nombre, titulo }
+      if (req.method === 'POST' && segments[3] === 'chat' && segments[4] === 'conversaciones'
+          && segments[5] === 'titulo') {
+        try {
+          const body = await this._readJsonBody(req);
+          return this._sendJson(res, 200, {
+            projectId,
+            ...(await this.manageConversationsUseCase.setTitle(projectId, body.nombre, body.titulo))
+          });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/chat/conversaciones/borrar  { nombre }  → a la papelera
+      if (req.method === 'POST' && segments[3] === 'chat' && segments[4] === 'conversaciones'
+          && segments[5] === 'borrar') {
+        try {
+          const body = await this._readJsonBody(req);
+          return this._sendJson(res, 200, {
+            projectId,
+            ...(await this.manageConversationsUseCase.remove(projectId, body.nombre))
+          });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/chat/conversaciones/papelera/restaurar  { ref }
+      if (req.method === 'POST' && segments[3] === 'chat' && segments[4] === 'conversaciones'
+          && segments[5] === 'papelera' && segments[6] === 'restaurar') {
+        try {
+          const body = await this._readJsonBody(req);
+          return this._sendJson(res, 200, {
+            projectId,
+            ...(await this.manageConversationsUseCase.restoreTrash(projectId, body.ref))
+          });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/chat/conversaciones/papelera/borrar  { ref }  (definitivo)
+      if (req.method === 'POST' && segments[3] === 'chat' && segments[4] === 'conversaciones'
+          && segments[5] === 'papelera' && segments[6] === 'borrar') {
+        try {
+          const body = await this._readJsonBody(req);
+          return this._sendJson(res, 200, {
+            projectId,
+            ...(await this.manageConversationsUseCase.purgeTrash(projectId, body.ref))
+          });
         } catch (error) {
           return this._sendJson(res, 400, { error: error.message });
         }

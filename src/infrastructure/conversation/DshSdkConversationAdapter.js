@@ -397,6 +397,14 @@ export class DshSdkConversationAdapter extends ConversationPort {
       '- El resultado queda en `logs/permisos/resultados/`. Si no aparece, aún no lo',
       '  ha aprobado: espera, no lo repitas en bucle.',
       '',
+      'Reanudación tras un reinicio:',
+      '- Si vas a pedir la actualización de Jarvis (tocar `.solicitar-actualizacion`),',
+      '  ANTES escribe `tarea-en-curso.md` en la raíz del proyecto con tres apartados:',
+      '  `## Qué estaba haciendo`, `## Qué falta` y `## Siguiente paso`. El reinicio',
+      '  matará tu sesión; esa nota se te devolverá al reanudar.',
+      '- Cuando la tarea termine, BORRA `tarea-en-curso.md`: mientras siga ahí, se te',
+      '  inyectará al abrir sesión como trabajo pendiente.',
+      '',
       'Mensaje del usuario:',
       text
     ].join('\n');

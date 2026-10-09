@@ -38,9 +38,11 @@
         </div>
         <div class="home-head-actions">
           <button id="ideas-grafo-btn" class="btn btn-ghost btn-sm" title="Grafo de todas las ideas (jerarquía y linaje)">🕸 Grafo</button>
+          <button id="papelera-btn" class="btn btn-ghost btn-sm" title="Ideas borradas (recuperables)">🗑 Papelera</button>
           <button id="new-idea-btn" class="btn btn-primary btn-lg">＋ Nueva idea</button>
         </div>
       </div>
+      <div id="home-tareas" class="home-tareas hidden"></div>
       <div class="home-body">
         <div id="ideas-grafo" class="mapa-graph hidden" style="height: 46vh; min-height: 320px;"></div>
         <div id="idea-grid" class="idea-grid"></div>
@@ -61,6 +63,7 @@
         </div>
         <button id="new-note-btn" class="icon-btn" title="Nueva nota conceptual">＋</button>
       </div>
+      <div id="tarea-aviso" class="tarea-aviso hidden"></div>
 
       <div class="layout">
         <!-- Notas de la idea -->
@@ -366,6 +369,51 @@
       <div class="dialog-actions">
         <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
         <button type="button" id="borrar-confirm" class="btn btn-danger">Borrar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Modal: nota de reanudación que dejó el agente antes de reiniciar -->
+  <dialog id="tarea-dialog" class="dialog dialog-wide">
+    <div class="dialog-body">
+      <h2>Tarea en curso</h2>
+      <p class="muted">Esto dejó escrito Jarvis antes de reiniciarse. Se le devolverá
+        al reabrir el chat para que retome donde lo dejó.</p>
+      <article id="tarea-contenido" class="markdown tarea-contenido"></article>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
+        <button type="button" id="tarea-descartar" class="btn btn-danger">Descartar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Modal: papelera de ideas -->
+  <dialog id="papelera-dialog" class="dialog dialog-wide">
+    <div class="dialog-body">
+      <h2>Papelera de ideas</h2>
+      <p class="muted">Ideas borradas. <strong>Restaurar</strong> las devuelve a su sitio,
+        con su idea padre si todavía existe (si el id está ocupado, se recupera con un
+        sufijo). <strong>Borrar</strong> es definitivo.</p>
+      <div id="papelera-list" class="lista-gestion"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Modal: conversaciones guardadas (continuar, título, papelera) -->
+  <dialog id="hilos-dialog" class="dialog dialog-wide">
+    <div class="dialog-body">
+      <h2>Conversaciones guardadas</h2>
+      <p class="muted">Continúa una (la actual se archiva), ponle un título o mándala a
+        la papelera. La papelera es recuperable.</p>
+      <div id="hilos-list" class="lista-gestion"></div>
+      <details class="adjuntos-historial">
+        <summary>Papelera de conversaciones</summary>
+        <div id="hilos-papelera" class="lista-gestion"></div>
+      </details>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
       </div>
     </div>
   </dialog>

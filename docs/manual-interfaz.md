@@ -82,6 +82,20 @@ las respondas; y en `puntos-clave.md`, los pilares de la idea. Si una duda suya
 bloquea el trabajo, te la pregunta en el chat. Son notas normales: puedes
 editarlas a mano.
 
+### Inicio (tarjetas de ideas)
+- **Grafo:** dibuja la **jerarquía** (línea sólida, quién depende de quién ahora)
+  y el **linaje** (línea discontinua, de dónde vino cada idea: duplicada,
+  fusionada…). El tamaño del nodo refleja cuántas conexiones tiene y el color su
+  papel (raíz, con subideas, subidea).
+- **Papelera:** ideas borradas. **Restaurar** las devuelve a su sitio, con su
+  idea padre si todavía existe (y si el id está ocupado, se recupera con un
+  sufijo); **Borrar** es definitivo.
+- Cada tarjeta tiene **⋯** con duplicar, renombrar, fusionar, mover bajo otra
+  idea, soltar y borrar.
+- Arriba puede aparecer un aviso de **tarea en curso** si Jarvis dejó trabajo a
+  medias antes de reiniciarse: **Ver nota** la muestra y **Abrir idea** entra en
+  ella.
+
 ### Chat (preguntas y respuestas)
 - Mientras Jarvis trabaja, el botón **Enviar** se convierte en **■ Detener**;
   pulsarlo (o el Detener de la cabecera) pide confirmación antes de parar.
@@ -91,6 +105,10 @@ editarlas a mano.
   ve, no el Markdown en crudo.
 - La **traza** de herramientas y razonamiento aparece plegada; se despliega para
   ver la entrada y la salida.
+- **🗂** lista las conversaciones guardadas: **Continuar** una (la actual se
+  archiva), **✎** para ponerle título y **🗑** para mandarla a una papelera
+  recuperable que vive en el mismo panel. **⟳ Nueva** guarda la actual y abre una
+  limpia.
 
 ### Edición
 - Botón **✎ Editar** para escribir Markdown en crudo.

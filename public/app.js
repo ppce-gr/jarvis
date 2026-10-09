@@ -11,6 +11,7 @@ const state = {
   projects: [],
   parentes: {},
   linaje: [],
+  tareas: [],
   currentProjectId: null,
   notes: [],
   currentNoteId: null,
@@ -154,6 +155,7 @@ async function loadProjects() {
     state.linaje = [];
   }
   renderIdeaGrid();
+  cargarTareasEnCurso();
 }
 
 /* ---------------- Vistas: inicio e idea ---------------- */
@@ -479,7 +481,29 @@ async function accionIdea(accion, id) {
   }
 }
 
-/** Grafo de TODAS las ideas: jerarquía (padre→hijo) + linaje. */
+/**
+ * Grafo de TODAS las ideas: jerarquía (padre→hijo) + linaje.
+ * ------------------------------------------------------------------
+ * Decisiones (para que el dibujo cuente algo, no sólo pinte puntos):
+ *  - Dos tipos de línea: **jerarquía** (sólida, quién depende de quién ahora)
+ *    y **linaje** (discontinua, de dónde vino cada idea: duplicada, fusionada,
+ *    renombrada…). Antes se mezclaban y no se distinguía el presente del
+ *    historial.
+ *  - **Flechas**: la dirección importa. En jerarquía, del padre al hijo; en
+ *    linaje, del origen al resultado.
+ *  - **Color** por papel: raíz, con subideas, o subidea. La idea abierta se
+ *    resalta con un halo.
+ *  - **Tamaño** por número de conexiones: las ideas que más se relacionan se
+ *    ven más grandes.
+ *  - Etiquetas con el nombre completo y `title` para el id exacto.
+ */
+const GRAFO_COLOR = {
+  raiz: 'hsl(280, 62%, 66%)',
+  padre: 'hsl(45, 80%, 60%)',
+  hoja: 'hsl(205, 90%, 62%)',
+  actual: 'hsl(150, 75%, 58%)'
+};
+
 function renderGrafoIdeas() {
   const cont = $('#ideas-grafo');
   if (!cont) return;
@@ -487,38 +511,97 @@ function renderGrafoIdeas() {
   if (cont.classList.contains('hidden')) return;
   const proyectos = state.projects || [];
   if (!proyectos.length) { cont.innerHTML = '<p class="muted">Sin ideas.</p>'; return; }
+
   const ids = new Set(proyectos.map((p) => p.id));
-  const nodos = proyectos.map((p) => ({ id: p.id, title: p.id }));
-  const aristas = [];
-  const vistas = new Set();
-  const add = (a, b) => {
-    if (!a || !b || !ids.has(a) || !ids.has(b) || a === b) return;
-    const k = [a, b].sort().join('|');
-    if (vistas.has(k)) return;
-    vistas.add(k);
-    aristas.push({ origen: a, destino: b });
-  };
-  for (const [hijo, padre] of Object.entries(state.parentes)) add(padre, hijo);
-  for (const l of (state.linaje || [])) add(l.de, l.idea);
+  const conHijos = new Set(Object.values(state.parentes).filter(Boolean));
+  const nodos = proyectos.map((p) => ({
+    id: p.id,
+    title: p.name || p.id,
+    padre: state.parentes[p.id] || null,
+    grado: 0,
+    r: 11
+  }));
+  const porId = new Map(nodos.map((n) => [n.id, n]));
+
+  const aristas = [];      // sólo para las fuerzas de reparto
+  const jerarquia = [];    // {padre, hijo}
+  const linaje = [];       // {de, a}
+  const vistasJer = new Set();
+  for (const [hijo, padre] of Object.entries(state.parentes)) {
+    if (!padre || !ids.has(hijo) || !ids.has(padre) || padre === hijo) continue;
+    const k = `${padre}|${hijo}`;
+    if (vistasJer.has(k)) continue;
+    vistasJer.add(k);
+    jerarquia.push({ padre, hijo });
+    aristas.push({ origen: padre, destino: hijo });
+  }
+  const vistasLin = new Set();
+  for (const l of (state.linaje || [])) {
+    const de = l.de; const a = l.idea;
+    if (!de || !a || !ids.has(de) || !ids.has(a) || de === a) continue;
+    const k = `${de}|${a}`;
+    if (vistasLin.has(k) || vistasJer.has(k) || vistasJer.has(`${a}|${de}`)) continue;
+    vistasLin.add(k);
+    linaje.push({ de, a });
+    aristas.push({ origen: de, destino: a });
+  }
+  for (const e of aristas) {
+    if (porId.has(e.origen)) porId.get(e.origen).grado += 1;
+    if (porId.has(e.destino)) porId.get(e.destino).grado += 1;
+  }
+  for (const n of nodos) n.r = 10 + Math.min(9, n.grado * 2);
 
   const ancho = Math.max(360, cont.clientWidth || 760);
   const alto = Math.max(340, cont.clientHeight || 440);
   repartir(nodos, aristas, ancho, alto, 240);
-  const porId = new Map(nodos.map((n) => [n.id, n]));
-  const lineas = aristas.map((e) => {
-    const o = porId.get(e.origen); const d = porId.get(e.destino);
-    if (!o || !d) return '';
-    return `<line x1="${o.x.toFixed(1)}" y1="${o.y.toFixed(1)}" x2="${d.x.toFixed(1)}" y2="${d.y.toFixed(1)}" />`;
-  }).join('');
-  const conHijos = new Set(Object.values(state.parentes).filter(Boolean));
+
+  // Recorta el trazo en el borde de los círculos para que la punta de flecha
+  // no quede escondida debajo del nodo.
+  const segmento = (desde, hasta) => {
+    const dx = hasta.x - desde.x; const dy = hasta.y - desde.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const ux = dx / d; const uy = dy / d;
+    const r1 = desde.r + 3; const r2 = hasta.r + 5;
+    return {
+      x1: desde.x + ux * r1, y1: desde.y + uy * r1,
+      x2: hasta.x - ux * r2, y2: hasta.y - uy * r2
+    };
+  };
+  const linea = (s, clase, marcador) => {
+    const c = segmento(s.desde, s.hasta);
+    return `<line class="${clase}" x1="${c.x1.toFixed(1)}" y1="${c.y1.toFixed(1)}"`
+      + ` x2="${c.x2.toFixed(1)}" y2="${c.y2.toFixed(1)}" marker-end="url(#${marcador})" />`;
+  };
+
+  const lineasJer = jerarquia.map((e) => linea({ desde: porId.get(e.padre), hasta: porId.get(e.hijo) }, 'arista-jerarquia', 'flecha-jer')).join('');
+  const lineasLin = linaje.map((e) => linea({ desde: porId.get(e.de), hasta: porId.get(e.a) }, 'arista-linaje', 'flecha-lin')).join('');
+
   const circulos = nodos.map((n) => {
-    const color = conHijos.has(n.id) ? 'hsl(45, 80%, 60%)' : 'hsl(205, 90%, 62%)';
-    const etiqueta = n.id.length > 16 ? `${n.id.slice(0, 15)}…` : n.id;
-    return `<g class="mapa-nodo" data-nodo="${escapeHtml(n.id)}" transform="translate(${n.x.toFixed(1)},${n.y.toFixed(1)})">`
-      + `<circle r="13" fill="${color}" /><text y="27" text-anchor="middle">${escapeHtml(etiqueta)}</text></g>`;
+    let color = GRAFO_COLOR.hoja;
+    if (!n.padre && conHijos.has(n.id)) color = GRAFO_COLOR.raiz;
+    else if (conHijos.has(n.id)) color = GRAFO_COLOR.padre;
+    const actual = n.id === state.currentProjectId;
+    if (actual) color = GRAFO_COLOR.actual;
+    const etiqueta = n.title.length > 22 ? `${n.title.slice(0, 21)}…` : n.title;
+    return `<g class="mapa-nodo${actual ? ' mapa-nodo-actual' : ''}" data-nodo="${escapeHtml(n.id)}" transform="translate(${n.x.toFixed(1)},${n.y.toFixed(1)})">`
+      + `<title>${escapeHtml(n.id)}${n.padre ? ` · bajo ${escapeHtml(n.padre)}` : ''} · ${n.grado} conexión(es)</title>`
+      + `<circle r="${n.r.toFixed(1)}" fill="${color}" />`
+      + `<text y="${(n.r + 14).toFixed(1)}" text-anchor="middle">${escapeHtml(etiqueta)}</text></g>`;
   }).join('');
-  cont.innerHTML = `<svg viewBox="0 0 ${ancho} ${alto}" preserveAspectRatio="xMidYMid meet" class="mapa-svg">`
-    + `<g class="mapa-lineas">${lineas}</g>${circulos}</svg>`;
+
+  cont.innerHTML = '<svg viewBox="0 0 ' + ancho + ' ' + alto + '" preserveAspectRatio="xMidYMid meet" class="mapa-svg">'
+    + '<defs>'
+    + '<marker id="flecha-jer" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="rgba(126,178,226,.9)" /></marker>'
+    + '<marker id="flecha-lin" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="rgba(226,160,126,.9)" /></marker>'
+    + '</defs>'
+    + `<g class="mapa-lineas">${lineasJer}${lineasLin}</g>${circulos}</svg>`
+    + '<div class="grafo-leyenda">'
+    + `<span class="leyenda-item"><span class="leyenda-punto" style="background:${GRAFO_COLOR.raiz}"></span>Raíz</span>`
+    + `<span class="leyenda-item"><span class="leyenda-punto" style="background:${GRAFO_COLOR.padre}"></span>Con subideas</span>`
+    + `<span class="leyenda-item"><span class="leyenda-punto" style="background:${GRAFO_COLOR.hoja}"></span>Subidea</span>`
+    + '<span class="leyenda-item"><span class="leyenda-linea leyenda-linea-jer"></span>Jerarquía</span>'
+    + '<span class="leyenda-item"><span class="leyenda-linea leyenda-linea-lin"></span>Linaje</span>'
+    + '</div>';
 }
 
 async function selectProject(projectId) {
@@ -535,6 +618,7 @@ async function selectProject(projectId) {
   if (label) label.textContent = projectId;
   showIdea();
   closeMobileSidebar();
+  cargarTareaIdea(projectId);
   await loadNotes();
   await Promise.all([loadZone('code'), loadZone('logs')]);
   switchTab('chat');
@@ -2398,34 +2482,15 @@ async function actualizarBotonHilos() {
   } catch { /* sin conexión */ }
 }
 
-/** Lista las conversaciones guardadas y permite continuar una. */
+/** Lista las conversaciones guardadas y permite continuar, titular o borrar. */
 async function abrirHilos() {
   if (!state.chat.projectId) return;
-  try {
-    const data = await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/conversaciones`);
-    const opciones = opcionesHilos(data);
-    if (!opciones.length) return toast('Todavía no hay conversaciones guardadas', 'warn');
-
-    const elegida = await abrirDialogoIdea({
-      titulo: 'Conversaciones',
-      texto: 'Elige una conversación guardada para continuarla. La actual se archivará.',
-      tipo: 'lista',
-      opciones
-    });
-    if (!elegida) return;
-    if (typeof window.confirm === 'function'
-      && !window.confirm('¿Continuar esa conversación? El agente recuperará los últimos mensajes.')) return;
-
-    await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/continuar`, {
-      method: 'POST',
-      body: JSON.stringify({ nombre: elegida })
-    });
-    await resyncChat();
-    actualizarBotonHilos();
-    toast('Conversación recuperada', 'ok');
-  } catch (error) {
-    toast(`No se pudo: ${error.message}`, 'err');
-  }
+  const dlg = $('#hilos-dialog');
+  const cont = $('#hilos-list');
+  if (!dlg || !cont) return;
+  cont.innerHTML = '<p class="muted">Cargando…</p>';
+  if (!dlg.open) dlg.showModal();
+  await recargarHilos();
 }
 
 /** El botón de detener (arriba o abajo) pide confirmación antes de parar. */
@@ -2462,6 +2527,260 @@ async function cancelarTurno() {
     }
   } catch (error) {
     toast(`No se pudo detener: ${error.message}`, 'err');
+  }
+}
+
+/* ---------------- Reanudación: tareas en curso ---------------- */
+/** Frase corta de una nota de reanudación, sin volcarla entera. */
+function extractoTarea(contenido) {
+  let titulo = '';
+  for (const linea of String(contenido || '').split('\n')) {
+    const limpia = linea.replace(/\s+/g, ' ').trim();
+    if (!limpia) continue;
+    if (/^#+\s/.test(limpia) || /^qu[eé]\b/i.test(limpia)) {
+      if (!titulo) titulo = limpia.replace(/^#+\s*/, '');
+      continue;
+    }
+    return limpia.slice(0, 140);
+  }
+  return titulo.slice(0, 140);
+}
+
+async function cargarTareasEnCurso() {
+  try {
+    const { tareas } = await api('/api/tareas-en-curso');
+    state.tareas = Array.isArray(tareas) ? tareas : [];
+  } catch {
+    state.tareas = [];
+  }
+  renderTareasHome();
+}
+
+function renderTareasHome() {
+  const cont = $('#home-tareas');
+  if (!cont) return;
+  const tareas = state.tareas || [];
+  if (!tareas.length) { cont.classList.add('hidden'); cont.innerHTML = ''; return; }
+  cont.classList.remove('hidden');
+  cont.innerHTML = tareas.map((t) => `
+    <div class="tarea-item">
+      <span class="tarea-item-icon" aria-hidden="true">⏳</span>
+      <div class="tarea-item-text">
+        <strong>${escapeHtml(t.projectId)}</strong> tiene una tarea a medias${t.extracto ? `: «${escapeHtml(t.extracto)}»` : ''}.
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" data-tarea-ver="${escapeHtml(t.projectId)}">Ver nota</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-tarea-ir="${escapeHtml(t.projectId)}">Abrir idea</button>
+    </div>`).join('');
+}
+
+async function cargarTareaIdea(projectId) {
+  const cont = $('#tarea-aviso');
+  if (!cont) return;
+  try {
+    const nota = await api(`/api/projects/${encodeURIComponent(projectId)}/tarea-en-curso`);
+    pintarAvisoTarea(projectId, nota);
+  } catch {
+    pintarAvisoTarea(projectId, null);
+  }
+}
+
+function pintarAvisoTarea(projectId, nota) {
+  const cont = $('#tarea-aviso');
+  if (!cont) return;
+  if (!nota || !nota.existe) { cont.classList.add('hidden'); cont.innerHTML = ''; return; }
+  const cuando = nota.modificadoEn ? new Date(nota.modificadoEn).toLocaleString() : '';
+  const extracto = extractoTarea(nota.contenido);
+  cont.classList.remove('hidden');
+  cont.innerHTML = '<span class="tarea-aviso-icon" aria-hidden="true">⏳</span>'
+    + `<div class="tarea-aviso-text"><strong>Tarea en curso</strong>${cuando ? ` · ${escapeHtml(cuando)}` : ''}`
+    + `${extracto ? `<br><span class="muted">${escapeHtml(extracto)}</span>` : ''}</div>`
+    + `<button type="button" class="btn btn-ghost btn-sm" data-tarea-ver="${escapeHtml(projectId)}">Ver</button>`;
+}
+
+async function abrirTarea(projectId) {
+  if (!projectId) return;
+  try {
+    const nota = await api(`/api/projects/${encodeURIComponent(projectId)}/tarea-en-curso`);
+    if (!nota.existe) return toast('Ya no hay tarea en curso', 'warn');
+    const dlg = $('#tarea-dialog');
+    if (!dlg) return;
+    const art = $('#tarea-contenido');
+    if (art) art.innerHTML = renderMarkdown(nota.contenido || '');
+    const btn = $('#tarea-descartar');
+    if (btn) btn.dataset.project = projectId;
+    dlg.showModal();
+  } catch (error) {
+    toast(`No se pudo abrir la tarea: ${error.message}`, 'err');
+  }
+}
+
+async function descartarTarea(projectId) {
+  if (!projectId) return;
+  try {
+    await api(`/api/projects/${encodeURIComponent(projectId)}/tarea-en-curso`, { method: 'DELETE' });
+    const dlg = $('#tarea-dialog');
+    if (dlg && dlg.open) dlg.close();
+    toast('Tarea descartada', 'ok');
+    cargarTareasEnCurso();
+    if (state.currentProjectId === projectId) pintarAvisoTarea(projectId, null);
+  } catch (error) {
+    toast(`No se pudo descartar: ${error.message}`, 'err');
+  }
+}
+
+function manejarTareasClick(event) {
+  const ver = event.target.closest('[data-tarea-ver]');
+  if (ver) { abrirTarea(ver.dataset.tareaVer); return; }
+  const ir = event.target.closest('[data-tarea-ir]');
+  if (ir) { selectProject(ir.dataset.tareaIr); return; }
+}
+
+/* ---------------- Papelera de ideas ---------------- */
+async function abrirPapelera() {
+  const dlg = $('#papelera-dialog');
+  const cont = $('#papelera-list');
+  if (!cont) return;
+  cont.innerHTML = '<p class="muted">Cargando…</p>';
+  if (dlg && !dlg.open) dlg.showModal();
+  try {
+    const { items } = await api('/api/papelera');
+    renderPapeleraList(items);
+  } catch (error) {
+    cont.innerHTML = `<p class="muted">No se pudo leer la papelera: ${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function renderPapeleraList(items = []) {
+  const cont = $('#papelera-list');
+  if (!cont) return;
+  if (!items.length) { cont.innerHTML = '<p class="muted">La papelera está vacía.</p>'; return; }
+  cont.innerHTML = items.map((it) => {
+    const cuando = it.borradaEn ? new Date(it.borradaEn).toLocaleString() : '';
+    return '<div class="gestion-item">'
+      + `<div class="gestion-item-text"><strong>${escapeHtml(it.idea)}</strong>`
+      + `<span class="muted">${cuando ? ` · ${escapeHtml(cuando)}` : ''}${it.padre ? ` · bajo ${escapeHtml(it.padre)}` : ''}</span></div>`
+      + '<div class="gestion-item-actions">'
+      + `<button type="button" class="btn btn-ghost btn-sm" data-papelera="restaurar" data-ref="${escapeHtml(it.ref)}">♻ Restaurar</button>`
+      + `<button type="button" class="btn btn-danger btn-sm" data-papelera="borrar" data-ref="${escapeHtml(it.ref)}">Borrar</button>`
+      + '</div></div>';
+  }).join('');
+}
+
+async function accionPapelera(accion, ref) {
+  try {
+    if (accion === 'restaurar') {
+      const r = await api('/api/papelera/restaurar', { method: 'POST', body: JSON.stringify({ ref }) });
+      toast(`Idea restaurada: ${r.idea?.id || ''}`, 'ok');
+      await loadProjects();
+    } else {
+      if (typeof window.confirm === 'function'
+        && !window.confirm('¿Borrar definitivamente? Esta vez no se puede deshacer.')) return;
+      await api('/api/papelera/borrar', { method: 'POST', body: JSON.stringify({ ref }) });
+      toast('Borrada definitivamente', 'ok');
+    }
+    const { items } = await api('/api/papelera');
+    renderPapeleraList(items);
+  } catch (error) {
+    toast(`No se pudo: ${error.message}`, 'err');
+  }
+}
+
+/* ---------------- Conversaciones guardadas ---------------- */
+async function recargarHilos() {
+  const pid = state.chat.projectId;
+  const cont = $('#hilos-list');
+  if (!pid || !cont) return;
+  const base = `/api/projects/${encodeURIComponent(pid)}/chat/conversaciones`;
+  try {
+    const data = await api(base);
+    renderHilosList(data);
+    const papelera = await api(`${base}/papelera`);
+    renderHilosPapelera(papelera.items || []);
+  } catch (error) {
+    cont.innerHTML = `<p class="muted">No se pudo leer: ${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function renderHilosList(data) {
+  const cont = $('#hilos-list');
+  if (!cont) return;
+  const archivadas = data?.archivadas || [];
+  if (!archivadas.length) { cont.innerHTML = '<p class="muted">Todavía no hay conversaciones guardadas.</p>'; return; }
+  cont.innerHTML = archivadas.map((a) => {
+    const cuando = a.modificadoEn ? new Date(a.modificadoEn).toLocaleString() : a.nombre;
+    const titulo = a.titulo ? escapeHtml(a.titulo) : escapeHtml(cuando);
+    const extracto = a.inicio ? `<br><span class="muted">${escapeHtml(a.inicio)}</span>` : '';
+    return '<div class="gestion-item">'
+      + `<div class="gestion-item-text"><strong>${titulo}</strong>`
+      + `<span class="muted"> · ${a.mensajes} mensajes</span>${extracto}</div>`
+      + '<div class="gestion-item-actions">'
+      + `<button type="button" class="btn btn-ghost btn-sm" data-hilo="continuar" data-nombre="${escapeHtml(a.nombre)}">Continuar</button>`
+      + `<button type="button" class="btn btn-ghost btn-sm" data-hilo="titulo" data-nombre="${escapeHtml(a.nombre)}" data-titulo="${escapeHtml(a.titulo || '')}" title="Poner título">✎</button>`
+      + `<button type="button" class="btn btn-danger btn-sm" data-hilo="borrar" data-nombre="${escapeHtml(a.nombre)}" title="A la papelera">🗑</button>`
+      + '</div></div>';
+  }).join('');
+}
+
+function renderHilosPapelera(items = []) {
+  const cont = $('#hilos-papelera');
+  if (!cont) return;
+  if (!items.length) { cont.innerHTML = '<p class="muted">Vacía.</p>'; return; }
+  cont.innerHTML = items.map((it) => {
+    const cuando = it.borradaEn ? new Date(it.borradaEn).toLocaleString() : it.ref;
+    return '<div class="gestion-item">'
+      + `<div class="gestion-item-text"><strong>${escapeHtml(it.titulo || it.nombre)}</strong>`
+      + `<span class="muted"> · ${escapeHtml(cuando)}</span></div>`
+      + '<div class="gestion-item-actions">'
+      + `<button type="button" class="btn btn-ghost btn-sm" data-hilo="recuperar" data-ref="${escapeHtml(it.ref)}" title="Recuperar">♻</button>`
+      + `<button type="button" class="btn btn-danger btn-sm" data-hilo="purgar" data-ref="${escapeHtml(it.ref)}" title="Borrar definitivamente">Borrar</button>`
+      + '</div></div>';
+  }).join('');
+}
+
+async function accionHilo(accion, dataset) {
+  const pid = state.chat.projectId;
+  if (!pid) return;
+  const base = `/api/projects/${encodeURIComponent(pid)}/chat/conversaciones`;
+  try {
+    if (accion === 'continuar') {
+      if (typeof window.confirm === 'function'
+        && !window.confirm('¿Continuar esa conversación? El agente recuperará los últimos mensajes.')) return;
+      await api(`${base}/continuar`, { method: 'POST', body: JSON.stringify({ nombre: dataset.nombre }) });
+      const dlg = $('#hilos-dialog');
+      if (dlg && dlg.open) dlg.close();
+      await resyncChat();
+      actualizarBotonHilos();
+      toast('Conversación recuperada', 'ok');
+      return;
+    }
+    if (accion === 'titulo') {
+      const nuevo = await abrirDialogoIdea({
+        titulo: 'Título de la conversación',
+        texto: 'Sólo para ti; no cambia el contenido guardado.',
+        tipo: 'texto',
+        valor: dataset.titulo || ''
+      });
+      if (nuevo === null) return;
+      await api(`${base}/titulo`, { method: 'POST', body: JSON.stringify({ nombre: dataset.nombre, titulo: nuevo }) });
+      toast('Título guardado', 'ok');
+    } else if (accion === 'borrar') {
+      if (typeof window.confirm === 'function'
+        && !window.confirm('¿Mandar a la papelera? Podrás recuperarla.')) return;
+      await api(`${base}/borrar`, { method: 'POST', body: JSON.stringify({ nombre: dataset.nombre }) });
+      toast('A la papelera', 'ok');
+    } else if (accion === 'recuperar') {
+      await api(`${base}/papelera/restaurar`, { method: 'POST', body: JSON.stringify({ ref: dataset.ref }) });
+      toast('Conversación recuperada', 'ok');
+    } else if (accion === 'purgar') {
+      if (typeof window.confirm === 'function'
+        && !window.confirm('¿Borrar definitivamente? No se puede deshacer.')) return;
+      await api(`${base}/papelera/borrar`, { method: 'POST', body: JSON.stringify({ ref: dataset.ref }) });
+      toast('Borrada', 'ok');
+    }
+    await recargarHilos();
+    actualizarBotonHilos();
+  } catch (error) {
+    toast(`No se pudo: ${error.message}`, 'err');
   }
 }
 
@@ -2851,6 +3170,25 @@ function bindEvents() {
     const g = event.target.closest('[data-nodo]');
     if (g) selectProject(g.dataset.nodo);
   });
+  on('#papelera-btn', 'click', abrirPapelera);
+  on('#papelera-list', 'click', (event) => {
+    const b = event.target.closest('[data-papelera]');
+    if (b) accionPapelera(b.dataset.papelera, b.dataset.ref);
+  });
+  on('#home-tareas', 'click', manejarTareasClick);
+  on('#tarea-aviso', 'click', manejarTareasClick);
+  on('#tarea-descartar', 'click', () => {
+    const btn = $('#tarea-descartar');
+    descartarTarea(btn && btn.dataset.project);
+  });
+  on('#hilos-list', 'click', (event) => {
+    const b = event.target.closest('[data-hilo]');
+    if (b) accionHilo(b.dataset.hilo, b.dataset);
+  });
+  on('#hilos-papelera', 'click', (event) => {
+    const b = event.target.closest('[data-hilo]');
+    if (b) accionHilo(b.dataset.hilo, b.dataset);
+  });
   on('#back-btn', 'click', goHome);
   on('#home-btn', 'click', goHome);
   on('#new-note-btn', 'click', () => {
@@ -2993,6 +3331,7 @@ window.Jarvis = {
   showIdea,
   loadProjects,
   renderIdeaGrid,
+  renderGrafoIdeas,
   abrirNuevaIdea,
   llenarSelectModelos,
   cargarAdjuntos,
@@ -3006,6 +3345,12 @@ window.Jarvis = {
   pintarSalud,
   abrirHilos,
   opcionesHilos,
+  renderHilosList,
+  renderHilosPapelera,
+  cargarTareasEnCurso,
+  renderTareasHome,
+  pintarAvisoTarea,
+  renderPapeleraList,
   cargarPermisos,
   renderPermisos,
   switchTab,

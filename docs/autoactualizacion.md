@@ -102,6 +102,27 @@ Y para dispararlo a mano sin la interfaz:
 touch /home/jarvis/jarvis/.update-request
 ```
 
+## Reanudación tras el reinicio (el agente)
+
+El reinicio mata la sesión del agente que pidió la actualización. Para que no
+vuelva en blanco, el agente deja —**antes** de tocar `.solicitar-actualizacion`—
+una nota `tarea-en-curso.md` en la raíz de su workspace (para el proyecto de
+automodificación, la raíz de este repositorio) con tres apartados: qué estaba
+haciendo, qué falta y siguiente paso.
+
+- Va en `.gitignore`: si no, escribirla dejaría el árbol sucio y la **barrera 1
+  abortaría** la propia actualización.
+- Al abrir sesión de chat, el primer mensaje **inyecta esa nota** por delante
+  del historial reciente. El agente la retoma y la **borra** al terminar.
+- La interfaz avisa (en el inicio y en la cabecera de la idea) y permite verla
+  o descartarla.
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| `GET` | `/api/tareas-en-curso` | Ideas con nota de reanudación pendiente |
+| `GET` | `/api/projects/:id/tarea-en-curso` | Contenido de la nota |
+| `DELETE` | `/api/projects/:id/tarea-en-curso` | Descartarla |
+
 ## Instalación
 
 **Prerequisito:** el servicio tiene que existir. Sin él no hay nada que

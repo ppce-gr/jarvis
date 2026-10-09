@@ -30,3 +30,8 @@ deploy/jarvis.conf
 # La bandera que escribe el AGENTE para pedir la actualización. Va ignorada para
 # que el árbol siga limpio: la barrera 1 aborta si hay cambios sin commitear.
 .solicitar-actualizacion
+
+# Nota de reanudación que el agente escribe ANTES de pedir el reinicio (qué
+# hacía, qué falta, siguiente paso). También va ignorada: si no, escribirla
+# dejaría el árbol sucio y el actualizador abortaría. Se inyecta al reanudar.
+tarea-en-curso.md

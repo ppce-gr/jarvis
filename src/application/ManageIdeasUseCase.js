@@ -1,7 +1,7 @@
 /**
  * Capa de Aplicación: ManageIdeasUseCase
  * Duplicar, renombrar, borrar (a papelera), fusionar ideas, y su jerarquía
- * (padre) + linaje.
+ * (padre) + linaje. También la papelera: listar, restaurar y purgar.
  */
 export class ManageIdeasUseCase {
   constructor(ideaManagementAdapter) {
@@ -10,6 +10,18 @@ export class ManageIdeasUseCase {
 
   async meta() {
     return await this.ideaManagementAdapter.meta();
+  }
+
+  async listTrash() {
+    return await this.ideaManagementAdapter.listTrash();
+  }
+
+  async restore(ref) {
+    return await this.ideaManagementAdapter.restore(ref);
+  }
+
+  async purge(ref) {
+    return await this.ideaManagementAdapter.purge(ref);
   }
 
   async setParent(projectId, padre) {

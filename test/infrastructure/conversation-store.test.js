@@ -66,3 +66,51 @@ test('no se puede continuar algo que no existe', async () => {
   await assert.rejects(() => caso.continue('idea', 'no-existe.jsonl'), /CONVERSATION_NOT_FOUND/);
   await assert.rejects(() => caso.read('idea', '../fuera.jsonl'), /CONVERSATION_NAME_INVALID/);
 });
+
+test('pone título a una guardada sin tocar el contenido', async () => {
+  const { caso, escribir } = await conConversaciones();
+  await escribir([{ role: 'user', text: 'hola' }, { role: 'assistant', text: 'buenas' }]);
+  const { archivada } = await caso.archive('idea');
+
+  const r = await caso.setTitle('idea', archivada, 'Diseño del grafo');
+  assert.equal(r.conversation.titulo, 'Diseño del grafo');
+
+  const list = await caso.list('idea');
+  assert.equal(list.archivadas[0].titulo, 'Diseño del grafo');
+  assert.equal(list.archivadas[0].mensajes, 2, 'el contenido sigue intacto');
+  const { messages } = await caso.read('idea', archivada);
+  assert.equal(messages.length, 2);
+});
+
+test('borrar una guardada la manda a la papelera y se puede recuperar', async () => {
+  const { caso, escribir } = await conConversaciones();
+  await escribir([{ role: 'user', text: 'hola' }]);
+  const { archivada } = await caso.archive('idea');
+  await caso.setTitle('idea', archivada, 'Con título');
+
+  const { conversation } = await caso.remove('idea', archivada);
+  assert.ok(conversation.ref);
+  assert.equal((await caso.list('idea')).archivadas.length, 0, 'ya no está en la lista');
+
+  const papelera = await caso.listTrash('idea');
+  assert.equal(papelera.items.length, 1);
+  assert.equal(papelera.items[0].titulo, 'Con título', 'el título viaja con ella');
+
+  const vuelta = await caso.restoreTrash('idea', papelera.items[0].ref);
+  assert.equal(vuelta.conversation.restaurada, archivada);
+  const list = await caso.list('idea');
+  assert.equal(list.archivadas.length, 1);
+  assert.equal(list.archivadas[0].titulo, 'Con título');
+
+  // Y purgar la borra del todo.
+  await caso.remove('idea', archivada);
+  const otra = await caso.listTrash('idea');
+  await caso.purgeTrash('idea', otra.items[0].ref);
+  assert.equal((await caso.listTrash('idea')).items.length, 0);
+});
+
+test('la papelera de conversaciones valida los refs', async () => {
+  const { caso } = await conConversaciones();
+  await assert.rejects(() => caso.restoreTrash('idea', '../x.jsonl'), /CONVERSATION_NAME_INVALID/);
+  await assert.rejects(() => caso.remove('idea', 'no-existe.jsonl'), /CONVERSATION_NOT_FOUND/);
+});

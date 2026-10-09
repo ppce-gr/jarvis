@@ -22,6 +22,7 @@ export class FileSystemIdeaManagementAdapter extends IdeaManagementPort {
   static IDEAS = '.ideas.json';
   static LINAJE = '.linaje.jsonl';
   static PAPELERA = '.papelera';
+  static REGISTRO = '.registro.json';
 
   constructor(brainDir = process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault')) {
     super();
@@ -31,6 +32,9 @@ export class FileSystemIdeaManagementAdapter extends IdeaManagementPort {
   _dir(projectId) { return path.join(this.brainDir, projectId); }
   _metaPath() { return path.join(this.brainDir, FileSystemIdeaManagementAdapter.IDEAS); }
   _linajePath() { return path.join(this.brainDir, FileSystemIdeaManagementAdapter.LINAJE); }
+  _papeleraPath() { return path.join(this.brainDir, FileSystemIdeaManagementAdapter.PAPELERA); }
+  _registroPath() { return path.join(this._papeleraPath(), FileSystemIdeaManagementAdapter.REGISTRO); }
+
 
   _slug(value) {
     return String(value || '')
@@ -131,6 +135,120 @@ export class FileSystemIdeaManagementAdapter extends IdeaManagementPort {
     return { padres: m.padres, linaje: await this._leerLinaje() };
   }
 
+  /* ------------------------------------------------------------------
+   * Papelera: registro lateral
+   * ------------------------------------------------------------------
+   * El nombre de la carpeta en `.papelera/` ya lleva el id y la fecha, pero
+   * no el padre: al borrar, los hijos se reparentan y esa información se
+   * perdía. Este registro la guarda para poder DEVOLVER la idea a su sitio.
+   * Un `ref` es el nombre de la carpeta dentro de `.papelera/`.
+   */
+  async _leerRegistro() {
+    try {
+      const datos = JSON.parse(await fs.readFile(this._registroPath(), 'utf8'));
+      return (datos && typeof datos === 'object' && datos.entradas) || {};
+    } catch { return {}; }
+  }
+
+  async _escribirRegistro(entradas) {
+    await fs.mkdir(this._papeleraPath(), { recursive: true });
+    await fs.writeFile(this._registroPath(), JSON.stringify({ entradas }, null, 2), 'utf8');
+  }
+
+  /** Un `ref` nunca puede salirse de `.papelera/`. */
+  _refSeguro(ref) {
+    const base = String(ref || '').trim();
+    if (!base || base !== path.basename(base) || base === '.' || base === '..') {
+      throw new Error('TRASH_REF_INVALID');
+    }
+    return base;
+  }
+
+  /** Lista lo que hay en la papelera, con su origen, padre y fecha. */
+  async listTrash() {
+    const papelera = this._papeleraPath();
+    let entries = [];
+    try {
+      entries = await fs.readdir(papelera, { withFileTypes: true });
+    } catch { return []; }
+    const registro = await this._leerRegistro();
+    const items = [];
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name.startsWith('.')) continue;
+      const ref = e.name;
+      const info = registro[ref] || {};
+      const st = await fs.stat(path.join(papelera, ref)).catch(() => null);
+      // De un registro antiguo o ausente, el id se deduce del nombre.
+      const idea = info.idea || ref.split('__')[0];
+      items.push({
+        ref,
+        idea,
+        padre: info.padre || null,
+        motivo: info.motivo || 'borrada',
+        borradaEn: info.borradaEn || st?.mtime?.toISOString?.() || null
+      });
+    }
+    items.sort((a, b) => String(b.borradaEn || '').localeCompare(String(a.borradaEn || '')));
+    return items;
+  }
+
+  /**
+   * Devuelve una idea de la papelera al catálogo. Si su id original ya está
+   * ocupado, se recupera con un sufijo (`idea-2`, `idea-3`…) en vez de
+   * pisar la que existe.
+   */
+  async restore(ref) {
+    const base = this._refSeguro(ref);
+    const papelera = this._papeleraPath();
+    const origen = path.join(papelera, base);
+    if (!(await this._existe(origen))) throw new Error('TRASH_ITEM_NOT_FOUND');
+
+    const registro = await this._leerRegistro();
+    const info = registro[base] || {};
+    const idOriginal = this._slug(info.idea || base.split('__')[0]) || 'idea';
+
+    let destinoId = idOriginal;
+    let n = 1;
+    while (await this._existe(this._dir(destinoId))) {
+      n += 1;
+      destinoId = `${idOriginal}-${n}`;
+    }
+
+    await fs.rename(origen, this._dir(destinoId));
+
+    // Se devuelve a su padre si sigue existiendo; si no, al primer nivel.
+    const meta = await this._leerMeta();
+    const padre = info.padre ? String(info.padre) : null;
+    meta.padres[destinoId] = (padre && padre !== destinoId && await this._existe(this._dir(padre)))
+      ? padre
+      : null;
+    await this._escribirMeta(meta);
+
+    delete registro[base];
+    await this._escribirRegistro(registro);
+    await this._linaje({
+      accion: 'restaurada',
+      idea: destinoId,
+      de: base,
+      renombrada: destinoId === idOriginal ? null : idOriginal
+    });
+    return { id: destinoId, de: base };
+  }
+
+  /** Borra definitivamente un elemento de la papelera (sin vuelta atrás). */
+  async purge(ref) {
+    const base = this._refSeguro(ref);
+    const origen = path.join(this._papeleraPath(), base);
+    if (!(await this._existe(origen))) throw new Error('TRASH_ITEM_NOT_FOUND');
+    const registro = await this._leerRegistro();
+    const idea = (registro[base] && registro[base].idea) || base.split('__')[0];
+    await fs.rm(origen, { recursive: true, force: true });
+    delete registro[base];
+    await this._escribirRegistro(registro);
+    await this._linaje({ accion: 'purgada', idea, de: base });
+    return { de: base };
+  }
+
   async setParent(projectId, padre) {
     if (!(await this._existe(this._dir(projectId)))) throw new Error('PROJECT_NOT_FOUND');
     const meta = await this._leerMeta();
@@ -188,7 +306,7 @@ export class FileSystemIdeaManagementAdapter extends IdeaManagementPort {
   async trash(projectId) {
     if (!(await this._existe(this._dir(projectId)))) throw new Error('PROJECT_NOT_FOUND');
     if (await this._esProtegido(projectId)) throw new Error('PROJECT_PROTECTED');
-    const papelera = path.join(this.brainDir, FileSystemIdeaManagementAdapter.PAPELERA);
+    const papelera = this._papeleraPath();
     await fs.mkdir(papelera, { recursive: true });
     const marca = new Date().toISOString().replace(/[:.]/g, '-');
     const destino = path.join(papelera, `${projectId}__${marca}`);
@@ -200,6 +318,16 @@ export class FileSystemIdeaManagementAdapter extends IdeaManagementPort {
       if (padre === projectId) meta.padres[hijo] = padreOriginal;
     }
     await this._escribirMeta(meta);
+    // El padre se guarda en el registro: al restaurar, la idea vuelve a su
+    // sitio. El linaje es un diario para leer; el registro, datos para actuar.
+    const registro = await this._leerRegistro();
+    registro[path.basename(destino)] = {
+      idea: projectId,
+      padre: padreOriginal,
+      motivo: 'borrada',
+      borradaEn: new Date().toISOString()
+    };
+    await this._escribirRegistro(registro);
     await this._linaje({ accion: 'borrada', idea: projectId, papelera: path.basename(destino) });
     return { id: projectId, papelera: `papelera/${path.basename(destino)}` };
   }

@@ -112,3 +112,46 @@ test('una idea con workspace.json está protegida', async () => {
   await assert.rejects(() => caso.trash('especial'), /PROJECT_PROTECTED/);
   await assert.rejects(() => caso.duplicate('especial', 'copia'), /PROJECT_PROTECTED/);
 });
+
+test('la papelera lista, restaura con su padre y purga', async () => {
+  const { dir, caso, crear } = await conIdeas();
+  await crear('raiz', {});
+  await crear('hija', {});
+  await caso.setParent('hija', 'raiz');
+
+  const { papelera: ref } = await caso.trash('hija');
+  const items = await caso.listTrash();
+  assert.equal(items.length, 1);
+  assert.equal(items[0].idea, 'hija');
+  assert.equal(items[0].padre, 'raiz', 'guarda el padre para devolverla a su sitio');
+
+  const { id } = await caso.restore(items[0].ref);
+  assert.equal(id, 'hija');
+  const meta = await caso.meta();
+  assert.equal(meta.padres.hija, 'raiz', 'vuelve bajo su padre');
+  assert.equal((await caso.listTrash()).length, 0);
+
+  // Ahora purgar: desaparece del disco y del registro.
+  await caso.trash('hija');
+  const tras = await caso.listTrash();
+  await caso.purge(tras[0].ref);
+  assert.equal((await caso.listTrash()).length, 0);
+  await assert.rejects(() => fs.stat(path.join(dir, '.papelera', tras[0].ref)));
+  assert.match(await lee(dir, '.papelera', '.registro.json'), /"entradas": \{\}/);
+});
+
+test('restaurar con el id ocupado recupera con sufijo', async () => {
+  const { caso, crear } = await conIdeas();
+  await crear('idea', {});
+  const { papelera: ref } = await caso.trash('idea');
+  await crear('idea', {}, []);          // vuelve a existir con el mismo id
+
+  const { id } = await caso.restore(path.basename(ref));
+  assert.equal(id, 'idea-2');
+});
+
+test('un ref de papelera no puede salirse de su carpeta', async () => {
+  const { caso } = await conIdeas();
+  await assert.rejects(() => caso.restore('../fuera'), /TRASH_REF_INVALID/);
+  await assert.rejects(() => caso.purge('a/b'), /TRASH_REF_INVALID/);
+});

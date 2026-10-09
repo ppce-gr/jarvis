@@ -16,6 +16,8 @@ import {
   sanitizeActivity
 } from '../../domain/ActivityTrace.js';
 import { JsonRpcStdioClient } from './JsonRpcStdioClient.js';
+import { FileSystemResumeNoteAdapter } from '../persistence/FileSystemResumeNoteAdapter.js';
+import { resolverWorkspace } from '../persistence/resolverWorkspace.js';
 
 /**
  * Adaptador de Infraestructura: AcpConversationAdapter
@@ -81,6 +83,10 @@ export class AcpConversationAdapter extends ConversationPort {
     this.permissionTimeoutMs = permissionTimeoutMs;
     this.stallTimeoutMs = stallTimeoutMs;
     this.spawnFn = spawnFn;
+
+    // Nota de reanudación: la deja el agente antes de reiniciar Jarvis, y se
+    // le devuelve al abrir la siguiente sesión. Mismo brainDir que el resto.
+    this._resumeNotes = new FileSystemResumeNoteAdapter(brainDir);
 
     // Preferencia de modelo y esfuerzo. Se carga de disco si existe; los
     // valores de entorno son sólo el punto de partida.
@@ -159,30 +165,13 @@ export class AcpConversationAdapter extends ConversationPort {
   /**
    * Dónde TRABAJA el agente de este proyecto.
    * ------------------------------------------------------------------
-   * Por defecto, su carpeta dentro de la memoria. Pero un proyecto puede
-   * declarar otro sitio en `workspace.json`, y eso es lo que permite que un
-   * agente trabaje sobre el propio código de Jarvis (proyecto de
-   * automodificación) sin sacarlo de su sandbox: el sandbox confina la
-   * escritura a este directorio, así que darle el repositorio del código es
-   * exactamente lo que le da acceso —y sólo a él—.
-   *
-   * El `workspace.json` vive junto a las notas, pero apunta a otro sitio.
-   * Así la documentación del proyecto sigue en la memoria y las manos del
-   * agente van donde haga falta.
+   * La resolución (carpeta de la idea o el `workspace` que declare
+   * `workspace.json`) vive en `resolverWorkspace`, compartida con el
+   * lector de la nota de reanudación: los dos tienen que mirar el MISMO
+   * directorio, o la nota se escribiría en un sitio y se leería en otro.
    */
   async _workspaceFor(projectId) {
-    const porDefecto = this._projectDir(projectId);
-    try {
-      const raw = await fs.readFile(path.join(porDefecto, 'workspace.json'), 'utf8');
-      const { workspace } = JSON.parse(raw);
-      if (typeof workspace !== 'string' || !path.isAbsolute(workspace)) {
-        return porDefecto;
-      }
-      await fs.access(workspace);            // tiene que existir
-      return workspace;
-    } catch {
-      return porDefecto;                      // sin declaración: su carpeta
-    }
+    return await resolverWorkspace(this.brainDir, projectId);
   }
 
 
@@ -751,6 +740,14 @@ export class AcpConversationAdapter extends ConversationPort {
       '- El resultado queda en `logs/permisos/resultados/`. Si no aparece, aún no lo',
       '  ha aprobado: espera, no lo repitas en bucle.',
       '',
+      'Reanudación tras un reinicio:',
+      '- Si vas a pedir la actualización de Jarvis (tocar `.solicitar-actualizacion`),',
+      '  ANTES escribe `tarea-en-curso.md` en la raíz del proyecto con tres apartados:',
+      '  `## Qué estaba haciendo`, `## Qué falta` y `## Siguiente paso`. El reinicio',
+      '  matará tu sesión; esa nota se te devolverá al reanudar.',
+      '- Cuando la tarea termine, BORRA `tarea-en-curso.md`: mientras siga ahí, se te',
+      '  inyectará al abrir sesión como trabajo pendiente.',
+      '',
       'Mensaje del usuario:',
       text
     ].join('\n');
@@ -837,6 +834,12 @@ export class AcpConversationAdapter extends ConversationPort {
     session.turnCount += 1;
     let outgoing = AcpConversationAdapter.buildOutgoingMessage(projectId, clean, isFirstOfSession);
     if (isFirstOfSession) {
+      // Reanudación: si una sesión anterior dejó `tarea-en-curso.md`, es lo
+      // primero que ve el agente. Después, el contexto del hilo reciente.
+      const nota = await this._resumeNotes.get(projectId).catch(() => ({ existe: false }));
+      if (nota.existe) {
+        outgoing = `${AcpConversationAdapter._preambleTarea(nota.contenido, nota.modificadoEn)}\n\n${outgoing}`;
+      }
       // Sesión nueva (arranque de Jarvis o «continuar»): devolvemos contexto con
       // los últimos mensajes del hilo actual, no con todo el historial.
       const previos = await this._historialReinyeccion(projectId);
@@ -914,6 +917,25 @@ export class AcpConversationAdapter extends ConversationPort {
     return [
       'Conversación anterior de este proyecto (contexto; continúala sin repetirla):',
       ...lineas,
+      ''
+    ].join('\n');
+  }
+
+  /**
+   * Bloque de reanudación: lo que el agente dejó escrito justo antes de
+   * reiniciar Jarvis. Va por delante del historial porque es el estado de
+   * la tarea, no una conversación: dice qué se estaba haciendo, qué falta
+   * y cuál era el siguiente paso.
+   */
+  static _preambleTarea(contenido, modificadoEn) {
+    const cuando = modificadoEn ? ` (dejada el ${new Date(modificadoEn).toLocaleString()})` : '';
+    return [
+      `Nota de reanudación${cuando}: la escribió una sesión anterior tuya en`,
+      '`tarea-en-curso.md`, justo antes de reiniciar Jarvis, que mató aquella sesión.',
+      'Retoma la tarea desde donde la dejó. Puede estar ya superada: verifica antes de',
+      'darla por buena, y BÓRRALA cuando la tarea termine.',
+      '',
+      String(contenido || '').trim(),
       ''
     ].join('\n');
   }
