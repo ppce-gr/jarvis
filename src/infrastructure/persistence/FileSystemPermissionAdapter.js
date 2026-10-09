@@ -119,7 +119,11 @@ export class FileSystemPermissionAdapter extends PermissionPort {
 
     const resultado = await this._leerJson(path.join(this._resultados(projectId), `${seguro}.json`));
     if (!resultado) {
-      throw new Error(salida.err.trim() || `El helper terminó con código ${salida.codigo}`);
+      const err = salida.err.trim();
+      if (/no new privileges|no new privs/i.test(err)) {
+        throw new Error('El servicio de Jarvis no puede elevar (NoNewPrivileges activo). Quita esa opción de la unidad y reinstálala: sudo bash deploy/instalar.sh --jarvis');
+      }
+      throw new Error(err || `El helper terminó con código ${salida.codigo}`);
     }
     return resultado;
   }

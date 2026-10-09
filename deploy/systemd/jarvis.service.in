@@ -44,8 +44,13 @@ RestartSec=5
 # La Pi 3B tiene 905 MB: limitamos para que un descontrol no arrastre al sistema.
 MemoryMax=256M
 
-# Endurecimiento básico: Jarvis no necesita privilegios ni escribir fuera de casa.
-NoNewPrivileges=true
+# Endurecimiento: Jarvis no escribe fuera de casa (PrivateTmp).
+# OJO — NoNewPrivileges NO puede ir aquí: el sistema de permisos necesita que el
+# servicio pueda elevar con `sudo -n` para lanzar el helper de root
+# (jarvis-permiso), que ejecuta SOLO lo que el usuario aprueba con su PIN.
+# Con NoNewPrivileges=true, sudo falla siempre y aprobar no hace nada.
+# La escritura del agente sigue confinada por el sandbox de DSH y lo de root
+# pasa por el helper, que exige el PIN.
 PrivateTmp=true
 
 StandardOutput=journal

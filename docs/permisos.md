@@ -63,6 +63,21 @@ Para desinstalarlo: `sudo bash deploy/instalar-permisos.sh --quitar`.
 - El **sandbox** del agente sigue puesto: la raíz es **solo lectura** y la
   escritura está confinada a su workspace. Lo de fuera pasa por este helper.
 
+## Si aprobar falla
+
+- **«no new privileges»**: la unidad `jarvis.service` tiene `NoNewPrivileges=true`
+  y eso desactiva `sudo` para todo el servicio. Hay que quitarlo (la plantilla
+  `deploy/systemd/jarvis.service.in` ya lo trae así) y reinstalar la unidad:
+
+  ```bash
+  sudo bash deploy/instalar.sh --jarvis
+  ```
+
+- **«PIN incorrecto»**: prueba otra vez; a los 5 fallos se bloquea 5 minutos
+  (`sudo -n /usr/local/sbin/jarvis-permiso estado` dice si está `bloqueado`).
+- **«no hay PIN configurado»**: falta el paso del PIN; vuelve a lanzar
+  `sudo bash deploy/instalar-permisos.sh`.
+
 ## De cara al futuro
 
 El PIN es la primera barrera. La **alternativa robusta** —cuando toque— es
