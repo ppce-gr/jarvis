@@ -4,4 +4,4 @@
 #
 # Se instala en /etc/sudoers.d/jarvis-permisos con permisos 0440, validado
 # antes con `visudo -cf` (un fichero mal formado rompe sudo entero).
-jarvis ALL=(root) NOPASSWD: /usr/local/sbin/jarvis-permiso
+@JARVIS_USER@ ALL=(root) NOPASSWD: /usr/local/sbin/jarvis-permiso

@@ -49,15 +49,19 @@ chmod 0755 "$HELPER_DST"
 chown root:root "$HELPER_DST"
 echo "+ helper instalado en $HELPER_DST"
 
-# 2) Regla de sudoers (validada ANTES de instalarla)
-if visudo -cf "$SUDOERS_SRC" >/dev/null 2>&1; then
-  install -m 0440 -o root -g root "$SUDOERS_SRC" "$SUDOERS_DST"
+# 2) Regla de sudoers (con el usuario real; validada ANTES de instalarla)
+SUDOERS_TMP="$(mktemp)"
+sed -e "s|@JARVIS_USER@|$JARVIS_USER|g" "$SUDOERS_SRC" > "$SUDOERS_TMP"
+if visudo -cf "$SUDOERS_TMP" >/dev/null 2>&1; then
+  install -m 0440 -o root -g root "$SUDOERS_TMP" "$SUDOERS_DST"
   echo "+ regla de sudoers validada e instalada"
 else
   echo "ERROR: la regla de sudoers no es válida; NO se instala." >&2
-  visudo -cf "$SUDOERS_SRC" >&2 || true
+  visudo -cf "$SUDOERS_TMP" >&2 || true
+  rm -f "$SUDOERS_TMP"
   exit 1
 fi
+rm -f "$SUDOERS_TMP"
 
 # 3) PIN (hasheado, solo root)
 instalar_pin() {
