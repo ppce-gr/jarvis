@@ -361,21 +361,29 @@ function abrirDialogoIdea({ titulo = 'Idea', texto = '', tipo = 'texto', valor =
     const inputWrap = $('#idea-dialog-input-wrap');
     const select = $('#idea-dialog-select');
     const selectWrap = $('#idea-dialog-select-wrap');
+    const pin = $('#idea-dialog-pin');
+    const pinWrap = $('#idea-dialog-pin-wrap');
     const btnOk = $('#idea-dialog-ok');
     const btnCancel = $('#idea-dialog-cancel');
     if (!dlg || !input || !select || !btnOk || !btnCancel) return resolve(null);
 
+    inputWrap.classList.add('hidden');
+    selectWrap.classList.add('hidden');
+    if (pinWrap) pinWrap.classList.add('hidden');
+    if (pin) pin.value = '';
+
     $('#idea-dialog-title').textContent = titulo;
     $('#idea-dialog-text').textContent = texto;
     if (tipo === 'lista') {
-      inputWrap.classList.add('hidden');
       selectWrap.classList.remove('hidden');
       select.innerHTML = opciones
         .map((o) => `<option value="${escapeHtml(o.valor)}">${escapeHtml(o.etiqueta)}</option>`)
         .join('');
       if (valor) select.value = valor;
+    } else if (tipo === 'secreto') {
+      if (pinWrap) pinWrap.classList.remove('hidden');
+      try { pin.focus(); } catch { /* sin foco */ }
     } else {
-      selectWrap.classList.add('hidden');
       inputWrap.classList.remove('hidden');
       input.value = valor || '';
       try { input.focus(); input.select(); } catch { /* sin foco */ }
@@ -388,11 +396,17 @@ function abrirDialogoIdea({ titulo = 'Idea', texto = '', tipo = 'texto', valor =
       dlg.removeEventListener('close', alCerrar);
     };
     const aceptar = () => {
-      resultado = tipo === 'lista' ? select.value : (input.value.trim() || null);
+      if (tipo === 'lista') resultado = select.value;
+      else if (tipo === 'secreto') resultado = pin ? (pin.value.trim() || null) : null;
+      else resultado = input.value.trim() || null;
       dlg.close();
     };
     const cancelar = () => { resultado = null; dlg.close(); };
-    const alCerrar = () => { limpiar(); resolve(resultado); };
+    const alCerrar = () => {
+      if (pin) pin.value = '';   // el PIN no se queda en el DOM
+      limpiar();
+      resolve(resultado);
+    };
     btnOk.addEventListener('click', aceptar);
     btnCancel.addEventListener('click', cancelar);
     dlg.addEventListener('close', alCerrar);
@@ -1268,6 +1282,119 @@ function manejarAdjuntos(event) {
   else if (btn.dataset.adjBorrar) accionAdjunto('borrar', btn.dataset.adjBorrar);
 }
 
+/* ================================================================
+   Permisos de sistema: el agente pide, el usuario aprueba con PIN
+   ----------------------------------------------------------------
+   Nada se ejecuta hasta que el usuario aprueba UNA A UNA, con su PIN.
+   El PIN no se guarda aquí ni se manda al modelo: solo viaja al helper.
+   ================================================================ */
+let permisosActuales = [];
+
+async function cargarPermisos() {
+  if (!state.currentProjectId) return;
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/permisos`);
+    permisosActuales = Array.isArray(data.pendientes) ? data.pendientes : [];
+    renderPermisos(permisosActuales, data.resultados || []);
+  } catch (error) {
+    const cont = $('#permisos-list');
+    if (cont) {
+      cont.innerHTML = `<div class="empty-state"><p class="muted">No se pudieron leer los permisos: ${escapeHtml(error.message)}</p></div>`;
+    }
+  }
+}
+
+function renderPermisos(pendientes = [], resultados = []) {
+  const cont = $('#permisos-list');
+  if (cont) {
+    if (!pendientes.length) {
+      cont.innerHTML = '<div class="empty-state"><p class="muted">Sin peticiones pendientes. Cuando Jarvis necesite root, aparecerá aquí para que la apruebes.</p></div>';
+    } else {
+      cont.innerHTML = pendientes.map((p) => `
+        <div class="seg-item seg-pendiente permiso-item">
+          <div class="permiso-cuerpo">
+            <code class="permiso-comando">${escapeHtml(p.comando || '')}</code>
+            ${p.motivo ? `<p class="permiso-motivo">${escapeHtml(p.motivo)}</p>` : ''}
+            <span class="permiso-fecha">${p.at ? escapeHtml(new Date(p.at).toLocaleString()) : ''}</span>
+          </div>
+          <span class="seg-acciones">
+            <button class="seg-btn seg-ok" data-permiso-aprobar="${escapeHtml(p.id)}" title="Aprobar y ejecutar (pide PIN)">✓</button>
+            <button class="seg-btn seg-del" data-permiso-rechazar="${escapeHtml(p.id)}" title="Rechazar">✕</button>
+          </span>
+        </div>`).join('');
+    }
+  }
+  const hist = $('#permisos-historial');
+  if (hist) {
+    if (!resultados.length) hist.innerHTML = '<p class="muted">Sin historial.</p>';
+    else {
+      hist.innerHTML = resultados.map((r) => `
+        <div class="hist-item">
+          <span class="hist-accion">${r.aprobado ? 'ejecutada' : 'rechazada'}</span>
+          <code>${escapeHtml(r.comando || '')}</code>
+          ${r.codigo != null ? `<span class="muted">· código ${escapeHtml(String(r.codigo))}</span>` : ''}
+          <span class="hist-fecha">${r.at ? escapeHtml(new Date(r.at).toLocaleString()) : ''}</span>
+          ${r.salida ? `<pre class="permiso-salida">${escapeHtml(String(r.salida).slice(0, 2000))}</pre>` : ''}
+        </div>`).join('');
+    }
+  }
+}
+
+async function aprobarPermiso(id) {
+  const p = permisosActuales.find((x) => x.id === id);
+  const pin = await abrirDialogoIdea({
+    titulo: 'Aprobar acción de root',
+    texto: p ? `Se ejecutará como root:\n${p.comando}` : 'Se ejecutará como root.',
+    tipo: 'secreto'
+  });
+  if (!pin) return;
+  try {
+    const r = await api(
+      `/api/projects/${encodeURIComponent(state.currentProjectId)}/permisos/${encodeURIComponent(id)}/aprobar`,
+      { method: 'POST', body: JSON.stringify({ pin }) }
+    );
+    toast(r.permiso && r.permiso.codigo === 0 ? 'Ejecutada' : 'Ejecutada; revisa la salida', 'ok');
+  } catch (error) {
+    toast(`No se pudo: ${error.message}`, 'err');
+  }
+  cargarPermisos();
+  actualizarBadgePermisos();
+}
+
+async function rechazarPermiso(id) {
+  if (typeof window.confirm === 'function' && !window.confirm('¿Rechazar esta petición?')) return;
+  try {
+    await api(
+      `/api/projects/${encodeURIComponent(state.currentProjectId)}/permisos/${encodeURIComponent(id)}/rechazar`,
+      { method: 'POST', body: JSON.stringify({}) }
+    );
+    toast('Rechazada', 'ok');
+  } catch (error) {
+    toast(`No se pudo: ${error.message}`, 'err');
+  }
+  cargarPermisos();
+  actualizarBadgePermisos();
+}
+
+function manejarPermisos(event) {
+  const aprobar = event.target.closest('[data-permiso-aprobar]');
+  if (aprobar) { aprobarPermiso(aprobar.dataset.permisoAprobar); return; }
+  const rechazar = event.target.closest('[data-permiso-rechazar]');
+  if (rechazar) rechazarPermiso(rechazar.dataset.permisoRechazar);
+}
+
+/** «!» en la pestaña mientras haya peticiones sin resolver. */
+async function actualizarBadgePermisos() {
+  const el = $('#badge-permisos');
+  if (!el || !state.currentProjectId) return;
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/permisos`);
+    const n = (data.pendientes || []).length;
+    el.classList.toggle('hidden', n === 0);
+    el.title = n ? `${n} petición(es) de permisos` : '';
+  } catch { /* sin conexión */ }
+}
+
 /* ---------------- Pestañas ---------------- */
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
@@ -1278,6 +1405,7 @@ function switchTab(tab) {
   $('#pane-dudas').classList.toggle('hidden', tab !== 'dudas');
   $('#pane-mapa').classList.toggle('hidden', tab !== 'mapa');
   $('#pane-adjuntos').classList.toggle('hidden', tab !== 'adjuntos');
+  $('#pane-permisos').classList.toggle('hidden', tab !== 'permisos');
   $('#pane-code').classList.toggle('hidden', tab !== 'code');
   $('#pane-logs').classList.toggle('hidden', tab !== 'logs');
   $('#edit-toggle').classList.toggle('hidden', tab !== 'conceptual' || !state.currentNoteId);
@@ -1286,6 +1414,7 @@ function switchTab(tab) {
   if (tab === 'preguntas' || tab === 'clave' || tab === 'dudas') renderSeguimiento(tab);
   if (tab === 'mapa') renderMapa();
   if (tab === 'adjuntos') cargarAdjuntos();
+  if (tab === 'permisos') cargarPermisos();
 }
 
 /* ================================================================
@@ -1532,6 +1661,7 @@ async function openChat(projectId) {
   await resyncChat();
   loadChatConfig();
   actualizarBotonHilos();
+  actualizarBadgePermisos();
 
   // Stream en vivo. EventSource reconecta solo si se cae la conexión.
   const source = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/chat/stream`);
@@ -2683,6 +2813,7 @@ function bindEvents() {
     event.target.value = '';
   });
   on('#adjuntos-list', 'click', manejarAdjuntos);
+  on('#permisos-list', 'click', manejarPermisos);
   const zonaAdjuntos = $('#adjuntos-drop');
   if (zonaAdjuntos) {
     for (const ev of ['dragover', 'dragenter']) {
@@ -2875,6 +3006,8 @@ window.Jarvis = {
   pintarSalud,
   abrirHilos,
   opcionesHilos,
+  cargarPermisos,
+  renderPermisos,
   switchTab,
   parseChecklist,
   construirGrafo,

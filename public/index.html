@@ -80,6 +80,7 @@
             <button class="tab" data-tab="clave" role="tab" title="Puntos clave de la idea">Clave<span id="badge-clave" class="tab-badge hidden" title="Puntos clave pendientes de evaluar">!</span></button>
             <button class="tab" data-tab="dudas" role="tab" title="Dudas del agente sin responder">Dudas<span id="badge-dudas" class="tab-badge hidden" title="Dudas del agente sin responder">!</span></button>
             <button class="tab" data-tab="adjuntos" role="tab" title="Ficheros que le pasas a la idea">Adjuntos</button>
+            <button class="tab" data-tab="permisos" role="tab" title="Acciones de sistema que el agente pide y tú apruebas">Permisos<span id="badge-permisos" class="tab-badge hidden" title="Peticiones de permisos sin resolver">!</span></button>
             <button class="tab" data-tab="mapa" role="tab" title="Mapa mental de la idea">Mapa</button>
             <button class="tab" data-tab="code" role="tab">Código</button>
             <button class="tab" data-tab="logs" role="tab">Bitácora</button>
@@ -193,6 +194,20 @@
             <details class="adjuntos-historial">
               <summary>Historial de ficheros</summary>
               <div id="adjuntos-historial"></div>
+            </details>
+          </section>
+
+          <!-- Permisos: acciones de sistema que el agente pide y el usuario aprueba -->
+          <section id="pane-permisos" class="pane hidden">
+            <div class="mapa-head">
+              <h2>Permisos de sistema</h2>
+              <p class="muted">Lo que Jarvis necesita hacer como root. <strong>Nada se ejecuta
+                hasta que lo apruebes</strong> con tu PIN, una a una. Revisa siempre el comando.</p>
+            </div>
+            <div id="permisos-list" class="seguimiento-list"></div>
+            <details class="adjuntos-historial">
+              <summary>Historial de permisos</summary>
+              <div id="permisos-historial"></div>
             </details>
           </section>
 
@@ -319,6 +334,10 @@
       <label id="idea-dialog-select-wrap" class="hidden">
         Idea
         <select id="idea-dialog-select"></select>
+      </label>
+      <label id="idea-dialog-pin-wrap" class="hidden">
+        PIN de permisos
+        <input id="idea-dialog-pin" type="password" autocomplete="new-password" placeholder="No se envía al modelo" />
       </label>
       <div class="dialog-actions">
         <button type="button" id="idea-dialog-cancel" class="btn btn-ghost">Cancelar</button>

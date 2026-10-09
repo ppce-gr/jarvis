@@ -38,6 +38,7 @@ export class JarvisWebServer {
     getSystemStatusUseCase,
     getSystemHealthUseCase,
     manageConversationsUseCase,
+    managePermissionsUseCase,
     requestSystemUpdateUseCase,
     checkForUpdatesUseCase,
     publicDir,
@@ -66,6 +67,7 @@ export class JarvisWebServer {
     this.getSystemStatusUseCase = getSystemStatusUseCase;
     this.getSystemHealthUseCase = getSystemHealthUseCase;
     this.manageConversationsUseCase = manageConversationsUseCase;
+    this.managePermissionsUseCase = managePermissionsUseCase;
     this.requestSystemUpdateUseCase = requestSystemUpdateUseCase;
     this.checkForUpdatesUseCase = checkForUpdatesUseCase;
     this.publicDir = publicDir || path.resolve(process.cwd(), 'public');
@@ -544,6 +546,49 @@ export class JarvisWebServer {
         try {
           const body = await this._readJsonBody(req);
           return this._sendJson(res, 200, { projectId, ...(await this.manageConversationsUseCase.continue(projectId, body.nombre)) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // ---- Permisos de sistema: pedir, listar, aprobar (PIN) y rechazar ----
+      // GET /api/projects/:id/permisos
+      if (req.method === 'GET' && segments[3] === 'permisos' && !segments[4]) {
+        try {
+          return this._sendJson(res, 200, { projectId, ...(await this.managePermissionsUseCase.list(projectId)) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/permisos  { comando, motivo, cwd }
+      if (req.method === 'POST' && segments[3] === 'permisos' && !segments[4]) {
+        try {
+          const body = await this._readJsonBody(req);
+          const permiso = await this.managePermissionsUseCase.request(projectId, body.comando, body.motivo, body.cwd);
+          return this._sendJson(res, 201, { projectId, permiso });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/permisos/:pid/aprobar  { pin }
+      if (req.method === 'POST' && segments[3] === 'permisos' && segments[5] === 'aprobar') {
+        try {
+          const body = await this._readJsonBody(req);
+          const permiso = await this.managePermissionsUseCase.approve(projectId, decodeURIComponent(segments[4]), body.pin);
+          return this._sendJson(res, 200, { projectId, permiso });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // POST /api/projects/:id/permisos/:pid/rechazar  { motivo }
+      if (req.method === 'POST' && segments[3] === 'permisos' && segments[5] === 'rechazar') {
+        try {
+          const body = await this._readJsonBody(req);
+          const permiso = await this.managePermissionsUseCase.reject(projectId, decodeURIComponent(segments[4]), body.motivo);
+          return this._sendJson(res, 200, { projectId, permiso });
         } catch (error) {
           return this._sendJson(res, 400, { error: error.message });
         }

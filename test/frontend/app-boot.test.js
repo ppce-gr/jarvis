@@ -663,3 +663,31 @@ test('el selector de conversaciones lista la actual y las guardadas', async () =
   // Sin conversación actual no se ofrece la opción «Actual».
   assert.equal(jarvis.opcionesHilos({ actual: { mensajes: 0 }, archivadas: [] }).length, 0);
 });
+
+/* ================================================================
+   Permisos de sistema: el usuario aprueba una a una
+   ================================================================ */
+
+test('la pestaña de permisos muestra el comando y los botones de decidir', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.deepEqual(errores, []);
+
+  jarvis.renderPermisos(
+    [{ id: 'p1', comando: 'systemctl restart nginx', motivo: 'reiniciar', at: '2024-01-01T10:00:00Z' }],
+    [{ id: 'p0', comando: 'echo hola', aprobado: true, codigo: 0, salida: 'hola', at: '2024-01-01T09:00:00Z' }]
+  );
+
+  const html = registro.get('#permisos-list').innerHTML;
+  assert.match(html, /systemctl restart nginx/);
+  assert.match(html, /data-permiso-aprobar="p1"/);
+  assert.match(html, /data-permiso-rechazar="p1"/);
+  // El historial guarda lo ejecutado.
+  assert.match(registro.get('#permisos-historial').innerHTML, /echo hola/);
+  assert.match(registro.get('#permisos-historial').innerHTML, /ejecutada/);
+});
+
+test('sin peticiones, la pestaña de permisos lo dice', async () => {
+  const { registro, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  jarvis.renderPermisos([], []);
+  assert.match(registro.get('#permisos-list').innerHTML, /Sin peticiones pendientes/);
+});

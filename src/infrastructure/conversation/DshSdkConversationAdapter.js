@@ -386,6 +386,17 @@ export class DshSdkConversationAdapter extends ConversationPort {
       '- La pestaña Adjuntos permite al usuario subir, mover, desasociar (quitar de',
       '  la idea sin borrar) y borrar. El historial queda registrado.',
       '',
+      'Permisos de sistema (NO tienes root):',
+      '- Si necesitas algo del sistema (reiniciar un servicio, editar `/etc`, GPIO,',
+      '  paquetes), NO lo intentes: pide permiso y espera. Lo aprueba el usuario',
+      '  1 a 1 con su PIN; nada se ejecuta hasta entonces.',
+      '- Pide así (con el id de tu idea):',
+      '  curl -s -XPOST localhost:3081/api/projects/<idea>/permisos \\',
+      '    -H "Content-Type: application/json" \\',
+      '    -d \'{"comando":"...","motivo":"..."}\'',
+      '- El resultado queda en `logs/permisos/resultados/`. Si no aparece, aún no lo',
+      '  ha aprobado: espera, no lo repitas en bucle.',
+      '',
       'Mensaje del usuario:',
       text
     ].join('\n');

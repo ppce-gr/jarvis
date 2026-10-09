@@ -18,6 +18,7 @@ import { FileSystemBrowserAdapter } from './infrastructure/persistence/FileSyste
 import { FileSystemAttachmentAdapter } from './infrastructure/persistence/FileSystemAttachmentAdapter.js';
 import { FileSystemIdeaManagementAdapter } from './infrastructure/persistence/FileSystemIdeaManagementAdapter.js';
 import { FileSystemConversationStoreAdapter } from './infrastructure/persistence/FileSystemConversationStoreAdapter.js';
+import { FileSystemPermissionAdapter } from './infrastructure/persistence/FileSystemPermissionAdapter.js';
 import { DshHeadlessOrchestratorAdapter } from './infrastructure/orchestrator/DshHeadlessOrchestratorAdapter.js';
 import { DshSdkConversationAdapter } from './infrastructure/conversation/DshSdkConversationAdapter.js';
 import { AcpConversationAdapter } from './infrastructure/conversation/AcpConversationAdapter.js';
@@ -35,6 +36,7 @@ import { BrowseProjectFilesUseCase } from './application/BrowseProjectFilesUseCa
 import { ManageAttachmentsUseCase } from './application/ManageAttachmentsUseCase.js';
 import { ManageIdeasUseCase } from './application/ManageIdeasUseCase.js';
 import { ManageConversationsUseCase } from './application/ManageConversationsUseCase.js';
+import { ManagePermissionsUseCase } from './application/ManagePermissionsUseCase.js';
 import { GetGitStatusUseCase } from './application/GetGitStatusUseCase.js';
 import { ListOrchestratorTasksUseCase } from './application/ListOrchestratorTasksUseCase.js';
 import { SendChatMessageUseCase } from './application/SendChatMessageUseCase.js';
@@ -136,6 +138,8 @@ const getChatHistoryUseCase = new GetChatHistoryUseCase(conversationAdapter);
 const resetChatUseCase = new ResetChatUseCase(conversationAdapter);
 const conversationStoreAdapter = new FileSystemConversationStoreAdapter(brainDir);
 const manageConversationsUseCase = new ManageConversationsUseCase(conversationStoreAdapter, conversationAdapter);
+const permissionAdapter = new FileSystemPermissionAdapter({ brainDir });
+const managePermissionsUseCase = new ManagePermissionsUseCase(permissionAdapter);
 const subscribeChatUseCase = new SubscribeChatUseCase(conversationAdapter);
 const cancelChatTurnUseCase = new CancelChatTurnUseCase(conversationAdapter);
 const getChatConfigUseCase = new GetChatConfigUseCase(conversationAdapter);
@@ -175,6 +179,7 @@ const webServer = new JarvisWebServer({
   getSystemStatusUseCase,
   getSystemHealthUseCase,
   manageConversationsUseCase,
+  managePermissionsUseCase,
   requestSystemUpdateUseCase,
   checkForUpdatesUseCase,
   publicDir: path.join(workspaceRoot, 'public'),

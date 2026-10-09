@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# ============================================================
+#  jarvis-permiso · ejecutor de acciones privilegiadas APROBADAS
+# ------------------------------------------------------------
+#  Se instala como /usr/local/sbin/jarvis-permiso (root:root 0755) y es LO
+#  ÚNICO que la regla de sudoers deja ejecutar como root:
+#
+#      jarvis ALL=(root) NOPASSWD: /usr/local/sbin/jarvis-permiso ...
+#
+#  Uso:
+#      jarvis-permiso aprobar <ruta-pendiente>   (el PIN llega por stdin)
+#      jarvis-permiso estado
+#
+#  Garantías:
+#   - Solo ejecuta peticiones que EXISTAN como fichero pendiente bajo la base
+#     de memoria. Nunca un comando que llegue por parámetro.
+#   - El PIN se compara contra un hash propiedad de root (0600). Nunca se
+#     escribe en disco ni en ningún log.
+#   - Tras N fallos, se bloquea un rato (evita fuerza bruta).
+#   - La salida se recorta antes de guardarla.
+# ============================================================
+set -uo pipefail
+
+BASE="${JARVIS_BRAIN_DIR:-@JARVIS_BRAIN_DIR@}"
+HASH_FILE="${JARVIS_PERMISOS_HASH:-/etc/jarvis/permisos.hash}"
+INTENTOS_FILE="${JARVIS_PERMISOS_INTENTOS:-/etc/jarvis/permisos.intentos}"
+MAX_INTENTOS="${JARVIS_PERMISOS_MAX_INTENTOS:-5}"
+BLOQUEO_SEG="${JARVIS_PERMISOS_BLOQUEO:-300}"
+MAX_SALIDA="${JARVIS_PERMISOS_MAX_SALIDA:-6000}"
+NODE_BIN="${JARVIS_NODE_BIN:-@JARVIS_NODE_BIN@}"
+LOG="${JARVIS_PERMISOS_LOG:-/var/log/jarvis-permisos.log}"
+
+log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG" 2>/dev/null || true; }
+fail() { echo "ERROR: $*" >&2; exit 1; }
+json() { "$NODE_BIN" -e "$1" "$PENDIENTE"; }
+
+bloqueado() {
+  [ -f "$INTENTOS_FILE" ] || return 1
+  local fallos ts ahora
+  fallos=$(cut -d' ' -f1 "$INTENTOS_FILE" 2>/dev/null || echo 0)
+  ts=$(cut -d' ' -f2 "$INTENTOS_FILE" 2>/dev/null || echo 0)
+  ahora=$(date +%s)
+  [ "${fallos:-0}" -ge "$MAX_INTENTOS" ] && [ $((ahora - ${ts:-0})) -lt "$BLOQUEO_SEG" ]
+}
+registrar_fallo() {
+  local fallos
+  fallos=$(cut -d' ' -f1 "$INTENTOS_FILE" 2>/dev/null || echo 0)
+  printf '%s %s\n' "$(( ${fallos:-0} + 1 ))" "$(date +%s)" > "$INTENTOS_FILE"
+}
+
+verificar_pin() {
+  local pin="$1" guardado salt esperado calculado
+  [ -f "$HASH_FILE" ] || fail "no hay PIN configurado ($HASH_FILE)"
+  guardado=$(cat "$HASH_FILE")
+  salt="${guardado%%\$*}"
+  esperado="${guardado#*\$}"
+  calculado=$(printf '%s%s' "$salt" "$pin" | sha256sum | cut -d' ' -f1)
+  [ -n "$pin" ] && [ "$calculado" = "$esperado" ]
+}
+
+case "${1:-}" in
+  estado)
+    if bloqueado; then echo "bloqueado"; else echo "libre"; fi
+    ;;
+
+  aprobar)
+    PENDIENTE="${2:-}"
+    [ -n "$PENDIENTE" ] || fail "falta la ruta de la petición"
+    case "$PENDIENTE" in
+      "$BASE"/*/logs/permisos/pendientes/*.json) ;;
+      *) fail "petición fuera de sitio" ;;
+    esac
+    [ -f "$PENDIENTE" ] || fail "la petición no existe"
+    if bloqueado; then fail "demasiados intentos; espera $BLOQUEO_SEG s"; fi
+
+    IFS= read -r PIN || true
+    if ! verificar_pin "$PIN"; then
+      registrar_fallo
+      log "PIN incorrecto"
+      fail "PIN incorrecto"
+    fi
+    rm -f "$INTENTOS_FILE"
+
+    COMANDO=$(json 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).comando||""))') || fail "petición ilegible"
+    CWD=$(json 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).cwd||""))') || fail "petición ilegible"
+    [ -n "$COMANDO" ] || fail "petición sin comando"
+
+    RESULTADO_DIR="$(dirname "$(dirname "$PENDIENTE")")/resultados"
+    mkdir -p "$RESULTADO_DIR"
+    RESULTADO="$RESULTADO_DIR/$(basename "$PENDIENTE")"
+
+    [ -n "$CWD" ] && [ -d "$CWD" ] && cd "$CWD" || cd /
+
+    SALIDA=$(bash -c "$COMANDO" 2>&1)
+    CODIGO=$?
+    SALIDA="${SALIDA:0:$MAX_SALIDA}"
+
+    "$NODE_BIN" -e '
+      const fs = require("fs");
+      const [pend, res, salida, codigo] = process.argv.slice(1);
+      const j = JSON.parse(fs.readFileSync(pend, "utf8"));
+      fs.writeFileSync(res, JSON.stringify({ ...j, estado: "ejecutada", aprobado: true,
+        codigo: Number(codigo), salida, ejecutadoEn: new Date().toISOString() }, null, 2));
+    ' "$PENDIENTE" "$RESULTADO" "$SALIDA" "$CODIGO" || fail "no pude escribir el resultado"
+    rm -f "$PENDIENTE"
+    log "ejecutado (código $CODIGO): $COMANDO"
+    echo "OK"
+    ;;
+
+  *)
+    fail "uso: jarvis-permiso {aprobar <peticion>|estado}"
+    ;;
+esac
