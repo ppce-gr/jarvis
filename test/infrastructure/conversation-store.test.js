@@ -40,7 +40,7 @@ test('archivar guarda la conversación, la lista y reinicia la sesión', async (
   assert.equal(list.archivadas[0].ultimo, 'buenas');
 });
 
-test('continuar trae una archivada como actual, conserva la anterior y reinicia', async () => {
+test('continuar trae una archivada como actual, conserva la previa y reinicia', async () => {
   const { caso, escribir, resets } = await conConversaciones();
   await escribir([{ role: 'user', text: 'hola' }, { role: 'assistant', text: 'buenas' }]);
   const { archivada } = await caso.archive('idea');
@@ -56,7 +56,9 @@ test('continuar trae una archivada como actual, conserva la anterior y reinicia'
   assert.ok(resets.length >= 2, 'reinició al archivar y al continuar');
 
   const list = await caso.list('idea');
-  assert.ok(list.archivadas.length >= 2, 'la conversación previa no se pierde');
+  assert.equal(list.archivadas.length, 1, 'la elegida se mueve; solo queda la previa');
+  assert.notEqual(list.archivadas[0].nombre, archivada, 'la elegida deja de estar archivada');
+  assert.equal(list.archivadas[0].inicio, 'otra cosa');
 });
 
 test('no se puede continuar algo que no existe', async () => {

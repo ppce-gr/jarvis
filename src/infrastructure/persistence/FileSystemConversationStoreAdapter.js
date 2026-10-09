@@ -112,7 +112,9 @@ export class FileSystemConversationStoreAdapter extends ConversationStorePort {
     // Lo que hubiera en la actual no se tira: se archiva.
     await this.archive(projectId);
     await fs.mkdir(this._logs(projectId), { recursive: true });
-    await fs.copyFile(origen, this._actual(projectId));
+    // Se MUEVE (no se copia): la elegida deja de estar archivada, así no sale
+    // dos veces en la lista.
+    await fs.rename(origen, this._actual(projectId));
     return { continuada: base, mensajes: mensajes.length };
   }
 }
