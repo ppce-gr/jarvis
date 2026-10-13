@@ -133,6 +133,11 @@ en [`deploy/`](deploy/) y [`scripts/`](scripts/).
 - **Cuando algo falla deja un post-mortem** legible
   (`.update-state/ultimo-fallo.txt`) con la fase, el error y a dónde se volvió,
   pensado para poder pedirle a Jarvis que lo revise y lo arregle.
+- **Cada tarea, una rama.** El agente trabaja en `tarea/<slug>` y antes de
+  abrirla se guarda un snapshot (commit base + ficheros no seguidos/ignorados)
+  dentro de `.git/`, que no se sube. `scripts/ramas.sh` abre, cierra (fusiona en
+  `main`) o **restaura** a un punto funcional; el usuario puede lanzarlo desde la
+  terminal. Se cuenta en [`docs/ramas.md`](docs/ramas.md).
 
 Para instalarlo, usarlo y entenderlo:
 
@@ -160,6 +165,7 @@ El script de mantenimiento reúne las operaciones en un solo sitio:
 | [`docs/manual-interfaz.md`](docs/manual-interfaz.md) | Uso desde el móvil. |
 | [`docs/proveedores.md`](docs/proveedores.md) | Configurar proveedores y claves de API (Claude, GPT, Gemini…). |
 | [`docs/autoactualizacion.md`](docs/autoactualizacion.md) | **Autoactualización con reversión**: método, barreras y riesgos. |
+| [`docs/ramas.md`](docs/ramas.md) | **Ramas de tarea**: red de seguridad y snapshot de la configuración. |
 | [`docs/guia-migracion.md`](docs/guia-migracion.md) | Llevarlo a otro hardware y restaurarlo. |
 | [`deploy/README.md`](deploy/README.md) | Instalación de servicios, zram, **autoactualización** y guía del script de mantenimiento. |
 
