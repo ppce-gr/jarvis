@@ -79,8 +79,20 @@ rl.on('line', (line) => {
 
     case 'session/prompt': {
       const sessionId = message.params?.sessionId;
-      respond(message.id, { messageId: `msg-${Date.now()}` });
-      if (SILENT) return;
+      if (SILENT) {
+        respond(message.id, { messageId: `msg-${Date.now()}` });
+        return;
+      }
+
+      // Si el prompt pide el resumen del sub-chat, devuelve un texto reconocible.
+      const textoPrompt = (message.params?.contentBlocks || [])
+        .filter((b) => b && b.type === 'text')
+        .map((b) => b.text)
+        .join('\n');
+      const esResumen = /RESUMEN/.test(textoPrompt);
+      const respuesta = esResumen
+        ? 'RESUMEN_FAKE: objetivo, decisiones y pendientes condensados'
+        : 'Respuesta de prueba';
 
       notify('session.status', { sessionId, status: 'running' });
       notify('session.event', {
@@ -121,7 +133,7 @@ rl.on('line', (line) => {
           type: 'assistant/message',
           seq: 3,
           time: Date.now(),
-          data: { message: { content: [{ type: 'text', text: 'Respuesta de prueba' }] } }
+          data: { message: { content: [{ type: 'text', text: respuesta }] } }
         }
       });
       notify('session.event', {
@@ -129,6 +141,10 @@ rl.on('line', (line) => {
         event: { type: 'turn/end', seq: 4, time: Date.now(), data: { reason: 'ok' } }
       });
       notify('session.status', { sessionId, status: 'idle' });
+      // La respuesta va DESPUÉS de los eventos: el adaptador necesita haber
+      // recibido el mensaje del asistente cuando `session/prompt` resuelve
+      // (si no, el turno oculto de resumen leería un buffer vacío).
+      respond(message.id, { messageId: `msg-${Date.now()}` });
       return;
     }
 

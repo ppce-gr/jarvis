@@ -2,6 +2,7 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ConversationPort } from '../../domain/ports/ConversationPort.js';
+import { medirConversacion, normalizarLimites } from '../../domain/ChatContext.js';
 import {
   summarizeTool,
   formatToolInput,
@@ -54,6 +55,7 @@ export class DshSdkConversationAdapter extends ConversationPort {
     model = process.env.JARVIS_CHAT_MODEL || 'deepseek-v4-flash',
     reasoningEffort = process.env.JARVIS_CHAT_EFFORT || 'high',
     idleTimeoutMs = DshSdkConversationAdapter.DEFAULT_IDLE_MS,
+    subchatLimits = null,
     spawnFn = nodeSpawn
   } = {}) {
     super();
@@ -66,9 +68,18 @@ export class DshSdkConversationAdapter extends ConversationPort {
     this.reasoningEffort = reasoningEffort;
     this.idleTimeoutMs = idleTimeoutMs;
     this.spawnFn = spawnFn;
+    // Umbrales de los sub-chats: tokens estimados y bytes. Se pueden inyectar;
+    // si no, se leen del entorno y, si tampoco, caen a los del dominio.
+    this.subchatLimits = normalizarLimites(subchatLimits || {
+      maxTokens: Number(process.env.JARVIS_CHAT_MAX_TOKENS),
+      maxBytes: Number(process.env.JARVIS_CHAT_MAX_BYTES)
+    });
 
     /** @type {Map<string, object>} projectId -> sesión */
     this._sessions = new Map();
+
+    /** Sub-chats pedidos por «continuar» antes de que exista la sesión. */
+    this._pendingSummaries = new Set();
 
     /** Cola de escritura del transcript por proyecto: evita entrelazar líneas. */
     this._recordQueues = new Map();
@@ -123,7 +134,12 @@ export class DshSdkConversationAdapter extends ConversationPort {
       lastActivity: Date.now(),
       idleTimer: null,
       stderrTail: [],
-      turnCount: 0
+      turnCount: 0,
+      // Sub-chats: turno oculto de resumen y preámbulo de la sesión nueva.
+      hidden: false,
+      hiddenBuffer: '',
+      prelude: null,
+      resumirAlAbrir: false
     };
 
     const rpc = new JsonRpcStdioClient(child);
@@ -227,6 +243,17 @@ export class DshSdkConversationAdapter extends ConversationPort {
   }
 
   _onNotification(session, method, params) {
+    // Turno oculto de resumen (sub-chat): no se pinta ni se registra, solo se
+    // recoge el texto del asistente para usarlo como resumen del tramo.
+    if (session.hidden) {
+      if (method === 'session.event' && params?.sessionId === session.sessionId
+          && params.event?.type === 'assistant/message') {
+        const texto = DshSdkConversationAdapter.extractText(params.event.data?.message?.content);
+        if (texto) session.hiddenBuffer = `${session.hiddenBuffer || ''}${texto}`;
+      }
+      return;
+    }
+
     if (method === 'session.status') {
       if (params?.sessionId !== session.sessionId) return;
       session.status = params.status;              // 'idle' | 'running'
@@ -440,7 +467,13 @@ export class DshSdkConversationAdapter extends ConversationPort {
     const clean = String(text ?? '').trim();
     if (!clean) throw new Error('MESSAGE_REQUIRED');
 
-    const session = await this._ensureSession(projectId);
+    let session = await this._ensureSession(projectId);
+
+    // Sub-chats: si el hilo ya es muy largo (o se pidió al continuar), se
+    // resume, se abre un proceso nuevo y el mensaje entra en la sesión nueva.
+    // `_quizasPartir` devuelve la sesión vigente (puede haber cambiado).
+    const trasPartir = await this._quizasPartir(projectId, session);
+    if (trasPartir) session = trasPartir;
 
     await this._record(projectId, { role: 'user', text: clean });
     this._emit(projectId, { type: 'user', text: clean });
@@ -455,10 +488,16 @@ export class DshSdkConversationAdapter extends ConversationPort {
     session.turnCount += 1;
     let outgoing = DshSdkConversationAdapter.buildOutgoingMessage(projectId, clean, isFirstOfSession);
     if (isFirstOfSession) {
-      // Sesión nueva (arranque de Jarvis o «continuar»): contexto con los
-      // últimos mensajes del hilo actual, no con todo el historial.
-      const previos = await this._historialReinyeccion(projectId);
-      if (previos.length) outgoing = `${DshSdkConversationAdapter._preambleHistorial(previos)}\n\n${outgoing}`;
+      // Sesión nueva (arranque de Jarvis o «continuar»): si el sub-chat trae
+      // resumen, ése manda (es más denso y no pierde el hilo); si no, se
+      // reinyectan los últimos mensajes del hilo actual.
+      if (session.prelude) {
+        outgoing = `${DshSdkConversationAdapter._preambleSubchat(session.prelude)}\n\n${outgoing}`;
+        session.prelude = null;
+      } else {
+        const previos = await this._historialReinyeccion(projectId);
+        if (previos.length) outgoing = `${DshSdkConversationAdapter._preambleHistorial(previos)}\n\n${outgoing}`;
+      }
     }
 
     try {
@@ -473,6 +512,114 @@ export class DshSdkConversationAdapter extends ConversationPort {
       this._emit(projectId, { type: 'status', status: 'idle' });
       throw error;
     }
+  }
+
+  /* ------------------------------------------------------------------
+   * Sub-chats: resumir y abrir sesión nueva sin que se note
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Marca la conversación para que el próximo mensaje abra un sub-chat con
+   * resumen. Lo usa «continuar». Se recuerda aunque todavía no haya sesión
+   * (este adaptador mata el proceso al reiniciar, así que la sesión puede
+   * no existir aún cuando llega la llamada).
+   */
+  async summarizeNext(projectId) {
+    if (!projectId) throw new Error('PROJECT_ID_REQUIRED');
+    this._pendingSummaries.add(projectId);
+    const session = this._sessions.get(projectId);
+    if (session) session.resumirAlAbrir = true;
+    return { armed: true };
+  }
+
+  /**
+   * Decide si toca partir el hilo. Parte si supera el umbral o si se pidió
+   * expresamente. Devuelve la sesión vigente si hubo partición (la nueva),
+   * o `null` si no se tocó nada.
+   */
+  async _quizasPartir(projectId, session) {
+    const historial = await this.history(projectId);
+    const medida = medirConversacion(historial, this.subchatLimits);
+    const forzar = Boolean(session.resumirAlAbrir) || this._pendingSummaries.has(projectId);
+    if (!forzar && !medida.debePartir) return null;
+    if (!historial.some((m) => m.role === 'user' || m.role === 'assistant')) return null;
+
+    session.resumirAlAbrir = false;
+    this._pendingSummaries.delete(projectId);
+    // Con la sesión recién arrancada (continuar) el agente no tiene el hilo en
+    // su contexto: hay que adjuntarle el transcrito para que lo resuma.
+    const incluirTranscrito = session.turnCount === 0;
+    const resumen = await this._resumir(projectId, session, incluirTranscrito);
+    if (!resumen) return null;
+
+    const n = 1 + historial.filter((m) => m.role === 'subchat').length + 1;
+    const marca = {
+      role: 'subchat',
+      n,
+      resumen,
+      tokens: medida.tokens,
+      bytes: medida.bytes,
+      at: new Date().toISOString()
+    };
+    await this._record(projectId, marca);
+    this._emit(projectId, {
+      type: 'subchat',
+      n,
+      resumen,
+      tokens: medida.tokens,
+      bytes: medida.bytes
+    });
+
+    // Sesión nueva: este adaptador no reanuda, así que se recrea el proceso.
+    await this.reset(projectId);
+    const nueva = await this._ensureSession(projectId);
+    nueva.prelude = resumen;
+    return nueva;
+  }
+
+  /** Pide al agente un resumen del hilo con un turno oculto (no se pinta). */
+  async _resumir(projectId, session, incluirTranscrito) {
+    if (!session.rpc || session.dead) return '';
+    let instruccion = [
+      'Estás a punto de continuar esta conversación en un chat nuevo.',
+      'Escribe un RESUMEN denso y autosuficiente para no perder contexto:',
+      'objetivo, decisiones tomadas, estado actual, ficheros o commits',
+      'relevantes, pendientes y siguiente paso. No uses herramientas;',
+      'responde sólo con el resumen.'
+    ].join(' ');
+    if (incluirTranscrito) {
+      const historial = await this.history(projectId);
+      const texto = historial
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-40)
+        .map((m) => `${m.role === 'user' ? 'Usuario' : 'Jarvis'}: ${String(m.text || '').slice(0, 1500)}`)
+        .join('\n');
+      instruccion = `Conversación anterior (contexto):\n${texto}\n\n${instruccion}`;
+    }
+
+    session.hidden = true;
+    session.hiddenBuffer = '';
+    try {
+      await session.rpc.request('session/prompt', {
+        sessionId: session.sessionId,
+        contentBlocks: [{ type: 'text', text: instruccion }]
+      });
+    } catch { /* sin resumen no se parte: mejor seguir que romper el chat */ }
+    finally {
+      session.hidden = false;
+    }
+    return String(session.hiddenBuffer || '').trim();
+  }
+
+  /** Bloque que abre un sub-chat con el resumen del anterior. */
+  static _preambleSubchat(resumen) {
+    return [
+      'Este chat continúa una conversación anterior de este mismo proyecto.',
+      'Resumen del contexto (continúa sin repetirlo):',
+      '',
+      String(resumen || '').trim(),
+      ''
+    ].join('\n');
   }
 
   async history(projectId) {
@@ -540,7 +687,11 @@ export class DshSdkConversationAdapter extends ConversationPort {
       lastActivity: Date.now(),
       idleTimer: null,
       stderrTail: [],
-      turnCount: 0
+      turnCount: 0,
+      hidden: false,
+      hiddenBuffer: '',
+      prelude: null,
+      resumirAlAbrir: false
     };
   }
 
@@ -559,8 +710,22 @@ export class DshSdkConversationAdapter extends ConversationPort {
   async reset(projectId) {
     if (!projectId) throw new Error('PROJECT_ID_REQUIRED');
     const session = this._sessions.get(projectId);
-    if (session && session.child) this._kill(session);
-    this._sessions.delete(projectId);
+    if (session) {
+      // El sub-chat consume la petición: si se reinicia a mano, no queda armado.
+      session.resumirAlAbrir = false;
+      session.hidden = false;
+      session.hiddenBuffer = '';
+      if (session.child) this._kill(session);
+    }
+    this._pendingSummaries.delete(projectId);
+    // La entrada NO se borra: se conservan los listeners para que la interfaz
+    // siga recibiendo eventos tras el reinicio (y el propio evento `reset`).
+    // La próxima sesión los heredará en `_ensureSession`.
+    if (session) {
+      session.dead = true;
+      session.status = 'stopped';
+      session.busy = false;
+    }
     this._emit(projectId, { type: 'reset' });
     return { reset: true };
   }
@@ -570,5 +735,6 @@ export class DshSdkConversationAdapter extends ConversationPort {
       if (session.child) this._kill(session);
     }
     this._sessions.clear();
+    this._pendingSummaries.clear();
   }
 }

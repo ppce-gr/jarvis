@@ -68,6 +68,10 @@ JARVIS_CHAT_MODEL="${JARVIS_CHAT_MODEL:-deepseek-v4-flash}"
 JARVIS_CHAT_EFFORT="${JARVIS_CHAT_EFFORT:-high}"
 # Apaga la conversación dormida tras 15 min sin uso para liberar memoria.
 JARVIS_CHAT_IDLE_MS="${JARVIS_CHAT_IDLE_MS:-900000}"
+# Sub-chats: cuando el hilo supera estos umbrales, Jarvis lo resume y abre una
+# sesión nueva. Tokens estimados (~4 caracteres por token) y bytes de texto.
+JARVIS_CHAT_MAX_TOKENS="${JARVIS_CHAT_MAX_TOKENS:-30000}"
+JARVIS_CHAT_MAX_BYTES="${JARVIS_CHAT_MAX_BYTES:-80000}"
 
 # --- Respaldo ---------------------------------------------------
 # El temporizador NO crea commits en el código (es público y su historia la lee

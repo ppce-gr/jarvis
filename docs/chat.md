@@ -258,6 +258,10 @@ Vale la pena distinguir **medido** de **esperado**:
 | `JARVIS_STALL_TIMEOUT_MS` | `600000` | Aviso si un turno lleva mucho sin emitir. |
 | `JARVIS_MODEL_PROBE_TIMEOUT_MS` | `45000` | Tope por modelo en la comprobación de Admin. |
 
+Los umbrales de sub-chat se cablean en el despliegue (`deploy/jarvis.conf.example`
+y la unidad que genera `deploy/instalar.sh`), así que se ajustan sin tocar código.
+Los sub-chats funcionan con los **dos** protocolos: `acp` (por defecto) y `sdk`.
+
 Al dormirse, el proceso se cierra por EOF de stdin (cierre limpio de ACP) y las
 sesiones quedan persistidas para reanudarse al siguiente mensaje.
 
