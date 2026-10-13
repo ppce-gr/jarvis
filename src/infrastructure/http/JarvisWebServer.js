@@ -37,6 +37,8 @@ export class JarvisWebServer {
     refreshModelsUseCase,
     getSystemStatusUseCase,
     getSystemHealthUseCase,
+    getServicesUseCase,
+    toggleServiceUseCase,
     manageConversationsUseCase,
     managePermissionsUseCase,
     manageResumeNoteUseCase,
@@ -67,6 +69,8 @@ export class JarvisWebServer {
     this.refreshModelsUseCase = refreshModelsUseCase;
     this.getSystemStatusUseCase = getSystemStatusUseCase;
     this.getSystemHealthUseCase = getSystemHealthUseCase;
+    this.getServicesUseCase = getServicesUseCase;
+    this.toggleServiceUseCase = toggleServiceUseCase;
     this.manageConversationsUseCase = manageConversationsUseCase;
     this.managePermissionsUseCase = managePermissionsUseCase;
     this.manageResumeNoteUseCase = manageResumeNoteUseCase;
@@ -245,6 +249,25 @@ export class JarvisWebServer {
         return this._sendJson(res, 200, await this.getSystemHealthUseCase.execute());
       } catch (error) {
         return this._sendJson(res, 500, { error: error.message });
+      }
+    }
+
+    // GET /api/system/services  → estado de las capacidades de Jarvis
+    if (req.method === 'GET' && pathname === '/api/system/services') {
+      try {
+        return this._sendJson(res, 200, await this.getServicesUseCase.execute());
+      } catch (error) {
+        return this._sendJson(res, 500, { error: error.message });
+      }
+    }
+
+    // POST /api/system/services  → { id, action: 'activar'|'desactivar' }
+    if (req.method === 'POST' && pathname === '/api/system/services') {
+      try {
+        const body = await this._readJsonBody(req);
+        return this._sendJson(res, 200, await this.toggleServiceUseCase.execute(body?.id, body?.action));
+      } catch (error) {
+        return this._sendJson(res, 400, { error: error.message });
       }
     }
 

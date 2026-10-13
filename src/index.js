@@ -26,6 +26,7 @@ import { AcpConversationAdapter } from './infrastructure/conversation/AcpConvers
 import { GitSyncAdapter } from './infrastructure/git/GitSyncAdapter.js';
 import { LocalSystemUpdateAdapter } from './infrastructure/system/LocalSystemUpdateAdapter.js';
 import { LocalSystemHealthAdapter } from './infrastructure/system/LocalSystemHealthAdapter.js';
+import { LocalSystemServicesAdapter } from './infrastructure/system/LocalSystemServicesAdapter.js';
 import { JarvisWebServer } from './infrastructure/http/JarvisWebServer.js';
 
 import { GetProjectsUseCase } from './application/GetProjectsUseCase.js';
@@ -52,6 +53,8 @@ import { GetModelHealthUseCase } from './application/GetModelHealthUseCase.js';
 import { RefreshModelsUseCase } from './application/RefreshModelsUseCase.js';
 import { GetSystemStatusUseCase } from './application/GetSystemStatusUseCase.js';
 import { GetSystemHealthUseCase } from './application/GetSystemHealthUseCase.js';
+import { GetServicesUseCase } from './application/GetServicesUseCase.js';
+import { ToggleServiceUseCase } from './application/ToggleServiceUseCase.js';
 import { RequestSystemUpdateUseCase } from './application/RequestSystemUpdateUseCase.js';
 import { CheckForUpdatesUseCase } from './application/CheckForUpdatesUseCase.js';
 
@@ -156,6 +159,12 @@ await systemUpdateAdapter.captureRunningCommit();
 const getSystemStatusUseCase = new GetSystemStatusUseCase(systemUpdateAdapter);
 const systemHealthAdapter = new LocalSystemHealthAdapter();
 const getSystemHealthUseCase = new GetSystemHealthUseCase(systemHealthAdapter);
+// Servicios: puente con code/voz/servicios.py del proyecto de voz.
+const servicesScript = process.env.JARVIS_SERVICIOS_SCRIPT
+  || path.join(brainDir, 'sistema-jarvis-parlante', 'code', 'voz', 'servicios.py');
+const systemServicesAdapter = new LocalSystemServicesAdapter({ scriptPath: servicesScript });
+const getServicesUseCase = new GetServicesUseCase(systemServicesAdapter);
+const toggleServiceUseCase = new ToggleServiceUseCase(systemServicesAdapter);
 const requestSystemUpdateUseCase = new RequestSystemUpdateUseCase(systemUpdateAdapter);
 const checkForUpdatesUseCase = new CheckForUpdatesUseCase(systemUpdateAdapter);
 
@@ -182,6 +191,8 @@ const webServer = new JarvisWebServer({
   refreshModelsUseCase,
   getSystemStatusUseCase,
   getSystemHealthUseCase,
+  getServicesUseCase,
+  toggleServiceUseCase,
   manageConversationsUseCase,
   managePermissionsUseCase,
   manageResumeNoteUseCase,

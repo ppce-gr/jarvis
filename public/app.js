@@ -3010,6 +3010,7 @@ async function abrirAdmin() {
   if (!dialog) return;
   try { dialog.showModal(); } catch { /* ya abierto */ }
   await cargarSaludModelos();
+  await cargarServicios();
 }
 
 async function cargarSaludModelos() {
@@ -3102,6 +3103,66 @@ async function comprobarModelos() {
   }
 }
 
+/* ---------------- Servicios de Jarvis (encender/apagar) ---------------- */
+const SERVICIO_ESTADO = {
+  activo: { texto: 'activo', clase: 'ok' },
+  dormido: { texto: 'dormido', clase: 'warn' },
+  parado: { texto: 'parado', clase: '' },
+  apagado: { texto: 'apagado', clase: '' },
+  inactivo: { texto: 'inactivo', clase: '' },
+  desconocido: { texto: 'desconocido', clase: '' }
+};
+
+async function cargarServicios() {
+  const resumen = $('#servicios-summary');
+  try {
+    const datos = await api('/api/system/services');
+    renderServicios(datos);
+  } catch (error) {
+    if (resumen) resumen.textContent = `No se pudo leer los servicios: ${error.message}`;
+  }
+}
+
+function renderServicios(datos) {
+  const cont = $('#admin-servicios');
+  const resumen = $('#servicios-summary');
+  if (!cont) return;
+  const recursos = datos?.recursos;
+  if (resumen) {
+    resumen.textContent = recursos
+      ? `Memoria: ${recursos.memLibreMB} MB libres de ${recursos.memTotalMB} MB · ${recursos.semaforo}`
+      : 'Sin datos de recursos.';
+  }
+  cont.innerHTML = '';
+  for (const s of datos?.servicios || []) {
+    const et = SERVICIO_ESTADO[s.estado] || { texto: s.estado, clase: '' };
+    const accion = s.estado === 'activo' ? 'desactivar' : 'activar';
+    const rotulo = s.estado === 'activo' ? 'Apagar' : 'Encender';
+    const fila = document.createElement('div');
+    fila.className = 'model-row service-row';
+    fila.innerHTML = `<span class="model-name">${escapeHtml(s.nombre || s.id)}</span>`
+      + `<span class="model-status ${et.clase}">${escapeHtml(et.texto)}</span>`
+      + `<button class="btn" data-service="${escapeHtml(s.id)}" data-action="${accion}">${rotulo}</button>`
+      + `<span class="model-error">${escapeHtml(s.detalle || '')}</span>`;
+    cont.appendChild(fila);
+  }
+}
+
+async function accionServicio(id, accion, boton) {
+  if (boton) boton.disabled = true;
+  try {
+    const r = await api('/api/system/services', {
+      method: 'POST',
+      body: JSON.stringify({ id, action: accion })
+    });
+    toast(r?.mensaje || 'Hecho', 'ok');
+    await cargarServicios();
+  } catch (error) {
+    toast(`No se pudo ${accion} ${id}: ${error.message}`, 'err');
+    if (boton) boton.disabled = false;
+  }
+}
+
 /* ---------------- UI móvil ---------------- */
 function closeMobileSidebar() {
   $('#sidebar').classList.remove('open');
@@ -3111,6 +3172,12 @@ function closeMobileSidebar() {
 function bindEvents() {
   document.querySelectorAll('.tab').forEach((tab) => {
     tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  });
+
+  // Sección de servicios del panel de administración.
+  on('#admin-servicios', 'click', (event) => {
+    const boton = event.target.closest('[data-service]');
+    if (boton) accionServicio(boton.dataset.service, boton.dataset.action, boton);
   });
 
   // Enlaces internos de las notas renderizadas
