@@ -198,6 +198,7 @@ export class JarvisWebServer {
    *   PUT  /api/projects/:id/conceptual/:noteId { title, content, frontmatter }
    *   GET  /api/projects/:id/files?zone=code|logs
    *   GET  /api/projects/:id/files/content?zone=code|logs&path=relativa
+   *   GET  /api/projects/:id/files/download?zone=code|logs&path=relativa
    *   POST /api/projects/:id/orchestrate        { instruction }
    */
   async _handleApi(req, res, pathname, url) {
@@ -412,6 +413,26 @@ export class JarvisWebServer {
           if (!relPath) return this._sendJson(res, 400, { error: 'PATH_REQUIRED' });
           const content = await this.browseProjectFilesUseCase.read(projectId, zone, relPath);
           return this._sendJson(res, 200, { projectId, zone, path: relPath, content });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // GET /api/projects/:id/files/download?zone=code&path=...  → fichero tal cual
+      if (req.method === 'GET' && segments[3] === 'files' && segments[4] === 'download') {
+        try {
+          const zone = url.searchParams.get('zone') || 'code';
+          const relPath = url.searchParams.get('path');
+          if (!relPath) return this._sendJson(res, 400, { error: 'PATH_REQUIRED' });
+          const { name, content } = await this.browseProjectFilesUseCase.download(projectId, zone, relPath);
+          const ascii = String(name).replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
+          res.writeHead(200, {
+            'Content-Type': 'application/octet-stream',
+            'Content-Disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+            'Content-Length': content.length,
+            'Cache-Control': 'no-store'
+          });
+          return res.end(content);
         } catch (error) {
           return this._sendJson(res, 400, { error: error.message });
         }

@@ -14,6 +14,7 @@ import { FileBrowserPort } from '../../domain/ports/FileBrowserPort.js';
 export class FileSystemBrowserAdapter extends FileBrowserPort {
   static ALLOWED_ZONES = new Set(['code', 'logs', 'conceptual']);
   static MAX_FILE_BYTES = 256 * 1024; // 256 KB: suficiente para texto, seguro para la Pi 3B
+  static MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024; // 16 MB: descarga directa, no para pintar
   static MAX_DEPTH = 4;
 
   constructor(brainDir = process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault')) {
@@ -26,6 +27,15 @@ export class FileSystemBrowserAdapter extends FileBrowserPort {
       throw new Error('ZONE_NOT_ALLOWED');
     }
     return path.join(this.brainDir, projectId, zone);
+  }
+
+  /** Resuelve una ruta relativa dentro de la zona, bloqueando el path traversal. */
+  _resolveZonePath(zoneDir, relativePath) {
+    const resolved = path.resolve(zoneDir, String(relativePath ?? ''));
+    if (resolved !== zoneDir && !resolved.startsWith(zoneDir + path.sep)) {
+      throw new Error('PATH_NOT_ALLOWED');
+    }
+    return resolved;
   }
 
   async listFiles(projectId, zone) {
@@ -64,12 +74,7 @@ export class FileSystemBrowserAdapter extends FileBrowserPort {
 
   async readFile(projectId, zone, relativePath) {
     const zoneDir = this._zoneDir(projectId, zone);
-    const resolved = path.resolve(zoneDir, relativePath);
-
-    // Bloqueo de path traversal
-    if (resolved !== zoneDir && !resolved.startsWith(zoneDir + path.sep)) {
-      throw new Error('PATH_NOT_ALLOWED');
-    }
+    const resolved = this._resolveZonePath(zoneDir, relativePath);
 
     const stats = await fs.stat(resolved);
     if (!stats.isFile()) throw new Error('NOT_A_FILE');
@@ -78,5 +83,27 @@ export class FileSystemBrowserAdapter extends FileBrowserPort {
     }
 
     return await fs.readFile(resolved, 'utf8');
+  }
+
+  /**
+   * Devuelve el contenido binario de un fichero para descargarlo. A diferencia
+   * de `readFile`, no está pensado para pintarlo: admite ficheros más grandes
+   * (con un tope) y no interpreta el texto.
+   */
+  async downloadFile(projectId, zone, relativePath) {
+    const zoneDir = this._zoneDir(projectId, zone);
+    const resolved = this._resolveZonePath(zoneDir, relativePath);
+
+    const stats = await fs.stat(resolved);
+    if (!stats.isFile()) throw new Error('NOT_A_FILE');
+    if (stats.size > FileSystemBrowserAdapter.MAX_DOWNLOAD_BYTES) {
+      throw new Error('FILE_TOO_LARGE');
+    }
+
+    return {
+      name: path.basename(resolved),
+      size: stats.size,
+      content: await fs.readFile(resolved)
+    };
   }
 }

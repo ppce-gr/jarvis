@@ -1193,6 +1193,58 @@ function mapaPointerUp() {
 }
 
 /* ---------------- Explorador code/ y logs/ ---------------- */
+
+/**
+ * Convierte la lista plana del backend (`type`, `path`) en un árbol de
+ * carpetas y ficheros, que la interfaz pinta con `<details>` (colapsable).
+ */
+function construirArbolArchivos(files) {
+  const raiz = { type: 'dir', name: '', path: '', children: new Map() };
+  const dirDe = (ruta) => {
+    let nodo = raiz;
+    for (const parte of String(ruta || '').split('/').filter(Boolean)) {
+      const path = nodo.path ? `${nodo.path}/${parte}` : parte;
+      if (!nodo.children.has(parte)) {
+        nodo.children.set(parte, { type: 'dir', name: parte, path, children: new Map() });
+      }
+      nodo = nodo.children.get(parte);
+    }
+    return nodo;
+  };
+  for (const f of files || []) {
+    if (!f || !f.path) continue;
+    if (f.type === 'dir') { dirDe(f.path); continue; }
+    const partes = f.path.split('/');
+    const nombre = partes.pop();
+    const padre = dirDe(partes.join('/'));
+    padre.children.set(nombre, { type: 'file', name: nombre, path: f.path, size: f.size || 0 });
+  }
+  return raiz;
+}
+
+/** Pinta el árbol como `<li>`; las carpetas son `<details>` expandibles. */
+function renderArbolArchivos(nodo, zone) {
+  const hijos = [...nodo.children.values()].sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  return hijos.map((n) => {
+    if (n.type === 'dir') {
+      const dentro = renderArbolArchivos(n, zone);
+      return `<li class="file-dir"><details open><summary>📂 ${escapeHtml(n.name)}</summary>`
+        + (dentro ? `<ul class="file-tree">${dentro}</ul>` : '')
+        + '</details></li>';
+    }
+    const href = `/api/projects/${encodeURIComponent(state.currentProjectId)}`
+      + `/files/download?zone=${zone}&path=${encodeURIComponent(n.path)}`;
+    const peso = n.size ? ` · ${formatBytes(n.size)}` : '';
+    return `<li class="file-item" data-file="${escapeHtml(n.path)}" title="${escapeHtml(n.path)}${peso}">`
+      + `<span class="file-name">📄 ${escapeHtml(n.name)}</span>`
+      + `<a class="file-download" data-download="1" href="${href}" download title="Descargar">⬇</a>`
+      + '</li>';
+  }).join('');
+}
+
 async function loadZone(zone) {
   if (!state.currentProjectId) return;
   try {
@@ -1200,21 +1252,21 @@ async function loadZone(zone) {
       `/api/projects/${encodeURIComponent(state.currentProjectId)}/files?zone=${zone}`
     );
     const ul = zone === 'code' ? $('#code-file-list') : $('#logs-file-list');
-    ul.innerHTML = '';
-    if (!files.length) {
+    if (!files || !files.length) {
       ul.innerHTML = '<li class="muted" style="cursor:default">Vacío por ahora</li>';
       return;
     }
-    for (const f of files) {
-      const li = document.createElement('li');
-      li.textContent = f.type === 'dir' ? `📂 ${f.path}` : `📄 ${f.path}`;
-      if (f.type === 'dir') li.classList.add('dir');
-      else li.addEventListener('click', () => openZoneFile(zone, f.path, li));
-      ul.appendChild(li);
-    }
+    ul.innerHTML = renderArbolArchivos(construirArbolArchivos(files), zone);
   } catch (error) {
     toast(`No se pudo listar ${zone}: ${error.message}`, 'err');
   }
+}
+
+/** Un clic en el árbol: descargar (lo hace el enlace) o abrir en el visor. */
+function manejarArchivoClick(event, zone) {
+  if (event.target.closest('[data-download]')) return;
+  const li = event.target.closest('[data-file]');
+  if (li && li.dataset.file) openZoneFile(zone, li.dataset.file, li);
 }
 
 async function openZoneFile(zone, filePath, li) {
@@ -1224,7 +1276,8 @@ async function openZoneFile(zone, filePath, li) {
     );
     const view = zone === 'code' ? $('#code-file-view') : $('#logs-file-view');
     view.textContent = data.content || '(vacío)';
-    li.parentElement.querySelectorAll('li').forEach((n) => n.classList.remove('active'));
+    const ul = zone === 'code' ? $('#code-file-list') : $('#logs-file-list');
+    ul.querySelectorAll('.file-item.active').forEach((n) => n.classList.remove('active'));
     li.classList.add('active');
   } catch (error) {
     toast(`No se pudo abrir: ${error.message}`, 'err');
@@ -3315,6 +3368,10 @@ function bindEvents() {
     tab.addEventListener('click', () => switchTab(tab.dataset.tab));
   });
 
+  // Explorador de ficheros: abrir en el visor (la descarga la hace el enlace).
+  on('#code-file-list', 'click', (event) => manejarArchivoClick(event, 'code'));
+  on('#logs-file-list', 'click', (event) => manejarArchivoClick(event, 'logs'));
+
   // Sección de servicios del panel de administración.
   on('#admin-servicios', 'click', (event) => {
     const boton = event.target.closest('[data-service]');
@@ -3560,6 +3617,9 @@ window.Jarvis = {
   cargarAdjuntos,
   renderAdjuntos,
   subirAdjuntos,
+  loadZone,
+  construirArbolArchivos,
+  renderArbolArchivos,
   candidatosPadre,
   descendientesDe,
   abrirDialogoIdea,

@@ -865,6 +865,35 @@ test('un chat de la conversación se puede abrir en solo lectura', async () => {
   assert.equal(registro.get('#chat-lectura-dialog')._modal, true);
 });
 
+test('el explorador de código arma un árbol con carpetas y descarga', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({
+    respuestas: {
+      // Clave específica ANTES de `/api/projects` (que también casaría).
+      '/files?zone=': {
+        files: [
+          { type: 'dir', path: 'src' },
+          { type: 'dir', path: 'src/domain' },
+          { type: 'file', path: 'src/domain/Foo.js', size: 10 },
+          { type: 'file', path: 'README.md', size: 5 }
+        ]
+      },
+      ...RESPUESTAS_BASE
+    }
+  });
+  assert.deepEqual(errores, []);
+  jarvis.state.currentProjectId = 'idea-uno';
+  await jarvis.loadZone('code');
+
+  const html = registro.get('#code-file-list').innerHTML;
+  assert.match(html, /file-dir/);
+  assert.match(html, /<details open>/, 'las carpetas se pueden plegar');
+  assert.match(html, /src/);
+  assert.match(html, /Foo\.js/);
+  assert.match(html, /data-download="1"/);
+  assert.match(html, /files\/download\?zone=code/);
+  assert.ok(html.indexOf('file-dir') < html.indexOf('README.md'), 'carpetas antes que ficheros');
+});
+
 test('el grafo de ideas distingue jerarquía y linaje', async () => {
   const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
   assert.deepEqual(errores, []);

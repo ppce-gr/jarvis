@@ -277,6 +277,27 @@ html, body {
 .file-list li.dir { color: var(--text-dim); cursor: default; }
 .file-list li.dir:hover { background: transparent; }
 
+/* Árbol de ficheros: carpetas plegables y botón de descarga */
+.file-list li.file-dir { border-bottom: none; cursor: default; padding: 4px 8px; }
+.file-list li.file-dir > details > summary {
+  cursor: pointer; list-style: none; color: var(--text-dim);
+  padding: 3px 2px; user-select: none;
+}
+.file-list li.file-dir > details > summary::-webkit-details-marker { display: none; }
+.file-list li.file-dir > details > summary::before { content: '▸'; margin-right: 4px; }
+.file-list li.file-dir > details[open] > summary::before { content: '▾'; }
+.file-list ul.file-tree { list-style: none; margin: 0; padding: 0 0 0 12px; }
+.file-list li.file-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px; cursor: pointer;
+}
+.file-list li.file-item .file-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-list li.file-item .file-download {
+  flex: 0 0 auto; text-decoration: none; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; font-size: 12px;
+}
+.file-list li.file-item .file-download:hover { color: var(--text); border-color: var(--accent-strong); }
+
 .file-view {
   margin: 0;
   background: var(--bg-soft);
