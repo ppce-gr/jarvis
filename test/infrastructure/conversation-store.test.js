@@ -87,6 +87,36 @@ test('pone título a una guardada sin tocar el contenido', async () => {
   assert.equal(messages.length, 2);
 });
 
+test('una conversación se ve compuesta por sus chats', async () => {
+  const { caso, escribir } = await conConversaciones();
+  await escribir([
+    { role: 'user', text: 'primer tema' },
+    { role: 'assistant', text: 'respuesta' },
+    { role: 'subchat', n: 2, resumen: 'resumen del primer tramo', tokens: 1200, bytes: 4800 },
+    { role: 'user', text: 'segundo tema' },
+    { role: 'assistant', text: 'otra respuesta' },
+    { role: 'subchat', n: 3, resumen: 'resumen del segundo tramo', tokens: 900, bytes: 3600 },
+    { role: 'user', text: 'tercer tema' }
+  ]);
+
+  const list = await caso.list('idea');
+  assert.equal(list.actual.chats, 3, 'tres chats en la conversación actual');
+  assert.equal(list.actual.chatsDetalle.length, 3);
+  assert.equal(list.actual.chatsDetalle[0].n, 1);
+  assert.equal(list.actual.chatsDetalle[0].mensajes, 2, 'el primer chat no lleva marca');
+  assert.equal(list.actual.chatsDetalle[1].n, 2);
+  assert.equal(list.actual.chatsDetalle[1].resumen, 'resumen del primer tramo');
+  assert.equal(list.actual.chatsDetalle[1].mensajes, 2);
+  assert.equal(list.actual.chatsDetalle[2].n, 3);
+  assert.equal(list.actual.chatsDetalle[2].mensajes, 1);
+
+  const { archivada } = await caso.archive('idea');
+  const guardadas = await caso.list('idea');
+  assert.equal(guardadas.archivadas[0].nombre, archivada);
+  assert.equal(guardadas.archivadas[0].chats, 3, 'el desglose viaja al archivarla');
+  assert.equal(guardadas.actual.chats, 1, 'una conversación vacía tiene un chat');
+});
+
 test('borrar una guardada la manda a la papelera y se puede recuperar', async () => {
   const { caso, escribir } = await conConversaciones();
   await escribir([{ role: 'user', text: 'hola' }]);

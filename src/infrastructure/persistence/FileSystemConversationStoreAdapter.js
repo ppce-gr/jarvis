@@ -91,8 +91,38 @@ export class FileSystemConversationStoreAdapter extends ConversationStorePort {
     return { inicio: limpio(primero), ultimo: limpio(ultimo) };
   }
 
+  /**
+   * Desglose de una conversación en sus **chats**. Una conversación es un hilo
+   * (un tema); cuando se alarga, el adaptador de chat la parte solo y deja una
+   * marca `{role:'subchat', n, resumen, tokens, bytes}`. El primer chat no lleva
+   * marca; cada marca abre el siguiente. Así una conversación «tiene» N chats.
+   */
+  _chats(mensajes) {
+    const chats = [];
+    let chat = { n: 1, resumen: null, tokens: null, bytes: null, at: null, mensajes: 0 };
+    for (const m of mensajes) {
+      if (m.role === 'subchat') {
+        chats.push(chat);
+        chat = {
+          n: Number(m.n) || chats.length + 1,
+          resumen: String(m.resumen || ''),
+          tokens: Number.isFinite(Number(m.tokens)) ? Number(m.tokens) : null,
+          bytes: Number.isFinite(Number(m.bytes)) ? Number(m.bytes) : null,
+          at: m.at || null,
+          mensajes: 0
+        };
+      } else if (m.role === 'user' || m.role === 'assistant') {
+        chat.mensajes += 1;
+      }
+    }
+    chats.push(chat);
+    return chats;
+  }
+
   async list(projectId) {
     const actual = await this._leer(this._actual(projectId));
+    const chatsActual = this._chats(actual);
+    const stActual = await fs.stat(this._actual(projectId)).catch(() => null);
     const titulos = await this._leerTitulos(projectId);
     const archivadas = [];
     let entries = [];
@@ -104,17 +134,28 @@ export class FileSystemConversationStoreAdapter extends ConversationStorePort {
       const ruta = path.join(this._carpeta(projectId), e.name);
       const st = await fs.stat(ruta).catch(() => null);
       const mensajes = await this._leer(ruta);
+      const chats = this._chats(mensajes);
       archivadas.push({
         nombre: e.name,
         titulo: titulos[e.name] || null,
         mensajes: mensajes.length,
+        chats: chats.length,
+        chatsDetalle: chats,
         modificadoEn: st?.mtime?.toISOString?.() || null,
         ...this._extracto(mensajes)
       });
     }
     archivadas.sort((a, b) => String(b.modificadoEn || '').localeCompare(String(a.modificadoEn || '')));
     return {
-      actual: { nombre: 'actual', mensajes: actual.length, ...this._extracto(actual) },
+      actual: {
+        nombre: 'actual',
+        titulo: null,
+        mensajes: actual.length,
+        chats: chatsActual.length,
+        chatsDetalle: chatsActual,
+        modificadoEn: stActual?.mtime?.toISOString?.() || null,
+        ...this._extracto(actual)
+      },
       archivadas
     };
   }
