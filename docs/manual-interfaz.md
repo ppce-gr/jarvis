@@ -96,7 +96,9 @@ editarlas a mano.
   medias antes de reiniciarse: **Ver nota** la muestra y **Abrir idea** entra en
   ella.
 
-### Chat (preguntas y respuestas)
+### Conversación (preguntas y respuestas)
+- Es la pestaña **Conversación** (antes «Chat»). Aquí viven las conversaciones de la
+  idea y los chats en que Jarvis las va partiendo.
 - Mientras Jarvis trabaja, el botón **Enviar** se convierte en **■ Detener**;
   pulsarlo (o el Detener de la cabecera) pide confirmación antes de parar.
 - Cada **pregunta** tuya lleva **↻ Reintentar** (vuelve a enviarla tal cual, útil
@@ -110,11 +112,12 @@ editarlas a mano.
   muy larga, Jarvis la **parte solo en chats**: verás una marca **«Chat 2 · resumen
   del anterior»** (desplegable) y un contador **N chats** en la cabecera. La
   conversación sigue siendo la misma.
-- **🗂** abre **Conversaciones**: cada una muestra **cuántos chats** la componen y,
-  desplegándola, el detalle de cada chat (con su resumen). Desde ahí puedes
-  **Continuar** una (la actual se archiva), ponerle **✎** título, mandarla **🗑** a
-  una papelera recuperable o pulsar **＋ Nueva conversación**. El botón
-  **＋ Conversación** de la cabecera guarda la actual y abre una limpia.
+- **🗂 Conversaciones** (en la cabecera; sólo icono en pantalla estrecha) abre el
+  panel con **todas** las conversaciones de la idea: cada una muestra **cuántos
+  chats** la componen y, desplegándola, el detalle de cada chat (con su resumen).
+  Desde ahí puedes **Continuar** una (la actual se archiva), ponerle **✎** título,
+  mandarla **🗑** a una papelera recuperable o pulsar **＋ Nueva conversación**. El
+  botón **＋ Conversación** de la cabecera guarda la actual y abre una limpia.
 
 ### Edición
 - Botón **✎ Editar** para escribir Markdown en crudo.

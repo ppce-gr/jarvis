@@ -77,7 +77,7 @@
         <!-- Panel principal -->
         <main class="main">
           <div class="tabs" role="tablist">
-            <button class="tab active" data-tab="chat" role="tab">Chat</button>
+            <button class="tab active" data-tab="chat" role="tab">Conversación</button>
             <button class="tab" data-tab="conceptual" role="tab">Conceptual</button>
             <button class="tab" data-tab="preguntas" role="tab">Preguntas<span id="badge-preguntas" class="tab-badge hidden" title="Preguntas pendientes de evaluar">!</span></button>
             <button class="tab" data-tab="clave" role="tab" title="Puntos clave de la idea">Clave<span id="badge-clave" class="tab-badge hidden" title="Puntos clave pendientes de evaluar">!</span></button>
@@ -106,7 +106,7 @@
                 </div>
                 <select id="chat-effort" class="chat-select chat-select-sm" title="Esfuerzo de razonamiento"></select>
                 <button id="chat-stop" class="btn btn-ghost btn-sm hidden" title="Detener la respuesta en curso (el agente conserva lo hablado)">■ Detener</button>
-                <button id="chat-hilos" class="btn btn-ghost btn-sm" title="Conversaciones de esta idea: verlas, ver sus chats y continuar una">🗂</button>
+                <button id="chat-hilos" class="btn btn-ghost btn-sm" title="Conversaciones de esta idea: verlas, ver sus chats y continuar una"><span aria-hidden="true">🗂</span><span class="hilos-label"> Conversaciones</span><span id="hilos-count" class="hilos-count"></span></button>
                 <button id="chat-reset" class="btn btn-ghost btn-sm" title="Guardar esta conversación y empezar otra nueva (otro tema)">＋ Conversación</button>
               </div>
               <div id="chat-messages" class="chat-messages">

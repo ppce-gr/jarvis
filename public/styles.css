@@ -384,6 +384,12 @@ html, body {
 .chat-status.error { color: #ffb4ae; border-color: #4a1f1c; }
 .chat-head .btn { margin-left: 0; }
 .chat-head #chat-reset { margin-left: auto; }
+/* Botón de conversaciones: texto en escritorio, sólo icono en pantalla estrecha. */
+.hilos-label { white-space: nowrap; }
+.hilos-count { color: var(--text-dim); }
+@media (max-width: 820px) {
+  .hilos-label { display: none; }
+}
 
 /* Selector de modelo y esfuerzo */
 .chat-select {
