@@ -69,6 +69,11 @@ test('FileSystemBrowserAdapter lista y lee dentro de la zona permitida', async (
 
   const content = await adapter.readFile('proj', 'code', 'src/index.js');
   assert.equal(content, 'console.log(1)');
+
+  const descarga = await adapter.downloadFile('proj', 'code', 'src/index.js');
+  assert.equal(descarga.name, 'index.js');
+  assert.equal(descarga.size, 'console.log(1)'.length);
+  assert.equal(descarga.content.toString('utf8'), 'console.log(1)');
 });
 
 test('FileSystemBrowserAdapter bloquea zonas y path traversal', async () => {
@@ -78,6 +83,10 @@ test('FileSystemBrowserAdapter bloquea zonas y path traversal', async () => {
   await assert.rejects(() => adapter.listFiles('proj', 'etc'), /ZONE_NOT_ALLOWED/);
   await assert.rejects(
     () => adapter.readFile('proj', 'code', '../../../etc/passwd'),
+    /PATH_NOT_ALLOWED/
+  );
+  await assert.rejects(
+    () => adapter.downloadFile('proj', 'code', '../../../etc/passwd'),
     /PATH_NOT_ALLOWED/
   );
 });

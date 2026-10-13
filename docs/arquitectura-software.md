@@ -99,6 +99,7 @@ Definidos en `src/domain/ports/`. Un puerto es una clase con métodos que lanzan
 | `PUT` | `/api/projects/:id/conceptual/:noteId` | Guarda nota |
 | `GET` | `/api/projects/:id/files?zone=code\|logs` | Lista ficheros de la zona |
 | `GET` | `/api/projects/:id/files/content?zone&path` | Contenido de un fichero |
+| `GET` | `/api/projects/:id/files/download?zone&path` | Descarga un fichero tal cual |
 | `GET` | `/api/projects/:id/tasks` | Estado de las tareas del orquestador |
 | `POST` | `/api/projects/:id/orchestrate` | Encola orden (`{ instruction }`) → `202` |
 | `GET` | `/api/projects/:id/chat` | Historial + estado del chat |

@@ -12,4 +12,12 @@ export class FileBrowserPort {
   async readFile(projectId, zone, relativePath) {
     throw new Error('METHOD_NOT_IMPLEMENTED');
   }
+
+  /**
+   * Contenido binario de un fichero para descargarlo, con su nombre y tamaño.
+   * @returns {Promise<{name: string, size: number, content: Buffer}>}
+   */
+  async downloadFile(projectId, zone, relativePath) {
+    throw new Error('METHOD_NOT_IMPLEMENTED');
+  }
 }

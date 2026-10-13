@@ -15,4 +15,9 @@ export class BrowseProjectFilesUseCase {
   async read(projectId, zone, relativePath) {
     return await this.fileBrowserAdapter.readFile(projectId, zone, relativePath);
   }
+
+  /** Contenido binario de un fichero para descargarlo. */
+  async download(projectId, zone, relativePath) {
+    return await this.fileBrowserAdapter.downloadFile(projectId, zone, relativePath);
+  }
 }
