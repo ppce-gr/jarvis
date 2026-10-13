@@ -15,6 +15,7 @@ import {
   formatToolDetail,
   sanitizeActivity
 } from '../../domain/ActivityTrace.js';
+import { medirConversacion, normalizarLimites } from '../../domain/ChatContext.js';
 import { JsonRpcStdioClient } from './JsonRpcStdioClient.js';
 import { FileSystemResumeNoteAdapter } from '../persistence/FileSystemResumeNoteAdapter.js';
 import { resolverWorkspace } from '../persistence/resolverWorkspace.js';
@@ -72,6 +73,7 @@ export class AcpConversationAdapter extends ConversationPort {
     configFile = null,
     healthFile = null,
     probeTimeoutMs = Number(process.env.JARVIS_MODEL_PROBE_TIMEOUT_MS || 45 * 1000),
+    subchatLimits = null,
     spawnFn = nodeSpawn
   } = {}) {
     super();
@@ -83,6 +85,13 @@ export class AcpConversationAdapter extends ConversationPort {
     this.permissionTimeoutMs = permissionTimeoutMs;
     this.stallTimeoutMs = stallTimeoutMs;
     this.spawnFn = spawnFn;
+
+    // Sub-chats: umbral de contexto a partir del cual se resume y se abre
+    // sesión nueva. Configurable por entorno o por opción (tests).
+    this.subchatLimits = normalizarLimites(subchatLimits || {
+      maxTokens: Number(process.env.JARVIS_CHAT_MAX_TOKENS),
+      maxBytes: Number(process.env.JARVIS_CHAT_MAX_BYTES)
+    });
 
     // Nota de reanudación: la deja el agente antes de reiniciar Jarvis, y se
     // le devuelve al abrir la siguiente sesión. Mismo brainDir que el resto.
@@ -499,6 +508,17 @@ export class AcpConversationAdapter extends ConversationPort {
     this._touchClient();
 
     const update = params.update || {};
+
+    // Turno oculto de resumen (sub-chat): no se pinta nada, solo se recoge el
+    // texto para sembrar la sesión nueva. El usuario no debe notarlo.
+    if (session.hidden) {
+      if (update.sessionUpdate === 'agent_message_chunk') {
+        const texto = AcpConversationAdapter.extractText(update.content);
+        if (texto) session.hiddenBuffer = `${session.hiddenBuffer || ''}${texto}`;
+      }
+      return;
+    }
+
     switch (update.sessionUpdate) {
       case 'agent_message_chunk': {
         const text = AcpConversationAdapter.extractText(update.content);
@@ -822,6 +842,11 @@ export class AcpConversationAdapter extends ConversationPort {
       throw new Error('CHAT_BUSY: ya hay una respuesta en curso; espera o pulsa Detener');
     }
 
+    // Sub-chats: si el hilo ya es muy largo (o se pidió al continuar), se
+    // resume y se abre una sesión nueva ANTES de este mensaje. El usuario no
+    // lo nota: ve el mismo chat, con una marca de «Chat n».
+    await this._quizasPartir(projectId, session);
+
     await this._record(projectId, { role: 'user', text: clean });
     this._emit(projectId, { type: 'user', text: clean });
 
@@ -841,9 +866,15 @@ export class AcpConversationAdapter extends ConversationPort {
         outgoing = `${AcpConversationAdapter._preambleTarea(nota.contenido, nota.modificadoEn)}\n\n${outgoing}`;
       }
       // Sesión nueva (arranque de Jarvis o «continuar»): devolvemos contexto con
-      // los últimos mensajes del hilo actual, no con todo el historial.
-      const previos = await this._historialReinyeccion(projectId);
-      if (previos.length) outgoing = `${AcpConversationAdapter._preambleHistorial(previos)}\n\n${outgoing}`;
+      // los últimos mensajes del hilo actual, no con todo el historial. Si el
+      // sub-chat trae resumen, ése manda (es más denso y no pierde el hilo).
+      if (session.prelude) {
+        outgoing = `${AcpConversationAdapter._preambleSubchat(session.prelude)}\n\n${outgoing}`;
+        session.prelude = null;
+      } else {
+        const previos = await this._historialReinyeccion(projectId);
+        if (previos.length) outgoing = `${AcpConversationAdapter._preambleHistorial(previos)}\n\n${outgoing}`;
+      }
     }
 
     // `session/prompt` NO se espera: en ACP esa petición se resuelve cuando el
@@ -917,6 +948,110 @@ export class AcpConversationAdapter extends ConversationPort {
     return [
       'Conversación anterior de este proyecto (contexto; continúala sin repetirla):',
       ...lineas,
+      ''
+    ].join('\n');
+  }
+
+  /* ------------------------------------------------------------------
+   * Sub-chats: resumir y abrir sesión nueva sin que se note
+   * ------------------------------------------------------------------ */
+
+  /**
+   * Marca la conversación para que el próximo mensaje abra un sub-chat con
+   * resumen. Lo usa «continuar»: la conversación guardada vuelve y en vez de
+   * reinyectar 20 mensajes se resume entera.
+   */
+  async summarizeNext(projectId) {
+    if (!projectId) throw new Error('PROJECT_ID_REQUIRED');
+    const session = this._sessions.get(projectId);
+    if (session) session.resumirAlAbrir = true;
+    return { armed: true };
+  }
+
+  /**
+   * Decide si toca partir el hilo. Parte si supera el umbral o si se pidió
+   * expresamente. La partición: resumen → marca `subchat` en el transcript →
+   * sesión nueva sembrada con ese resumen.
+   */
+  async _quizasPartir(projectId, session) {
+    const historial = await this.history(projectId);
+    const medida = medirConversacion(historial, this.subchatLimits);
+    const forzar = Boolean(session.resumirAlAbrir);
+    if (!forzar && !medida.debePartir) return;
+    if (!historial.some((m) => m.role === 'user' || m.role === 'assistant')) return;
+
+    session.resumirAlAbrir = false;
+    // En una sesión nueva (continuar) el resumen necesita el transcrito; en un
+    // turno normal el agente ya tiene la conversación en su contexto.
+    const incluirTranscrito = session.turnCount === 0;
+    const resumen = await this._resumir(projectId, session, incluirTranscrito);
+    if (!resumen) return;
+
+    const n = 1 + historial.filter((m) => m.role === 'subchat').length + 1;
+    const marca = {
+      role: 'subchat',
+      n,
+      resumen,
+      tokens: medida.tokens,
+      bytes: medida.bytes,
+      at: new Date().toISOString()
+    };
+    await this._record(projectId, marca);
+    this._emit(projectId, {
+      type: 'subchat',
+      n,
+      resumen,
+      tokens: medida.tokens,
+      bytes: medida.bytes
+    });
+
+    await this.reset(projectId);
+    session.prelude = resumen;
+    // Deja lista la sesión nueva: `send` sigue con el mensaje del usuario.
+    await this._ensureSession(projectId);
+  }
+
+  /** Pide al agente un resumen del hilo con un turno oculto (no se pinta). */
+  async _resumir(projectId, session, incluirTranscrito) {
+    if (!session.sessionId || !this._client || this._client.dead) return '';
+    let instruccion = [
+      'Estás a punto de continuar esta conversación en un chat nuevo.',
+      'Escribe un RESUMEN denso y autosuficiente para no perder contexto:',
+      'objetivo, decisiones tomadas, estado actual, ficheros o commits',
+      'relevantes, pendientes y siguiente paso. No uses herramientas;',
+      'responde sólo con el resumen.'
+    ].join(' ');
+    if (incluirTranscrito) {
+      const historial = await this.history(projectId);
+      const texto = historial
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-40)
+        .map((m) => `${m.role === 'user' ? 'Usuario' : 'Jarvis'}: ${String(m.text || '').slice(0, 1500)}`)
+        .join('\n');
+      instruccion = `Conversación anterior (contexto):\n${texto}\n\n${instruccion}`;
+    }
+
+    session.hidden = true;
+    session.hiddenBuffer = '';
+    try {
+      await this._client.rpc.request('session/prompt', {
+        sessionId: session.sessionId,
+        prompt: [{ type: 'text', text: instruccion }]
+      });
+    } catch { /* sin resumen no se parte: mejor seguir que romper el chat */ }
+    finally {
+      session.hidden = false;
+    }
+    return String(session.hiddenBuffer || '').trim();
+  }
+
+  /** Bloque que abre un sub-chat con el resumen del anterior. */
+  static _preambleSubchat(resumen) {
+    return [
+      'Este chat continúa una conversación anterior de este mismo proyecto.',
+      'Resumen del contexto (continúa sin repetirlo):',
+      '',
+      String(resumen || '').trim(),
       ''
     ].join('\n');
   }
@@ -1001,6 +1136,9 @@ export class AcpConversationAdapter extends ConversationPort {
       session.busy = false;
       session.turnCount = 0;
       session.turnBuffer = '';
+      session.prelude = null;
+      session.resumirAlAbrir = false;
+      session.hidden = false;
       this._clearStallWatchdog(session);
     }
     this._emit(projectId, { type: 'reset' });

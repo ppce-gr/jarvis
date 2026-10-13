@@ -2106,6 +2106,20 @@ function handleChatEvent(event) {
       actualizarHerramienta(event);
       break;
 
+    case 'subchat':
+      // El hilo se ha partido: misma conversación, sesión nueva con resumen.
+      state.chat.messages.push({
+        role: 'subchat',
+        n: event.n,
+        resumen: event.resumen || '',
+        tokens: event.tokens,
+        bytes: event.bytes,
+        at: event.at
+      });
+      renderChat();
+      toast(`Chat ${event.n}: la conversación sigue, resumida`, 'ok');
+      break;
+
     case 'permission':
       state.chat.messages.push({ role: 'note', text: `🔓 autorizado: ${event.text}`, at: event.at });
       renderChat();
@@ -2366,6 +2380,13 @@ function renderChat() {
         detalle: msg.detail,
         clase: 'msg-thought'
       });
+    } else if (msg.role === 'subchat') {
+      // El hilo se partió aquí: se ve una marca y el resumen del tramo anterior.
+      wrap.className = 'msg msg-subchat';
+      wrap.innerHTML = `<details class="subchat" data-activity-id="subchat-${msg.n || idx}">`
+        + `<summary>— Chat ${msg.n || '?'} · resumen del anterior —</summary>`
+        + `<pre class="msg-activity-detail">${escapeHtml(msg.resumen || '')}</pre>`
+        + '</details>';
     } else if (msg.role === 'error') {
       wrap.className = 'msg-error';
       wrap.textContent = msg.text;
@@ -2384,11 +2405,23 @@ function renderChat() {
   }
 
   updateTyping();
+  // Cuántos sub-chats ha necesitado esta conversación (1 = todavía ninguno).
+  actualizarContadorSubchats(messages);
   // Si hay una respuesta en curso, se restaura tras el repintado.
   if (state.chat.streaming) {
     ensureStreamingBubble().textContent = state.chat.streaming;
   }
   scrollChatToEnd();
+}
+
+/** Muestra cuántos sub-chats ha usado la conversación (1 = sin partir). */
+function actualizarContadorSubchats(messages = state.chat.messages) {
+  const el = $('#chat-subchats');
+  if (!el) return;
+  const n = 1 + (messages || []).filter((m) => m.role === 'subchat').length;
+  el.textContent = n > 1 ? `${n} chats` : '';
+  el.classList.toggle('hidden', n <= 1);
+  el.title = n > 1 ? `Esta conversación se ha partido en ${n} chats para no gastar de más` : '';
 }
 
 function scrollChatToEnd() {

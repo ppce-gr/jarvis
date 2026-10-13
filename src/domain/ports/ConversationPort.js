@@ -75,6 +75,15 @@ export class ConversationPort {
   }
 
   /**
+   * Deja armado un sub-chat: el próximo mensaje abre una sesión nueva sembrada
+   * con un resumen del hilo, en vez de reinyectar los últimos mensajes. Lo usa
+   * «continuar». Los adaptadores que no lo soportan devuelven `{ armed:false }`.
+   */
+  async summarizeNext(projectId) {
+    return { armed: false };
+  }
+
+  /**
    * Catálogo de modelos y opciones que ofrece el motor, más la selección
    * actual. Permite que la interfaz ofrezca un selector real en vez de
    * obligar a tocar variables de entorno.

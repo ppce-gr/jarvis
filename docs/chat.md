@@ -183,6 +183,26 @@ Mientras el agente trabaja, el campo de escritura se deshabilita y el botón
 la cabecera. Pulsar cualquiera de los dos **pide confirmación** antes de
 cancelar el turno.
 
+### Sub-chats: conversaciones largas sin perder el hilo
+
+Para que un chat no crezca sin límite (ni dispare el gasto de tokens), Jarvis
+**parte el hilo en sub-chats**: cuando la conversación pasa de un umbral, pide
+al agente un **resumen** con un turno oculto, abre una **sesión nueva** sembrada
+con ese resumen y sigue como si nada. El usuario **no nota el cambio**: ve el
+mismo chat, con una **marca** entre tramos («Chat 2 · resumen del anterior», con
+el resumen desplegable) y un **contador** en la cabecera («2 chats»).
+
+El umbral se mide por **tokens estimados** (~4 caracteres por token) y por
+**tamaño del texto**, y es configurable:
+
+| Variable | Por defecto |
+|---|---|
+| `JARVIS_CHAT_MAX_TOKENS` | `30000` |
+| `JARVIS_CHAT_MAX_BYTES` | `80000` |
+
+Al **continuar** una conversación guardada también se abre un sub-chat con
+resumen, en vez de reinyectar solo los 20 últimos mensajes.
+
 ### Auto-refresco tras una actualización
 
 La interfaz compara la versión que tiene cargada con la que ejecuta el proceso
@@ -225,6 +245,8 @@ Vale la pena distinguir **medido** de **esperado**:
 | `JARVIS_CHAT_MODEL` | `deepseek-v4-flash` | Modelo. |
 | `JARVIS_CHAT_EFFORT` | `high` | Esfuerzo de razonamiento. |
 | `JARVIS_CHAT_IDLE_MS` | `900000` | Inactividad antes de dormir el proceso. |
+| `JARVIS_CHAT_MAX_TOKENS` | `30000` | Umbral de tokens para partir en sub-chat. |
+| `JARVIS_CHAT_MAX_BYTES` | `80000` | Umbral de bytes para partir en sub-chat. |
 | `JARVIS_PERMISSION_TIMEOUT_MS` | `120000` | Tope para contestar un permiso. |
 | `JARVIS_STALL_TIMEOUT_MS` | `600000` | Aviso si un turno lleva mucho sin emitir. |
 | `JARVIS_MODEL_PROBE_TIMEOUT_MS` | `45000` | Tope por modelo en la comprobación de Admin. |
