@@ -109,8 +109,19 @@ test('una conversación se ve compuesta por sus chats', async () => {
   assert.equal(list.actual.chatsDetalle[1].mensajes, 2);
   assert.equal(list.actual.chatsDetalle[2].n, 3);
   assert.equal(list.actual.chatsDetalle[2].mensajes, 1);
+  // Los índices permiten abrir un chat concreto en solo lectura.
+  assert.equal(list.actual.chatsDetalle[0].desde, 0);
+  assert.equal(list.actual.chatsDetalle[0].hasta, 2);
+  assert.equal(list.actual.chatsDetalle[1].desde, 3);
+  assert.equal(list.actual.chatsDetalle[1].hasta, 5);
+  assert.equal(list.actual.chatsDetalle[2].desde, 6);
+  assert.equal(list.actual.chatsDetalle[2].hasta, 7);
 
   const { archivada } = await caso.archive('idea');
+  const { messages } = await caso.read('idea', archivada);
+  const chat2 = messages.slice(list.actual.chatsDetalle[1].desde, list.actual.chatsDetalle[1].hasta);
+  assert.deepEqual(chat2.map((m) => m.text), ['segundo tema', 'otra respuesta']);
+
   const guardadas = await caso.list('idea');
   assert.equal(guardadas.archivadas[0].nombre, archivada);
   assert.equal(guardadas.archivadas[0].chats, 3, 'el desglose viaja al archivarla');

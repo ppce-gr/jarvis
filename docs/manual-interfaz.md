@@ -118,6 +118,9 @@ editarlas a mano.
   Desde ahí puedes **Continuar** una (la actual se archiva), ponerle **✎** título,
   mandarla **🗑** a una papelera recuperable o pulsar **＋ Nueva conversación**. El
   botón **＋ Conversación** de la cabecera guarda la actual y abre una limpia.
+- Cada chat del desglose lleva **Ver**: lo abre en un visor de **solo lectura** con
+  sus mensajes tal como quedaron guardados (sin tocar la sesión del agente ni el
+  hilo actual).
 
 ### Edición
 - Botón **✎ Editar** para escribir Markdown en crudo.

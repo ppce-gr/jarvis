@@ -2781,9 +2781,16 @@ function fichaConversacion(item, { actual } = {}) {
     const resumen = c.resumen
       ? `<span class="muted hilo-chat-resumen">${escapeHtml(String(c.resumen).replace(/\s+/g, ' ').slice(0, 180))}</span>`
       : '<span class="muted">primer tramo</span>';
+    // Abrir el chat en solo lectura, si el desglose trae sus índices.
+    const ver = (c.desde !== undefined && c.hasta !== undefined)
+      ? `<button type="button" class="btn btn-ghost btn-sm" data-ver-chat="1"`
+        + ` data-nombre="${escapeHtml(item.nombre)}" data-desde="${c.desde}" data-hasta="${c.hasta}"`
+        + ` data-n="${c.n}">Ver</button>`
+      : '';
     return '<li class="hilo-chat">'
       + `<span class="hilo-chat-n">Chat ${c.n}</span>`
       + `<span class="muted">${meta.length ? ` · ${meta.join(' · ')}` : ''}</span>`
+      + ver
       + `<br>${resumen}</li>`;
   }).join('');
   const acciones = actual
@@ -2803,6 +2810,56 @@ function fichaConversacion(item, { actual } = {}) {
     + `<ul class="hilo-chats">${detalle}</ul>`
     + acciones
     + '</details></div>';
+}
+
+/** Render de un mensaje dentro del visor de solo lectura. */
+function mensajeLecturaHtml(m) {
+  if (!m || !m.role) return '';
+  if (m.role === 'user') {
+    return `<div class="lectura-msg lectura-user">${escapeHtml(m.text || '')}</div>`;
+  }
+  if (m.role === 'assistant') {
+    return `<div class="lectura-msg lectura-assistant markdown">${renderMarkdown(m.text || '')}</div>`;
+  }
+  if (m.role === 'thought') {
+    return '<details class="lectura-actividad"><summary>🧠 Razonamiento</summary>'
+      + `<pre>${escapeHtml(m.detail || '')}</pre></details>`;
+  }
+  if (m.role === 'tool') {
+    return `<details class="lectura-actividad"><summary>${escapeHtml(m.text || 'herramienta')}</summary>`
+      + `<pre>${escapeHtml(m.detail || '')}</pre></details>`;
+  }
+  return '';
+}
+
+/**
+ * Abre un chat concreto (un tramo de la conversación) en solo lectura. No toca
+ * la sesión del agente ni el hilo actual: solo muestra lo que quedó guardado.
+ */
+async function abrirChatLectura({ nombre, desde, hasta, n }) {
+  const pid = state.chat.projectId;
+  if (!pid) return;
+  const dlg = $('#chat-lectura-dialog');
+  const cont = $('#chat-lectura-mensajes');
+  if (!dlg || !cont) return;
+  const titulo = $('#chat-lectura-titulo');
+  if (titulo) titulo.textContent = `Chat ${n}`;
+  cont.innerHTML = '<p class="muted">Cargando…</p>';
+  if (!dlg.open) dlg.showModal();
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(pid)}/chat/conversaciones/${encodeURIComponent(nombre)}`);
+    const todos = data.messages || [];
+    const inicio = Number.isFinite(Number(desde)) ? Number(desde) : 0;
+    const fin = (hasta === undefined || hasta === null || hasta === '')
+      ? todos.length
+      : Number(hasta);
+    const mensajes = todos.slice(inicio, fin);
+    cont.innerHTML = mensajes.length
+      ? mensajes.map(mensajeLecturaHtml).join('')
+      : '<p class="muted">Este chat no tiene mensajes guardados.</p>';
+  } catch (error) {
+    cont.innerHTML = `<p class="muted">No se pudo leer: ${escapeHtml(error.message)}</p>`;
+  }
 }
 
 function renderHilosPapelera(items = []) {
@@ -3333,6 +3390,16 @@ function bindEvents() {
     descartarTarea(btn && btn.dataset.project);
   });
   on('#hilos-list', 'click', (event) => {
+    const ver = event.target.closest('[data-ver-chat]');
+    if (ver) {
+      abrirChatLectura({
+        nombre: ver.dataset.nombre,
+        desde: ver.dataset.desde,
+        hasta: ver.dataset.hasta,
+        n: ver.dataset.n
+      });
+      return;
+    }
     const b = event.target.closest('[data-hilo]');
     if (b) accionHilo(b.dataset.hilo, b.dataset);
   });
@@ -3502,6 +3569,8 @@ window.Jarvis = {
   abrirHilos,
   opcionesHilos,
   actualizarBotonHilos,
+  abrirChatLectura,
+  mensajeLecturaHtml,
   renderHilosList,
   renderHilosPapelera,
   cargarTareasEnCurso,

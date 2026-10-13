@@ -428,6 +428,19 @@
     </div>
   </dialog>
 
+  <!-- Modal: un chat de la conversación, en solo lectura -->
+  <dialog id="chat-lectura-dialog" class="dialog dialog-wide">
+    <div class="dialog-body">
+      <h2 id="chat-lectura-titulo">Chat</h2>
+      <p class="muted">Solo lectura: un tramo de la conversación tal como quedó guardado.
+        No cambia nada ni toca la sesión del agente.</p>
+      <div id="chat-lectura-mensajes" class="chat-lectura"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
+      </div>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast hidden"></div>
 
   <script src="/app.js"></script>
