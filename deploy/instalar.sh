@@ -104,6 +104,9 @@ JARVIS_CHAT_PROVIDER="${JARVIS_CHAT_PROVIDER:-deepseek-official}"
 JARVIS_CHAT_MODEL="${JARVIS_CHAT_MODEL:-deepseek-v4-flash}"
 JARVIS_CHAT_EFFORT="${JARVIS_CHAT_EFFORT:-high}"
 JARVIS_CHAT_IDLE_MS="${JARVIS_CHAT_IDLE_MS:-900000}"
+# Umbrales para partir el hilo en sub-chats (tokens estimados y bytes).
+JARVIS_CHAT_MAX_TOKENS="${JARVIS_CHAT_MAX_TOKENS:-30000}"
+JARVIS_CHAT_MAX_BYTES="${JARVIS_CHAT_MAX_BYTES:-80000}"
 JARVIS_BACKUP_COMMIT_CODE="${JARVIS_BACKUP_COMMIT_CODE:-0}"
 JARVIS_BRANCH="${JARVIS_BRANCH:-main}"
 # JARVIS_DSH_BIN se resuelve más abajo, en la sección de DSH.
@@ -132,7 +135,8 @@ renderizar() {   # $1 plantilla · $2 destino
              JARVIS_SMOKE_PORT JARVIS_SBIN_DIR JARVIS_NODE_BIN JARVIS_DSH_BIN \
              JARVIS_DSH_PROFILE JARVIS_CHAT_PROTOCOL JARVIS_CHAT_PROFILE \
              JARVIS_CHAT_PROVIDER JARVIS_CHAT_MODEL JARVIS_CHAT_EFFORT \
-             JARVIS_CHAT_IDLE_MS JARVIS_BACKUP_COMMIT_CODE JARVIS_BRANCH; do
+             JARVIS_CHAT_IDLE_MS JARVIS_CHAT_MAX_TOKENS JARVIS_CHAT_MAX_BYTES \
+             JARVIS_BACKUP_COMMIT_CODE JARVIS_BRANCH; do
     contenido="${contenido//@${var}@/${!var:-}}"
   done
   # Si queda algún marcador es que la plantilla pide algo que no hemos resuelto:
