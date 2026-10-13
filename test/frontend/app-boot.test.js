@@ -813,6 +813,21 @@ test('una conversación muestra los chats que la componen', async () => {
   assert.match(html, /en curso/, 'la conversación actual se distingue');
 });
 
+test('el botón de conversaciones conserva su rótulo y añade el contador', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({
+    respuestas: {
+      // Antes que `/chat` para que gane la ruta específica.
+      '/chat/conversaciones': { archivadas: [{ nombre: 'a.jsonl' }, { nombre: 'b.jsonl' }] },
+      ...RESPUESTAS_BASE
+    }
+  });
+  assert.deepEqual(errores, []);
+  jarvis.state.chat.projectId = 'idea-uno';
+  await jarvis.actualizarBotonHilos();
+  assert.equal(registro.get('#hilos-count').textContent, ' (2)');
+  assert.match(registro.get('#chat-hilos').title, /2/);
+});
+
 test('el grafo de ideas distingue jerarquía y linaje', async () => {
   const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
   assert.deepEqual(errores, []);

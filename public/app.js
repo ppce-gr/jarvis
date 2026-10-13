@@ -2508,7 +2508,8 @@ async function actualizarBotonHilos() {
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/conversaciones`);
     const n = (data.archivadas || []).length;
-    btn.textContent = n ? `🗂 ${n}` : '🗂';
+    const count = $('#hilos-count');
+    if (count) count.textContent = n ? ` (${n})` : '';
     btn.title = n
       ? `Conversaciones guardadas: ${n}. Pulsa para verlas o continuar una`
       : 'Conversaciones guardadas: todavía no hay ninguna';
@@ -3500,6 +3501,7 @@ window.Jarvis = {
   pintarSalud,
   abrirHilos,
   opcionesHilos,
+  actualizarBotonHilos,
   renderHilosList,
   renderHilosPapelera,
   cargarTareasEnCurso,
