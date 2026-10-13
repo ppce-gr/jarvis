@@ -243,8 +243,11 @@ rl.on('line', async (line) => {
         content: [{ type: 'content', content: { type: 'text', text: 'contenido leído' } }]
       });
 
-      // Texto en TROZOS, como hace ACP de verdad.
-      const reply = `Recibido: ${promptText.slice(-40)}`;
+      // Texto en TROZOS, como hace ACP de verdad. Si el turno es el resumen
+      // oculto de un sub-chat, responde algo reconocible.
+      const reply = /RESUMEN/.test(promptText)
+        ? 'RESUMEN_FAKE: objetivo, decisiones y pendientes condensados'
+        : `Recibido: ${promptText.slice(-40)}`;
       for (const trozo of reply.match(/.{1,10}/g) || []) {
         if (cancelled) break;
         emitUpdate(sessionId, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: trozo } });

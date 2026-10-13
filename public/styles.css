@@ -372,6 +372,15 @@ html, body {
 }
 .chat-status.running { color: #9ccbff; border-color: #23496f; }
 .chat-status.idle { color: var(--text-dim); }
+/* Cuántos sub-chats ha necesitado esta conversación. */
+.chat-subchats {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+}
 .chat-status.error { color: #ffb4ae; border-color: #4a1f1c; }
 .chat-head .btn { margin-left: 0; }
 .chat-head #chat-reset { margin-left: auto; }
@@ -554,6 +563,20 @@ html, body {
   overflow-wrap: anywhere;
 }
 .msg-thought > summary { color: #b7a4e6; }
+
+/* Sub-chats: el hilo se partió para no gastar contexto de más */
+.msg-subchat { width: 100%; max-width: 860px; align-self: flex-start; }
+.subchat > summary {
+  cursor: pointer;
+  list-style: none;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: .05em;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+.subchat > summary::-webkit-details-marker { display: none; }
+.subchat > summary:hover { color: var(--text); }
 .msg-note {
   align-self: center;
   font-size: 12px;

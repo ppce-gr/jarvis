@@ -51,6 +51,11 @@ export class ManageConversationsUseCase {
   async continue(projectId, nombre) {
     const resultado = await this.conversationStore.restore(projectId, nombre);
     await this.conversationAdapter.reset(projectId);
+    // Al continuar, el hilo vuelve resumido: el próximo mensaje abre un
+    // sub-chat con un resumen en vez de reinyectar solo 20 mensajes.
+    if (typeof this.conversationAdapter.summarizeNext === 'function') {
+      await this.conversationAdapter.summarizeNext(projectId).catch(() => ({ armed: false }));
+    }
     return resultado;
   }
 }

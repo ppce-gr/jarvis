@@ -518,6 +518,36 @@ test('textoVisible copia lo que se ve, no el Markdown crudo', async () => {
 });
 
 /* ================================================================
+   Sub-chats: el hilo se parte sin que se note
+   ================================================================ */
+
+test('el chat marca los sub-chats y lleva la cuenta', async () => {
+  const { registro, errores, jarvis } = await arrancarConConversacion([
+    { role: 'user', text: 'hola' },
+    { role: 'assistant', text: 'buenas' },
+    { role: 'subchat', n: 2, resumen: 'objetivo y pendientes del tramo anterior' },
+    { role: 'user', text: 'sigo' }
+  ]);
+  await abrirIdea(jarvis, 'idea-uno');
+  assert.deepEqual(errores, []);
+
+  const html = registro.get('#chat-messages').innerHTML;
+  assert.match(html, /class="subchat"/);
+  assert.match(html, /Chat 2/);
+  assert.match(html, /objetivo y pendientes del tramo anterior/);
+  assert.match(registro.get('#chat-subchats').textContent, /2 chats/);
+});
+
+test('sin sub-chats, el contador no se enseña', async () => {
+  const { registro, jarvis } = await arrancarConConversacion([
+    { role: 'user', text: 'hola' },
+    { role: 'assistant', text: 'buenas' }
+  ]);
+  await abrirIdea(jarvis, 'idea-uno');
+  assert.equal(registro.get('#chat-subchats').textContent, '');
+});
+
+/* ================================================================
    Nueva idea: elegir el modelo desde el diálogo de creación
    ================================================================ */
 

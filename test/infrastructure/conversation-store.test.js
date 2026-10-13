@@ -13,14 +13,18 @@ async function conConversaciones() {
   await fs.mkdir(logs, { recursive: true });
   const store = new FileSystemConversationStoreAdapter(dir);
   const resets = [];
-  const adapter = { async reset(id) { resets.push(id); } };
+  const summarized = [];
+  const adapter = {
+    async reset(id) { resets.push(id); },
+    async summarizeNext(id) { summarized.push(id); return { armed: true }; }
+  };
   const caso = new ManageConversationsUseCase(store, adapter);
   const escribir = (mensajes) => fs.writeFile(
     path.join(logs, 'conversacion.jsonl'),
     `${mensajes.map((m) => JSON.stringify(m)).join('\n')}\n`,
     'utf8'
   );
-  return { dir, logs, store, caso, resets, escribir };
+  return { dir, logs, store, caso, resets, summarized, escribir };
 }
 
 test('archivar guarda la conversación, la lista y reinicia la sesión', async () => {
@@ -41,7 +45,7 @@ test('archivar guarda la conversación, la lista y reinicia la sesión', async (
 });
 
 test('continuar trae una archivada como actual, conserva la previa y reinicia', async () => {
-  const { caso, escribir, resets } = await conConversaciones();
+  const { caso, escribir, resets, summarized } = await conConversaciones();
   await escribir([{ role: 'user', text: 'hola' }, { role: 'assistant', text: 'buenas' }]);
   const { archivada } = await caso.archive('idea');
 
@@ -54,6 +58,7 @@ test('continuar trae una archivada como actual, conserva la previa y reinicia', 
   assert.equal(messages.length, 2);
   assert.equal(messages[0].text, 'hola');
   assert.ok(resets.length >= 2, 'reinició al archivar y al continuar');
+  assert.ok(summarized.includes('idea'), 'arma el sub-chat con resumen al continuar');
 
   const list = await caso.list('idea');
   assert.equal(list.archivadas.length, 1, 'la elegida se mueve; solo queda la previa');

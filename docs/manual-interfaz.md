@@ -105,6 +105,9 @@ editarlas a mano.
   ve, no el Markdown en crudo.
 - La **traza** de herramientas y razonamiento aparece plegada; se despliega para
   ver la entrada y la salida.
+- Si el chat se hace muy largo, Jarvis lo **parte solo en sub-chats**: verás una
+  marca **«Chat 2 · resumen del anterior»** (desplegable) y un contador **N chats**
+  en la cabecera. La conversación sigue siendo la misma.
 - **🗂** lista las conversaciones guardadas: **Continuar** una (la actual se
   archiva), **✎** para ponerle título y **🗑** para mandarla a una papelera
   recuperable que vive en el mismo panel. **⟳ Nueva** guarda la actual y abre una
