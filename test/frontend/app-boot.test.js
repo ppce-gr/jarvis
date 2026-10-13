@@ -828,6 +828,43 @@ test('el botón de conversaciones conserva su rótulo y añade el contador', asy
   assert.match(registro.get('#chat-hilos').title, /2/);
 });
 
+test('un chat de la conversación se puede abrir en solo lectura', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({
+    respuestas: {
+      '/chat/conversaciones': {
+        messages: [
+          { role: 'user', text: 'primer tema' },
+          { role: 'assistant', text: 'respuesta del primer tramo' },
+          { role: 'subchat', n: 2, resumen: 'resumen' },
+          { role: 'user', text: 'segundo tema' }
+        ]
+      },
+      ...RESPUESTAS_BASE
+    }
+  });
+  assert.deepEqual(errores, []);
+
+  jarvis.renderHilosList({
+    actual: {
+      nombre: 'actual', mensajes: 3, chats: 2, inicio: 'primer tema',
+      chatsDetalle: [
+        { n: 1, mensajes: 2, desde: 0, hasta: 2 },
+        { n: 2, mensajes: 1, desde: 3, hasta: 4, resumen: 'resumen' }
+      ]
+    }
+  });
+  assert.match(registro.get('#hilos-list').innerHTML, /data-ver-chat="1"/);
+
+  jarvis.state.chat.projectId = 'idea-uno';
+  await jarvis.abrirChatLectura({ nombre: 'actual', desde: 0, hasta: 2, n: 1 });
+  const html = registro.get('#chat-lectura-mensajes').innerHTML;
+  assert.match(html, /primer tema/);
+  assert.match(html, /respuesta del primer tramo/);
+  assert.doesNotMatch(html, /segundo tema/, 'solo el tramo pedido');
+  assert.equal(registro.get('#chat-lectura-titulo').textContent, 'Chat 1');
+  assert.equal(registro.get('#chat-lectura-dialog')._modal, true);
+});
+
 test('el grafo de ideas distingue jerarquía y linaje', async () => {
   const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
   assert.deepEqual(errores, []);

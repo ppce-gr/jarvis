@@ -99,9 +99,12 @@ export class FileSystemConversationStoreAdapter extends ConversationStorePort {
    */
   _chats(mensajes) {
     const chats = [];
-    let chat = { n: 1, resumen: null, tokens: null, bytes: null, at: null, mensajes: 0 };
-    for (const m of mensajes) {
+    let chat = { n: 1, resumen: null, tokens: null, bytes: null, at: null, mensajes: 0, desde: 0 };
+    for (let i = 0; i < mensajes.length; i += 1) {
+      const m = mensajes[i];
       if (m.role === 'subchat') {
+        // La marca abre el siguiente chat: el actual termina justo aquí.
+        chat.hasta = i;
         chats.push(chat);
         chat = {
           n: Number(m.n) || chats.length + 1,
@@ -109,12 +112,14 @@ export class FileSystemConversationStoreAdapter extends ConversationStorePort {
           tokens: Number.isFinite(Number(m.tokens)) ? Number(m.tokens) : null,
           bytes: Number.isFinite(Number(m.bytes)) ? Number(m.bytes) : null,
           at: m.at || null,
-          mensajes: 0
+          mensajes: 0,
+          desde: i + 1
         };
       } else if (m.role === 'user' || m.role === 'assistant') {
         chat.mensajes += 1;
       }
     }
+    chat.hasta = mensajes.length;
     chats.push(chat);
     return chats;
   }
