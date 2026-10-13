@@ -791,6 +791,28 @@ test('las conversaciones guardadas muestran título y acciones', async () => {
   assert.match(papelera, /data-hilo="purgar"/);
 });
 
+test('una conversación muestra los chats que la componen', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
+  assert.deepEqual(errores, []);
+  jarvis.renderHilosList({
+    actual: {
+      nombre: 'actual', mensajes: 4, inicio: 'hola',
+      chats: 2,
+      chatsDetalle: [
+        { n: 1, mensajes: 2 },
+        { n: 2, mensajes: 2, resumen: 'objetivo y pendientes del tramo anterior', tokens: 1200, bytes: 4800 }
+      ]
+    },
+    archivadas: [{ nombre: 'x.jsonl', mensajes: 1, chats: 1, chatsDetalle: [{ n: 1, mensajes: 1 }] }]
+  });
+  const html = registro.get('#hilos-list').innerHTML;
+  assert.match(html, /2 chats/, 'la conversación dice cuántos chats tiene');
+  assert.match(html, /Chat 1/);
+  assert.match(html, /Chat 2/);
+  assert.match(html, /objetivo y pendientes del tramo anterior/);
+  assert.match(html, /en curso/, 'la conversación actual se distingue');
+});
+
 test('el grafo de ideas distingue jerarquía y linaje', async () => {
   const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
   assert.deepEqual(errores, []);

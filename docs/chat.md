@@ -183,14 +183,21 @@ Mientras el agente trabaja, el campo de escritura se deshabilita y el botón
 la cabecera. Pulsar cualquiera de los dos **pide confirmación** antes de
 cancelar el turno.
 
-### Sub-chats: conversaciones largas sin perder el hilo
+### Conversaciones y chats
 
-Para que un chat no crezca sin límite (ni dispare el gasto de tokens), Jarvis
-**parte el hilo en sub-chats**: cuando la conversación pasa de un umbral, pide
-al agente un **resumen** con un turno oculto, abre una **sesión nueva** sembrada
-con ese resumen y sigue como si nada. El usuario **no nota el cambio**: ve el
-mismo chat, con una **marca** entre tramos («Chat 2 · resumen del anterior», con
-el resumen desplegable) y un **contador** en la cabecera («2 chats»).
+Conviene separar dos conceptos, porque la interfaz los muestra como cosas distintas:
+
+- Una **conversación** es un **tema** dentro de una idea. Puedes tener varias: al
+  pulsar **＋ Conversación** la actual se guarda y empieza una limpia.
+- Un **chat** es un **tramo** de una conversación. Es Jarvis quien los crea solo:
+  cuando el hilo se alarga, lo **parte en chats** pidiendo al agente un **resumen**
+  con un turno oculto, abre una **sesión nueva** sembrada con ese resumen y sigue
+  como si nada.
+
+El usuario **no nota el corte**: ve el mismo chat, con una **marca** entre tramos
+(«Chat 2 · resumen del anterior», con el resumen desplegable) y un **contador** en
+la cabecera («2 chats»). En **🗂 Conversaciones** cada conversación dice **cuántos
+chats** la componen y, al desplegarla, lista cada chat con su resumen.
 
 El umbral se mide por **tokens estimados** (~4 caracteres por token) y por
 **tamaño del texto**, y es configurable:
@@ -200,7 +207,7 @@ El umbral se mide por **tokens estimados** (~4 caracteres por token) y por
 | `JARVIS_CHAT_MAX_TOKENS` | `30000` |
 | `JARVIS_CHAT_MAX_BYTES` | `80000` |
 
-Al **continuar** una conversación guardada también se abre un sub-chat con
+Al **continuar** una conversación guardada también se abre un chat nuevo con
 resumen, en vez de reinyectar solo los 20 últimos mensajes.
 
 ### Auto-refresco tras una actualización

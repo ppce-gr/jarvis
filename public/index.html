@@ -106,8 +106,8 @@
                 </div>
                 <select id="chat-effort" class="chat-select chat-select-sm" title="Esfuerzo de razonamiento"></select>
                 <button id="chat-stop" class="btn btn-ghost btn-sm hidden" title="Detener la respuesta en curso (el agente conserva lo hablado)">■ Detener</button>
-                <button id="chat-hilos" class="btn btn-ghost btn-sm" title="Conversaciones guardadas: verlas y continuar una">🗂</button>
-                <button id="chat-reset" class="btn btn-ghost btn-sm" title="Guardar esta conversación y empezar una nueva (el agente olvida lo hablado)">⟳ Nueva</button>
+                <button id="chat-hilos" class="btn btn-ghost btn-sm" title="Conversaciones de esta idea: verlas, ver sus chats y continuar una">🗂</button>
+                <button id="chat-reset" class="btn btn-ghost btn-sm" title="Guardar esta conversación y empezar otra nueva (otro tema)">＋ Conversación</button>
               </div>
               <div id="chat-messages" class="chat-messages">
                 <div class="chat-empty">
@@ -407,18 +407,22 @@
     </div>
   </dialog>
 
-  <!-- Modal: conversaciones guardadas (continuar, título, papelera) -->
+  <!-- Modal: conversaciones (el tema) y los chats que las componen -->
   <dialog id="hilos-dialog" class="dialog dialog-wide">
     <div class="dialog-body">
-      <h2>Conversaciones guardadas</h2>
-      <p class="muted">Continúa una (la actual se archiva), ponle un título o mándala a
-        la papelera. La papelera es recuperable.</p>
+      <h2>Conversaciones</h2>
+      <p class="muted">Una <strong>conversación</strong> es un tema: puedes tener varias
+        dentro de la idea. Cuando una se alarga, Jarvis la parte solo en <strong>chats</strong>
+        con un resumen, para no perder el hilo. Aquí ves cada conversación y los chats
+        que la componen. Continuar una la trae de vuelta (la actual se guarda); la papelera
+        es recuperable.</p>
       <div id="hilos-list" class="lista-gestion"></div>
       <details class="adjuntos-historial">
         <summary>Papelera de conversaciones</summary>
         <div id="hilos-papelera" class="lista-gestion"></div>
       </details>
       <div class="dialog-actions">
+        <button type="button" id="hilos-nueva" class="btn btn-primary">＋ Nueva conversación</button>
         <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
       </div>
     </div>

@@ -2737,21 +2737,71 @@ async function recargarHilos() {
 function renderHilosList(data) {
   const cont = $('#hilos-list');
   if (!cont) return;
+  const actual = data?.actual || null;
   const archivadas = data?.archivadas || [];
-  if (!archivadas.length) { cont.innerHTML = '<p class="muted">Todavía no hay conversaciones guardadas.</p>'; return; }
-  cont.innerHTML = archivadas.map((a) => {
-    const cuando = a.modificadoEn ? new Date(a.modificadoEn).toLocaleString() : a.nombre;
-    const titulo = a.titulo ? escapeHtml(a.titulo) : escapeHtml(cuando);
-    const extracto = a.inicio ? `<br><span class="muted">${escapeHtml(a.inicio)}</span>` : '';
-    return '<div class="gestion-item">'
-      + `<div class="gestion-item-text"><strong>${titulo}</strong>`
-      + `<span class="muted"> · ${a.mensajes} mensajes</span>${extracto}</div>`
-      + '<div class="gestion-item-actions">'
-      + `<button type="button" class="btn btn-ghost btn-sm" data-hilo="continuar" data-nombre="${escapeHtml(a.nombre)}">Continuar</button>`
-      + `<button type="button" class="btn btn-ghost btn-sm" data-hilo="titulo" data-nombre="${escapeHtml(a.nombre)}" data-titulo="${escapeHtml(a.titulo || '')}" title="Poner título">✎</button>`
-      + `<button type="button" class="btn btn-danger btn-sm" data-hilo="borrar" data-nombre="${escapeHtml(a.nombre)}" title="A la papelera">🗑</button>`
-      + '</div></div>';
+  const fichas = [];
+  if (actual && (actual.mensajes || (actual.chats || 1) > 1)) {
+    fichas.push(fichaConversacion(actual, { actual: true }));
+  }
+  for (const a of archivadas) fichas.push(fichaConversacion(a, { actual: false }));
+  if (!fichas.length) {
+    cont.innerHTML = '<p class="muted">Todavía no hay conversaciones guardadas.</p>';
+    return;
+  }
+  cont.innerHTML = fichas.join('');
+}
+
+/** Chats de una conversación, con respaldo para listas antiguas sin detalle. */
+function chatsDeConversacion(item) {
+  if (Array.isArray(item?.chatsDetalle) && item.chatsDetalle.length) return item.chatsDetalle;
+  return [{ n: 1, mensajes: item?.mensajes || 0, resumen: null, tokens: null, bytes: null, at: null }];
+}
+
+/** «1 chat» / «3 chats», para no escribir «1 chats». */
+function pluralChats(n) {
+  return `${n} ${n === 1 ? 'chat' : 'chats'}`;
+}
+
+/**
+ * Ficha de una conversación: su resumen y, desplegables, los **chats** que la
+ * componen (los que Jarvis creó solo al partirse el hilo). La conversación es
+ * el tema; los chats, los tramos con resumen.
+ */
+function fichaConversacion(item, { actual } = {}) {
+  const chats = chatsDeConversacion(item);
+  const cuando = item.modificadoEn ? new Date(item.modificadoEn).toLocaleString() : item.nombre;
+  const titulo = item.titulo ? escapeHtml(item.titulo) : escapeHtml(cuando);
+  const extracto = item.inicio ? `<span class="hilo-extracto muted">${escapeHtml(item.inicio)}</span>` : '';
+  const detalle = chats.map((c) => {
+    const meta = [];
+    if (c.mensajes) meta.push(`${c.mensajes} mensajes`);
+    if (Number(c.tokens)) meta.push(`${Number(c.tokens).toLocaleString('es')} tok`);
+    if (Number(c.bytes)) meta.push(`${Math.round(Number(c.bytes) / 1024)} KB`);
+    const resumen = c.resumen
+      ? `<span class="muted hilo-chat-resumen">${escapeHtml(String(c.resumen).replace(/\s+/g, ' ').slice(0, 180))}</span>`
+      : '<span class="muted">primer tramo</span>';
+    return '<li class="hilo-chat">'
+      + `<span class="hilo-chat-n">Chat ${c.n}</span>`
+      + `<span class="muted">${meta.length ? ` · ${meta.join(' · ')}` : ''}</span>`
+      + `<br>${resumen}</li>`;
   }).join('');
+  const acciones = actual
+    ? '<span class="hilo-badge">en curso</span>'
+    : '<div class="gestion-item-actions">'
+      + `<button type="button" class="btn btn-ghost btn-sm" data-hilo="continuar" data-nombre="${escapeHtml(item.nombre)}">Continuar</button>`
+      + `<button type="button" class="btn btn-ghost btn-sm" data-hilo="titulo" data-nombre="${escapeHtml(item.nombre)}" data-titulo="${escapeHtml(item.titulo || '')}" title="Poner título">✎</button>`
+      + `<button type="button" class="btn btn-danger btn-sm" data-hilo="borrar" data-nombre="${escapeHtml(item.nombre)}" title="A la papelera">🗑</button>`
+      + '</div>';
+  return '<div class="gestion-item hilo-item">'
+    + '<details class="hilo-detalle">'
+    + '<summary>'
+    + `<span class="hilo-titulo">${titulo}</span>`
+    + `<span class="hilo-meta muted"> · ${pluralChats(chats.length)} · ${item.mensajes || 0} mensajes</span>`
+    + extracto
+    + '</summary>'
+    + `<ul class="hilo-chats">${detalle}</ul>`
+    + acciones
+    + '</details></div>';
 }
 
 function renderHilosPapelera(items = []) {
@@ -3312,6 +3362,11 @@ function bindEvents() {
   on('#chat-messages', 'click', manejarAccionMensaje);
   on('#chat-reset', 'click', resetChat);
   on('#chat-hilos', 'click', abrirHilos);
+  on('#hilos-nueva', 'click', async () => {
+    const dlg = $('#hilos-dialog');
+    if (dlg && dlg.open) dlg.close();
+    await resetChat();
+  });
   on('#chat-stop', 'click', cancelChat);
   on('#stop-confirm', 'click', () => {
     const dialog = $('#stop-dialog');
