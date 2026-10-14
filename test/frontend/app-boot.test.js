@@ -891,6 +891,8 @@ test('el explorador de código arma un árbol con carpetas y descarga', async ()
   assert.match(html, /Foo\.js/);
   assert.match(html, /data-download="1"/);
   assert.match(html, /files\/download\?zone=code/);
+  assert.match(html, /files\/download-folder\?zone=code/, 'las carpetas se descargan en ZIP');
+  assert.match(html, /download="src\.zip"/);
   assert.ok(html.indexOf('file-dir') < html.indexOf('README.md'), 'carpetas antes que ficheros');
 });
 

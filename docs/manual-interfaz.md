@@ -71,9 +71,10 @@ root.
   agente puede **moverlos** a su sitio (`code/`, `conceptual/`…). Cada adjunto se
   puede **mover** (➜), **desasociar** (⤺, lo quita de la idea pero **no** lo borra
   del disco) o **borrar** (✕, sí lo elimina). Abajo, el **historial** de subidas,
-  movimientos, desasociaciones y borrados. Tope: 12 MB por fichero.
+  movimientos, desasociaciones y borrados. Tope: 128 MB por fichero.
 - **Código:** explora `<memoria>/<idea>/code/` en **árbol**: las carpetas se
-  pliegan y despliegan y cada fichero lleva **⬇** para **descargarlo**.
+  pliegan y despliegan y tanto cada fichero como cada **carpeta** llevan **⬇**
+  para descargarlos (la carpeta se empaqueta en un **.zip** al vuelo).
 - **Bitácora:** igual que Código, sobre `<memoria>/<idea>/logs/` (registro del
   orquestador).
 

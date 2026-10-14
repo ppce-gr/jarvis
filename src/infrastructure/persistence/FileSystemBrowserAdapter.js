@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { FileBrowserPort } from '../../domain/ports/FileBrowserPort.js';
+import { crearZip } from './ZipArchive.js';
 
 /**
  * Adaptador de Infraestructura: FileSystemBrowserAdapter
@@ -14,7 +15,8 @@ import { FileBrowserPort } from '../../domain/ports/FileBrowserPort.js';
 export class FileSystemBrowserAdapter extends FileBrowserPort {
   static ALLOWED_ZONES = new Set(['code', 'logs', 'conceptual']);
   static MAX_FILE_BYTES = 256 * 1024; // 256 KB: suficiente para texto, seguro para la Pi 3B
-  static MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024; // 16 MB: descarga directa, no para pintar
+  static MAX_DOWNLOAD_BYTES = 128 * 1024 * 1024; // 128 MB: descarga directa, no para pintar
+  static MAX_FOLDER_BYTES = 128 * 1024 * 1024; // 128 MB sin comprimir al empaquetar una carpeta
   static MAX_DEPTH = 4;
 
   constructor(brainDir = process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault')) {
@@ -104,6 +106,50 @@ export class FileSystemBrowserAdapter extends FileBrowserPort {
       name: path.basename(resolved),
       size: stats.size,
       content: await fs.readFile(resolved)
+    };
+  }
+
+  /**
+   * Empaqueta una carpeta (y sus subcarpetas) en un ZIP creado al vuelo. Los
+   * nombres dentro del ZIP son las rutas relativas a la zona, así que la
+   * carpeta pedida queda como raíz. Se saltan ocultos y hay tope de tamaño.
+   */
+  async downloadFolder(projectId, zone, relativePath) {
+    const zoneDir = this._zoneDir(projectId, zone);
+    const resolved = this._resolveZonePath(zoneDir, relativePath || '');
+
+    const stats = await fs.stat(resolved);
+    if (!stats.isDirectory()) throw new Error('NOT_A_DIRECTORY');
+
+    const entradas = [];
+    let total = 0;
+    const walk = async (dir) => {
+      const items = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+      for (const item of items) {
+        if (item.name.startsWith('.')) continue;
+        const full = path.join(dir, item.name);
+        if (item.isDirectory()) {
+          await walk(full);
+          continue;
+        }
+        if (!item.isFile()) continue;
+        const info = await fs.stat(full).catch(() => null);
+        if (!info) continue;
+        total += info.size;
+        if (total > FileSystemBrowserAdapter.MAX_FOLDER_BYTES) throw new Error('FOLDER_TOO_LARGE');
+        entradas.push({
+          name: path.relative(zoneDir, full).split(path.sep).join('/'),
+          data: await fs.readFile(full)
+        });
+      }
+    };
+    await walk(resolved);
+
+    const base = path.basename(resolved) || zone;
+    return {
+      name: `${base}.zip`,
+      count: entradas.length,
+      content: crearZip(entradas)
     };
   }
 }
