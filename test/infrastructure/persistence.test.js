@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 import { FileSystemNoteRepository } from '../../src/infrastructure/persistence/FileSystemNoteRepository.js';
 import { FileSystemProjectRepository } from '../../src/infrastructure/persistence/FileSystemProjectRepository.js';
@@ -88,6 +89,41 @@ test('FileSystemBrowserAdapter bloquea zonas y path traversal', async () => {
   await assert.rejects(
     () => adapter.downloadFile('proj', 'code', '../../../etc/passwd'),
     /PATH_NOT_ALLOWED/
+  );
+  await assert.rejects(
+    () => adapter.downloadFolder('proj', 'code', '../../../etc'),
+    /PATH_NOT_ALLOWED/
+  );
+});
+
+test('FileSystemBrowserAdapter empaqueta una carpeta en un ZIP válido', async () => {
+  const dir = await tempDir();
+  const adapter = new FileSystemBrowserAdapter(dir);
+  await fs.mkdir(path.join(dir, 'proj', 'code', 'src', 'sub'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'proj', 'code', 'src', 'index.js'), 'console.log(1)');
+  await fs.writeFile(path.join(dir, 'proj', 'code', 'src', 'sub', 'nota.txt'), 'hola');
+
+  const zip = await adapter.downloadFolder('proj', 'code', 'src');
+  assert.equal(zip.name, 'src.zip');
+  assert.equal(zip.count, 2);
+  assert.equal(zip.content.subarray(0, 4).toString('latin1'), 'PK\x03\x04');
+  assert.ok(zip.content.includes(Buffer.from('src/sub/nota.txt')), 'las rutas van dentro');
+  // El EOCD cierra el archivo.
+  assert.ok(zip.content.includes(Buffer.from('PK\x05\x06', 'latin1')));
+
+  // Y una entrada se puede descomprimir de verdad (valida cabeceras y CRC).
+  const nombreLen = zip.content.readUInt16LE(26);
+  const extraLen = zip.content.readUInt16LE(28);
+  const metodo = zip.content.readUInt16LE(8);
+  const compLen = zip.content.readUInt32LE(18);
+  const inicio = 30 + nombreLen + extraLen;
+  const datos = zip.content.subarray(inicio, inicio + compLen);
+  const contenido = (metodo === 8 ? zlib.inflateRawSync(datos) : datos).toString('utf8');
+  assert.ok(['console.log(1)', 'hola'].includes(contenido));
+
+  await assert.rejects(
+    () => adapter.downloadFolder('proj', 'code', 'src/index.js'),
+    /NOT_A_DIRECTORY/
   );
 });
 

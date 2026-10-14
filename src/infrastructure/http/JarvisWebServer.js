@@ -129,7 +129,7 @@ export class JarvisWebServer {
    * tamaño. No se usa multipart: el frontend manda los bytes tal cual y el
    * nombre del fichero viaja en la query.
    */
-  async _readRawBody(req, maxBytes = 12 * 1024 * 1024) {
+  async _readRawBody(req, maxBytes = 128 * 1024 * 1024) {
     return new Promise((resolve, reject) => {
       const trozos = [];
       let size = 0;
@@ -199,6 +199,7 @@ export class JarvisWebServer {
    *   GET  /api/projects/:id/files?zone=code|logs
    *   GET  /api/projects/:id/files/content?zone=code|logs&path=relativa
    *   GET  /api/projects/:id/files/download?zone=code|logs&path=relativa
+   *   GET  /api/projects/:id/files/download-folder?zone=code|logs&path=relativa
    *   POST /api/projects/:id/orchestrate        { instruction }
    */
   async _handleApi(req, res, pathname, url) {
@@ -413,6 +414,25 @@ export class JarvisWebServer {
           if (!relPath) return this._sendJson(res, 400, { error: 'PATH_REQUIRED' });
           const content = await this.browseProjectFilesUseCase.read(projectId, zone, relPath);
           return this._sendJson(res, 200, { projectId, zone, path: relPath, content });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
+      // GET /api/projects/:id/files/download-folder?zone=code&path=...  → ZIP al vuelo
+      if (req.method === 'GET' && segments[3] === 'files' && segments[4] === 'download-folder') {
+        try {
+          const zone = url.searchParams.get('zone') || 'code';
+          const relPath = url.searchParams.get('path') || '';
+          const { name, content } = await this.browseProjectFilesUseCase.downloadFolder(projectId, zone, relPath);
+          const ascii = String(name).replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
+          res.writeHead(200, {
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+            'Content-Length': content.length,
+            'Cache-Control': 'no-store'
+          });
+          return res.end(content);
         } catch (error) {
           return this._sendJson(res, 400, { error: error.message });
         }

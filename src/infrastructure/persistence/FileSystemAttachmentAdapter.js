@@ -24,7 +24,7 @@ import { AttachmentPort } from '../../domain/ports/AttachmentPort.js';
  * la carpeta de la idea (nada de `..` ni rutas absolutas).
  */
 export class FileSystemAttachmentAdapter extends AttachmentPort {
-  static MAX_BYTES = 12 * 1024 * 1024;       // 12 MB: holgado para imágenes, seguro en la Pi
+  static MAX_BYTES = 128 * 1024 * 1024;      // 128 MB: tope pedido por el usuario
   static CARPETA = 'adjuntos';
   static REGISTRO = '.registro.json';
   static HISTORIAL = '.historial.jsonl';

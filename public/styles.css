@@ -282,6 +282,10 @@ html, body {
 .file-list li.file-dir > details > summary {
   cursor: pointer; list-style: none; color: var(--text-dim);
   padding: 3px 2px; user-select: none;
+  display: flex; align-items: center; gap: 6px;
+}
+.file-list li.file-dir > details > summary .file-folder-name {
+  flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .file-list li.file-dir > details > summary::-webkit-details-marker { display: none; }
 .file-list li.file-dir > details > summary::before { content: '▸'; margin-right: 4px; }
@@ -292,11 +296,11 @@ html, body {
   padding: 5px 8px; cursor: pointer;
 }
 .file-list li.file-item .file-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-list li.file-item .file-download {
+.file-list .file-download {
   flex: 0 0 auto; text-decoration: none; color: var(--text-dim);
   border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; font-size: 12px;
 }
-.file-list li.file-item .file-download:hover { color: var(--text); border-color: var(--accent-strong); }
+.file-list .file-download:hover { color: var(--text); border-color: var(--accent-strong); }
 
 .file-view {
   margin: 0;

@@ -20,4 +20,12 @@ export class FileBrowserPort {
   async downloadFile(projectId, zone, relativePath) {
     throw new Error('METHOD_NOT_IMPLEMENTED');
   }
+
+  /**
+   * Empaqueta una carpeta entera en un ZIP (creado al vuelo).
+   * @returns {Promise<{name: string, count: number, content: Buffer}>}
+   */
+  async downloadFolder(projectId, zone, relativePath) {
+    throw new Error('METHOD_NOT_IMPLEMENTED');
+  }
 }

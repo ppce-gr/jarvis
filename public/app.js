@@ -1231,7 +1231,13 @@ function renderArbolArchivos(nodo, zone) {
   return hijos.map((n) => {
     if (n.type === 'dir') {
       const dentro = renderArbolArchivos(n, zone);
-      return `<li class="file-dir"><details open><summary>📂 ${escapeHtml(n.name)}</summary>`
+      const zipHref = `/api/projects/${encodeURIComponent(state.currentProjectId)}`
+        + `/files/download-folder?zone=${zone}&path=${encodeURIComponent(n.path)}`;
+      return '<li class="file-dir"><details open><summary>'
+        + `<span class="file-folder-name">📂 ${escapeHtml(n.name)}</span>`
+        + `<a class="file-download" data-download="1" href="${zipHref}"`
+        + ` download="${escapeHtml(n.name)}.zip" title="Descargar carpeta (.zip)">⬇</a>`
+        + '</summary>'
         + (dentro ? `<ul class="file-tree">${dentro}</ul>` : '')
         + '</details></li>';
     }

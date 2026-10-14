@@ -20,4 +20,9 @@ export class BrowseProjectFilesUseCase {
   async download(projectId, zone, relativePath) {
     return await this.fileBrowserAdapter.downloadFile(projectId, zone, relativePath);
   }
+
+  /** Empaqueta una carpeta en un ZIP creado al vuelo. */
+  async downloadFolder(projectId, zone, relativePath) {
+    return await this.fileBrowserAdapter.downloadFolder(projectId, zone, relativePath);
+  }
 }
