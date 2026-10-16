@@ -1,0 +1,38 @@
+[Unit]
+Description=Jarvis · DSH web (acceso al agente desde el móvil)
+Documentation=file:@JARVIS_CODE_DIR@/docs/dsh-web.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@JARVIS_USER@
+Group=@JARVIS_GROUP@
+WorkingDirectory=@JARVIS_DSH_WEB_DIR@
+Environment=HOME=@JARVIS_HOME@
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+# Configuración del arranque. La IP es un valor de configuración, no una
+# constante dentro del script: el instalador la resuelve (o la autodetecta).
+Environment=JARVIS_DSH_WEB_HOST=@JARVIS_DSH_WEB_HOST@
+Environment=JARVIS_DSH_WEB_VERSION=@JARVIS_DSH_WEB_VERSION@
+Environment=JARVIS_DSH_WEB_MAX_OLD_SPACE=@JARVIS_DSH_WEB_MAX_OLD_SPACE@
+Environment=JARVIS_DSH_WEB_PORT=@JARVIS_DSH_WEB_PORT@
+Environment=JARVIS_DSH_WEB_PROXY_PORT=@JARVIS_DSH_WEB_PROXY_PORT@
+Environment=JARVIS_DSH_WEB_PUBLIC_PORT=@JARVIS_DSH_WEB_PUBLIC_PORT@
+
+ExecStart=@JARVIS_DSH_WEB_DIR@/arrancar-dsh.sh
+
+Restart=on-failure
+RestartSec=5
+
+# OJO: aquí NO va `killall` de ningún tipo. La limpieza de un arranque
+# anterior la hace el script, y sólo sobre los procesos de ESTE servicio
+# (ver deploy/dsh-web/arrancar-dsh.sh). Un `killall node` mataría también a
+# jarvis.service, que corre con el mismo usuario.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jarvis-dsh-web
+
+[Install]
+WantedBy=multi-user.target
