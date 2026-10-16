@@ -81,3 +81,19 @@ JARVIS_BACKUP_COMMIT_CODE="${JARVIS_BACKUP_COMMIT_CODE:-0}"
 
 # --- Rama y repositorio remoto ---------------------------------
 JARVIS_BRANCH="${JARVIS_BRANCH:-main}"
+
+# --- DSH web (acceso al agente desde el móvil) ------------------
+# Lo instala `sudo bash deploy/instalar-dsh-web.sh`. El arranque está
+# versionado en deploy/dsh-web/ y NO usa `killall` (mataría a jarvis.service,
+# que corre con el mismo usuario).
+# IP o nombre del enlace público. Vacío = autodetectar con `hostname -I`.
+JARVIS_DSH_WEB_HOST="${JARVIS_DSH_WEB_HOST:-}"
+# Versión FIJADA de @deepseek-ai/dsh. Nunca `@latest`: re-resuelve y descarga
+# en cada arranque, que es lento e impredecible en la Pi.
+JARVIS_DSH_WEB_VERSION="${JARVIS_DSH_WEB_VERSION:-0.2.0-rc.2}"
+# Tope de heap de V8 para `dsh web`, en MB.
+JARVIS_DSH_WEB_MAX_OLD_SPACE="${JARVIS_DSH_WEB_MAX_OLD_SPACE:-384}"
+# Puerto interno de `dsh web`, proxy socat y puerto público del redirector.
+JARVIS_DSH_WEB_PORT="${JARVIS_DSH_WEB_PORT:-3080}"
+JARVIS_DSH_WEB_PROXY_PORT="${JARVIS_DSH_WEB_PROXY_PORT:-3085}"
+JARVIS_DSH_WEB_PUBLIC_PORT="${JARVIS_DSH_WEB_PUBLIC_PORT:-8080}"

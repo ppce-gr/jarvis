@@ -166,6 +166,7 @@ El script de mantenimiento reúne las operaciones en un solo sitio:
 | [`docs/proveedores.md`](docs/proveedores.md) | Configurar proveedores y claves de API (Claude, GPT, Gemini…). |
 | [`docs/autoactualizacion.md`](docs/autoactualizacion.md) | **Autoactualización con reversión**: método, barreras y riesgos. |
 | [`docs/ramas.md`](docs/ramas.md) | **Ramas de tarea**: red de seguridad y snapshot de la configuración. |
+| [`docs/dsh-web.md`](docs/dsh-web.md) | **DSH web desde el móvil**: enlace fijo, versión fijada y el `killall` que se eliminó. |
 | [`docs/guia-migracion.md`](docs/guia-migracion.md) | Llevarlo a otro hardware y restaurarlo. |
 | [`deploy/README.md`](deploy/README.md) | Instalación de servicios, zram, **autoactualización** y guía del script de mantenimiento. |
 
