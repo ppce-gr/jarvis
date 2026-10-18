@@ -2560,18 +2560,25 @@ function opcionesHilos(data) {
   return opciones;
 }
 
-/** Pone en el botón 🗂 cuántas conversaciones hay guardadas. */
+/** Cuántas conversaciones muestra el panel: la actual (si tiene contenido) + guardadas. */
+function totalConversaciones(data) {
+  const actual = data?.actual;
+  const hayActual = Boolean(actual && (actual.mensajes || (actual.chats || 1) > 1));
+  return (data?.archivadas || []).length + (hayActual ? 1 : 0);
+}
+
+/** Pone en el botón 🗂 cuántas conversaciones hay. */
 async function actualizarBotonHilos() {
   const btn = $('#chat-hilos');
   if (!btn || !state.chat.projectId) return;
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.chat.projectId)}/chat/conversaciones`);
-    const n = (data.archivadas || []).length;
+    const n = totalConversaciones(data);
     const count = $('#hilos-count');
     if (count) count.textContent = n ? ` (${n})` : '';
     btn.title = n
-      ? `Conversaciones guardadas: ${n}. Pulsa para verlas o continuar una`
-      : 'Conversaciones guardadas: todavía no hay ninguna';
+      ? `Conversaciones: ${n}. Pulsa para verlas o continuar una`
+      : 'Conversaciones: todavía no hay ninguna';
   } catch { /* sin conexión */ }
 }
 
@@ -2945,7 +2952,7 @@ async function accionHilo(accion, dataset) {
     if (accion === 'continuar') {
       if (typeof window.confirm === 'function'
         && !window.confirm('¿Continuar esa conversación? El agente recuperará los últimos mensajes.')) return;
-      await api(`${base}/continuar`, { method: 'POST', body: JSON.stringify({ nombre: dataset.nombre }) });
+      await api(`/api/projects/${encodeURIComponent(pid)}/chat/continuar`, { method: 'POST', body: JSON.stringify({ nombre: dataset.nombre }) });
       const dlg = $('#hilos-dialog');
       if (dlg && dlg.open) dlg.close();
       await resyncChat();
@@ -3696,6 +3703,8 @@ window.Jarvis = {
   abrirHilos,
   opcionesHilos,
   actualizarBotonHilos,
+  totalConversaciones,
+  accionHilo,
   abrirChatLectura,
   mensajeLecturaHtml,
   renderHilosList,

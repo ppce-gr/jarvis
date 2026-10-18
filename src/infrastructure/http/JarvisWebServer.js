@@ -767,6 +767,19 @@ export class JarvisWebServer {
         }
       }
 
+      // Alias: POST /api/projects/:id/chat/conversaciones/continuar  { nombre }
+      // (versiones anteriores del frontend usaban esta ruta; se mantiene para
+      // que una página ya cargada no se quede con «route not found»).
+      if (req.method === 'POST' && segments[3] === 'chat' && segments[4] === 'conversaciones'
+          && segments[5] === 'continuar') {
+        try {
+          const body = await this._readJsonBody(req);
+          return this._sendJson(res, 200, { projectId, ...(await this.manageConversationsUseCase.continue(projectId, body.nombre)) });
+        } catch (error) {
+          return this._sendJson(res, 400, { error: error.message });
+        }
+      }
+
       // ---- Permisos de sistema: pedir, listar, aprobar (PIN) y rechazar ----
       // GET /api/projects/:id/permisos
       if (req.method === 'GET' && segments[3] === 'permisos' && !segments[4]) {
