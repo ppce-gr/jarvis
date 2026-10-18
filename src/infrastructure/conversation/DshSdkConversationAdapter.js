@@ -4,6 +4,11 @@ import path from 'node:path';
 import { ConversationPort } from '../../domain/ports/ConversationPort.js';
 import { medirConversacion, normalizarLimites } from '../../domain/ChatContext.js';
 import {
+  DEFAULT_FETCH_MODE,
+  fetchPolicyLines,
+  normalizarFetchMode
+} from '../../domain/FetchPolicy.js';
+import {
   summarizeTool,
   formatToolInput,
   formatToolDetail,
@@ -54,6 +59,7 @@ export class DshSdkConversationAdapter extends ConversationPort {
     provider = process.env.JARVIS_CHAT_PROVIDER || 'deepseek-official',
     model = process.env.JARVIS_CHAT_MODEL || 'deepseek-v4-flash',
     reasoningEffort = process.env.JARVIS_CHAT_EFFORT || 'high',
+    fetchMode = process.env.JARVIS_FETCH_MODE || DEFAULT_FETCH_MODE,
     idleTimeoutMs = DshSdkConversationAdapter.DEFAULT_IDLE_MS,
     subchatLimits = null,
     spawnFn = nodeSpawn
@@ -68,6 +74,8 @@ export class DshSdkConversationAdapter extends ConversationPort {
     this.reasoningEffort = reasoningEffort;
     this.idleTimeoutMs = idleTimeoutMs;
     this.spawnFn = spawnFn;
+    // Política de descargas: por defecto `script` (curl/wget), que no tumba la Pi.
+    this.fetchMode = normalizarFetchMode(fetchMode);
     // Umbrales de los sub-chats: tokens estimados y bytes. Se pueden inyectar;
     // si no, se leen del entorno y, si tampoco, caen a los del dominio.
     this.subchatLimits = normalizarLimites(subchatLimits || {
@@ -385,7 +393,7 @@ export class DshSdkConversationAdapter extends ConversationPort {
    * porque el agente nuevo no recuerda nada. El mensaje original del usuario es
    * el que se guarda en el transcript; esto es sólo lo que viaja al modelo.
    */
-  static buildOutgoingMessage(projectId, text, isFirstOfSession) {
+  static buildOutgoingMessage(projectId, text, isFirstOfSession, fetchMode = DEFAULT_FETCH_MODE) {
     if (!isFirstOfSession) return text;
     return [
       `Trabajas dentro del proyecto "${projectId}" de Jarvis.`,
@@ -412,6 +420,8 @@ export class DshSdkConversationAdapter extends ConversationPort {
       '  proyecto (p. ej. `code/` o `conceptual/`) sin borrarlo del disco.',
       '- La pestaña Adjuntos permite al usuario subir, mover, desasociar (quitar de',
       '  la idea sin borrar) y borrar. El historial queda registrado.',
+      '',
+      ...fetchPolicyLines(fetchMode),
       '',
       'Permisos de sistema (NO tienes root):',
       '- Si necesitas algo del sistema (reiniciar un servicio, editar `/etc`, GPIO,',
@@ -486,7 +496,9 @@ export class DshSdkConversationAdapter extends ConversationPort {
 
     const isFirstOfSession = session.turnCount === 0;
     session.turnCount += 1;
-    let outgoing = DshSdkConversationAdapter.buildOutgoingMessage(projectId, clean, isFirstOfSession);
+    let outgoing = DshSdkConversationAdapter.buildOutgoingMessage(
+      projectId, clean, isFirstOfSession, this.fetchMode
+    );
     if (isFirstOfSession) {
       // Sesión nueva (arranque de Jarvis o «continuar»): si el sub-chat trae
       // resumen, ése manda (es más denso y no pierde el hilo); si no, se
@@ -498,6 +510,12 @@ export class DshSdkConversationAdapter extends ConversationPort {
         const previos = await this._historialReinyeccion(projectId);
         if (previos.length) outgoing = `${DshSdkConversationAdapter._preambleHistorial(previos)}\n\n${outgoing}`;
       }
+    }
+
+    // El modo de descarga puede cambiar a mitad de conversación: se recuerda en
+    // cada mensaje (el primero ya lo lleva en el preámbulo).
+    if (!isFirstOfSession) {
+      outgoing = `${outgoing}\n\n${fetchPolicyLines(this.fetchMode).join('\n')}`;
     }
 
     try {

@@ -105,6 +105,10 @@
                   <div id="chat-model-menu" class="model-picker-menu hidden" role="listbox" aria-label="Modelos"></div>
                 </div>
                 <select id="chat-effort" class="chat-select chat-select-sm" title="Esfuerzo de razonamiento"></select>
+                <select id="chat-fetch" class="chat-select chat-select-sm" title="Descargas web: con scripts (recomendado) o pasando la URL a la IA">
+                  <option value="script">⬇ Scripts</option>
+                  <option value="ia">IA</option>
+                </select>
                 <button id="chat-stop" class="btn btn-ghost btn-sm hidden" title="Detener la respuesta en curso (el agente conserva lo hablado)">■ Detener</button>
                 <button id="chat-hilos" class="btn btn-ghost btn-sm" title="Conversaciones de esta idea: verlas, ver sus chats y continuar una"><span aria-hidden="true">🗂</span><span class="hilos-label"> Conversaciones</span><span id="hilos-count" class="hilos-count"></span></button>
                 <button id="chat-reset" class="btn btn-ghost btn-sm" title="Guardar esta conversación y empezar otra nueva (otro tema)">＋ Conversación</button>

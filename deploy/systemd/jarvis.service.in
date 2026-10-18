@@ -39,6 +39,8 @@ Environment=JARVIS_CHAT_IDLE_MS=@JARVIS_CHAT_IDLE_MS@
 # Umbrales para partir el hilo en sub-chats (tokens estimados y bytes).
 Environment=JARVIS_CHAT_MAX_TOKENS=@JARVIS_CHAT_MAX_TOKENS@
 Environment=JARVIS_CHAT_MAX_BYTES=@JARVIS_CHAT_MAX_BYTES@
+# Descargas de URLs: `script` (curl/wget) o `ia` (fetch del modelo).
+Environment=JARVIS_FETCH_MODE=@JARVIS_FETCH_MODE@
 
 ExecStart=@JARVIS_NODE_BIN@ src/index.js
 

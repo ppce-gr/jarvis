@@ -16,6 +16,11 @@ import {
   sanitizeActivity
 } from '../../domain/ActivityTrace.js';
 import { medirConversacion, normalizarLimites } from '../../domain/ChatContext.js';
+import {
+  DEFAULT_FETCH_MODE,
+  fetchPolicyLines,
+  normalizarFetchMode
+} from '../../domain/FetchPolicy.js';
 import { JsonRpcStdioClient } from './JsonRpcStdioClient.js';
 import { FileSystemResumeNoteAdapter } from '../persistence/FileSystemResumeNoteAdapter.js';
 import { resolverWorkspace } from '../persistence/resolverWorkspace.js';
@@ -65,6 +70,7 @@ export class AcpConversationAdapter extends ConversationPort {
     provider = process.env.JARVIS_CHAT_PROVIDER || 'deepseek-official',
     model = process.env.JARVIS_CHAT_MODEL || 'deepseek-v4-flash',
     reasoningEffort = process.env.JARVIS_CHAT_EFFORT || 'high',
+    fetchMode = process.env.JARVIS_FETCH_MODE || DEFAULT_FETCH_MODE,
     idleTimeoutMs = AcpConversationAdapter.DEFAULT_IDLE_MS,
     permissionTimeoutMs = Number(process.env.JARVIS_PERMISSION_TIMEOUT_MS
       || AcpConversationAdapter.DEFAULT_PERMISSION_MS),
@@ -102,7 +108,8 @@ export class AcpConversationAdapter extends ConversationPort {
     this.configFile = configFile || path.join(brainDir, 'chat-config.json');
     this.preferred = {
       model: JSON.stringify([provider, model]),
-      reasoning_effort: reasoningEffort
+      reasoning_effort: reasoningEffort,
+      fetch_mode: normalizarFetchMode(fetchMode)
     };
     this._preferredLoaded = false;
 
@@ -151,6 +158,7 @@ export class AcpConversationAdapter extends ConversationPort {
       const saved = JSON.parse(raw);
       if (saved?.model) this.preferred.model = saved.model;
       if (saved?.reasoning_effort) this.preferred.reasoning_effort = saved.reasoning_effort;
+      if (saved?.fetch_mode) this.preferred.fetch_mode = normalizarFetchMode(saved.fetch_mode);
     } catch { /* sin fichero: se usan los valores de entorno */ }
   }
 
@@ -721,7 +729,7 @@ export class AcpConversationAdapter extends ConversationPort {
   }
 
   /** Contexto del proyecto en el primer mensaje de la sesión. */
-  static buildOutgoingMessage(projectId, text, isFirstOfSession) {
+  static buildOutgoingMessage(projectId, text, isFirstOfSession, fetchMode = DEFAULT_FETCH_MODE) {
     if (!isFirstOfSession) return text;
     return [
       `Trabajas dentro del proyecto "${projectId}" de Jarvis.`,
@@ -748,6 +756,8 @@ export class AcpConversationAdapter extends ConversationPort {
       '  proyecto (p. ej. `code/` o `conceptual/`) sin borrarlo del disco.',
       '- La pestaña Adjuntos permite al usuario subir, mover, desasociar (quitar de',
       '  la idea sin borrar) y borrar. El historial queda registrado.',
+      '',
+      ...fetchPolicyLines(fetchMode),
       '',
       'Permisos de sistema (NO tienes root):',
       '- Si necesitas algo del sistema (reiniciar un servicio, editar `/etc`, GPIO,',
@@ -857,7 +867,9 @@ export class AcpConversationAdapter extends ConversationPort {
 
     const isFirstOfSession = session.turnCount === 0;
     session.turnCount += 1;
-    let outgoing = AcpConversationAdapter.buildOutgoingMessage(projectId, clean, isFirstOfSession);
+    let outgoing = AcpConversationAdapter.buildOutgoingMessage(
+      projectId, clean, isFirstOfSession, this.preferred.fetch_mode
+    );
     if (isFirstOfSession) {
       // Reanudación: si una sesión anterior dejó `tarea-en-curso.md`, es lo
       // primero que ve el agente. Después, el contexto del hilo reciente.
@@ -875,6 +887,13 @@ export class AcpConversationAdapter extends ConversationPort {
         const previos = await this._historialReinyeccion(projectId);
         if (previos.length) outgoing = `${AcpConversationAdapter._preambleHistorial(previos)}\n\n${outgoing}`;
       }
+    }
+
+    // El modo de descarga puede cambiar a mitad de conversación: se recuerda en
+    // cada mensaje (el primero ya lo lleva en el preámbulo). Es corto y evita
+    // que un cambio de ajuste tarde hasta la siguiente sesión.
+    if (!isFirstOfSession) {
+      outgoing = `${outgoing}\n\n${fetchPolicyLines(this.preferred.fetch_mode).join('\n')}`;
     }
 
     // `session/prompt` NO se espera: en ACP esa petición se resuelve cuando el
@@ -1222,6 +1241,7 @@ export class AcpConversationAdapter extends ConversationPort {
       provider,
       modelName: model,
       reasoning_effort: this.preferred.reasoning_effort,
+      fetch_mode: this.preferred.fetch_mode,
       // Si el catálogo no trae `reasoning_effort`, el modelo no la admite.
       supportsEffort: Boolean(effortOption(options)),
       error: session?.configError || null
@@ -1233,7 +1253,7 @@ export class AcpConversationAdapter extends ConversationPort {
    * si la hay; si no, se aplicara al abrirla.
    */
   async setConfig(configId, value) {
-    if (!['model', 'reasoning_effort'].includes(configId)) {
+    if (!['model', 'reasoning_effort', 'fetch_mode'].includes(configId)) {
       throw new Error(`CONFIG_ID_NOT_SUPPORTED: ${configId}`);
     }
     if (value === undefined || value === null || String(value) === '') {
@@ -1241,6 +1261,16 @@ export class AcpConversationAdapter extends ConversationPort {
     }
     await this._loadPreferred();
     await this._loadHealth();
+
+    // `fetch_mode` no es una opción del motor: vive en el mismo
+    // chat-config.json y se inyecta en el enunciado del agente.
+    if (configId === 'fetch_mode') {
+      this.preferred.fetch_mode = normalizarFetchMode(value);
+      await this._savePreferred();
+      const raw = this._catalog || [];
+      const viva = [...this._sessions.values()].find((s) => s.sessionId) || null;
+      return { options: this._decoratedOptions(raw), current: this._currentSelection(viva, raw) };
+    }
 
     const session = [...this._sessions.values()].find((s) => s.sessionId) || null;
     const liveOptions = session?.configOptions?.length ? session.configOptions : (this._catalog || []);

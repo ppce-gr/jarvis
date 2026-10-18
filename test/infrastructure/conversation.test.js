@@ -115,10 +115,35 @@ test('buildOutgoingMessage da contexto sólo en el primer mensaje', () => {
   assert.match(first, /dudas\.md/);
   assert.match(first, /bloquea/i, 'las dudas bloqueantes se preguntan en el chat');
   assert.match(first, /puntos-clave\.md/);
+  assert.match(first, /NO uses la herramienta de fetch/i, 'por defecto se descarga con scripts');
   assert.match(first, /hola$/);
+
+  const conIa = DshSdkConversationAdapter.buildOutgoingMessage('demo', 'hola', true, 'ia');
+  assert.match(conIa, /Puedes pasar la URL/);
 
   const later = DshSdkConversationAdapter.buildOutgoingMessage('demo', 'sigue', false);
   assert.equal(later, 'sigue');
+});
+
+test('la política de fetch viaja en cada mensaje, no solo en el primero', async () => {
+  const ws = await tempWorkspace();
+  const record = path.join(ws, 'record.jsonl');
+  const adapter = new DshSdkConversationAdapter({
+    brainDir: ws,
+    fetchMode: 'ia',
+    spawnFn: fakeSpawn({ FAKE_DSH_RECORD: record })
+  });
+
+  await adapter.send('demo', 'primero');
+  await adapter.send('demo', 'segundo');
+
+  const calls = (await fs.readFile(record, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+  const prompts = calls.filter((c) => c.method === 'session/prompt');
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[0].params.contentBlocks[0].text, /Puedes pasar la URL/);
+  assert.match(prompts[1].params.contentBlocks[0].text, /Puedes pasar la URL/);
+
+  await adapter.closeAll();
 });
 
 test('el contexto del proyecto se inyecta sólo en el primer turno', async () => {
@@ -145,7 +170,8 @@ test('el contexto del proyecto se inyecta sólo en el primer turno', async () =>
   const prompts = calls.filter((c) => c.method === 'session/prompt');
 
   assert.match(prompts[0].params.contentBlocks[0].text, /proyecto "demo"/);
-  assert.equal(prompts[1].params.contentBlocks[0].text, 'segundo turno');
+  assert.match(prompts[1].params.contentBlocks[0].text, /^segundo turno/);
+  assert.match(prompts[1].params.contentBlocks[0].text, /NO uses la herramienta de fetch/);
 
   // El transcript guarda lo que escribió el usuario, sin el preámbulo.
   const history = await adapter.history('demo');

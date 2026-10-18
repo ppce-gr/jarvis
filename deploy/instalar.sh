@@ -107,6 +107,8 @@ JARVIS_CHAT_IDLE_MS="${JARVIS_CHAT_IDLE_MS:-900000}"
 # Umbrales para partir el hilo en sub-chats (tokens estimados y bytes).
 JARVIS_CHAT_MAX_TOKENS="${JARVIS_CHAT_MAX_TOKENS:-30000}"
 JARVIS_CHAT_MAX_BYTES="${JARVIS_CHAT_MAX_BYTES:-80000}"
+# Descargas de URLs: `script` (curl/wget) o `ia` (fetch del modelo).
+JARVIS_FETCH_MODE="${JARVIS_FETCH_MODE:-script}"
 JARVIS_BACKUP_COMMIT_CODE="${JARVIS_BACKUP_COMMIT_CODE:-0}"
 JARVIS_BRANCH="${JARVIS_BRANCH:-main}"
 # JARVIS_DSH_BIN se resuelve más abajo, en la sección de DSH.
@@ -136,7 +138,7 @@ renderizar() {   # $1 plantilla · $2 destino
              JARVIS_DSH_PROFILE JARVIS_CHAT_PROTOCOL JARVIS_CHAT_PROFILE \
              JARVIS_CHAT_PROVIDER JARVIS_CHAT_MODEL JARVIS_CHAT_EFFORT \
              JARVIS_CHAT_IDLE_MS JARVIS_CHAT_MAX_TOKENS JARVIS_CHAT_MAX_BYTES \
-             JARVIS_BACKUP_COMMIT_CODE JARVIS_BRANCH; do
+             JARVIS_FETCH_MODE JARVIS_BACKUP_COMMIT_CODE JARVIS_BRANCH; do
     contenido="${contenido//@${var}@/${!var:-}}"
   done
   # Si queda algún marcador es que la plantilla pide algo que no hemos resuelto:
@@ -185,7 +187,7 @@ escribir_conf_sistema() {
     for var in JARVIS_USER JARVIS_GROUP JARVIS_CODE_DIR JARVIS_BRAIN_DIR \
                JARVIS_UPDATE_STATE JARVIS_UPDATE_FLAG JARVIS_PORT JARVIS_HOST \
                JARVIS_SMOKE_PORT JARVIS_SBIN_DIR JARVIS_NODE_BIN JARVIS_DSH_BIN \
-               JARVIS_BACKUP_COMMIT_CODE JARVIS_BRANCH; do
+               JARVIS_FETCH_MODE JARVIS_BACKUP_COMMIT_CODE JARVIS_BRANCH; do
       echo "${var}=\"\${${var}:-${!var:-}}\""
     done
   } > "$CONF_SISTEMA"

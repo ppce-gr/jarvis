@@ -2,6 +2,11 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { OrchestratorPort } from '../../domain/ports/OrchestratorPort.js';
+import {
+  DEFAULT_FETCH_MODE,
+  fetchPolicyLines,
+  normalizarFetchMode
+} from '../../domain/FetchPolicy.js';
 
 /**
  * Adaptador de Infraestructura: DshHeadlessOrchestratorAdapter
@@ -36,6 +41,7 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
     profile = process.env.JARVIS_DSH_PROFILE || 'headless',
     dshHome = process.env.DSH_HOME || undefined,
     timeoutMs = Number(process.env.JARVIS_TASK_TIMEOUT_MS || 15 * 60 * 1000),
+    fetchMode = process.env.JARVIS_FETCH_MODE || DEFAULT_FETCH_MODE,
     runner = null
   } = {}) {
     super();
@@ -44,6 +50,7 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
     this.profile = profile;
     this.dshHome = dshHome;
     this.timeoutMs = timeoutMs;
+    this.fetchMode = normalizarFetchMode(fetchMode);
     this.runner = runner || DshHeadlessOrchestratorAdapter.spawnRunner;
 
     /** @type {Map<string, Array<object>>} projectId -> tareas */
@@ -131,7 +138,7 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
    * proceso es la carpeta del proyecto, así que el agente ve `conceptual/`
    * y escribe en `code/` sin que tengamos que explicarle rutas absolutas.
    */
-  _buildPrompt(projectId, instruction) {
+  _buildPrompt(projectId, instruction, fetchMode = DEFAULT_FETCH_MODE) {
     return [
       `Trabajas dentro del proyecto "${projectId}" de Jarvis.`,
       'El directorio de trabajo actual ES la carpeta del proyecto.',
@@ -139,11 +146,26 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
       '- Escribe el código y los artefactos en `code/`.',
       '- No modifiques ficheros fuera de este proyecto.',
       '',
+      ...fetchPolicyLines(fetchMode),
+      '',
       'Orden del usuario:',
       instruction,
       '',
       'Al terminar, responde con un resumen breve y concreto de lo que has hecho.'
     ].join('\n');
+  }
+
+  /**
+   * Modo de fetch vigente: manda `chat-config.json` (lo que el usuario elige
+   * en la interfaz); si no se puede leer, el valor de entorno/constructor.
+   */
+  async _fetchModeActual() {
+    try {
+      const raw = await fs.readFile(path.join(this.brainDir, 'chat-config.json'), 'utf8');
+      return normalizarFetchMode(JSON.parse(raw)?.fetch_mode);
+    } catch {
+      return this.fetchMode;
+    }
   }
 
   static _slug(text, max = 40) {
@@ -231,11 +253,12 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
     const env = { ...process.env };
     if (this.dshHome) env.DSH_HOME = this.dshHome;
 
+    const fetchMode = await this._fetchModeActual();
     let result;
     try {
       result = await this.runner({
         bin: this.dshBin,
-        args: ['--profile', this.profile, this._buildPrompt(task.projectId, task.instruction)],
+        args: ['--profile', this.profile, this._buildPrompt(task.projectId, task.instruction, fetchMode)],
         cwd: await this._workspaceFor(task.projectId),
         env,
         timeoutMs: this.timeoutMs,
