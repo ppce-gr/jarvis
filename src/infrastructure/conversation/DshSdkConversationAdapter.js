@@ -472,6 +472,22 @@ export class DshSdkConversationAdapter extends ConversationPort {
   /* ------------------------------------------------------------------
    * API pública del puerto
    * ------------------------------------------------------------------ */
+
+  /**
+   * Ajustes globales, sin depender de una idea. El protocolo SDK es un
+   * respaldo heredado y no persiste configuración: el modo vive en memoria
+   * mientras dure el proceso. Con ACP (el de por defecto) sí se guarda.
+   */
+  async getSettings() {
+    return { fetch_mode: normalizarFetchMode(this.fetchMode) };
+  }
+
+  async setConfig(configId, value) {
+    if (configId !== 'fetch_mode') throw new Error(`CONFIG_ID_NOT_SUPPORTED: ${configId}`);
+    this.fetchMode = normalizarFetchMode(value);
+    return await this.getSettings();
+  }
+
   async send(projectId, text) {
     if (!projectId) throw new Error('PROJECT_ID_REQUIRED');
     const clean = String(text ?? '').trim();

@@ -105,10 +105,6 @@
                   <div id="chat-model-menu" class="model-picker-menu hidden" role="listbox" aria-label="Modelos"></div>
                 </div>
                 <select id="chat-effort" class="chat-select chat-select-sm" title="Esfuerzo de razonamiento"></select>
-                <select id="chat-fetch" class="chat-select chat-select-sm" title="Descargas web: con scripts (recomendado) o pasando la URL a la IA">
-                  <option value="script">⬇ Scripts</option>
-                  <option value="ia">IA</option>
-                </select>
                 <button id="chat-stop" class="btn btn-ghost btn-sm hidden" title="Detener la respuesta en curso (el agente conserva lo hablado)">■ Detener</button>
                 <button id="chat-hilos" class="btn btn-ghost btn-sm" title="Conversaciones de esta idea: verlas, ver sus chats y continuar una"><span aria-hidden="true">🗂</span><span class="hilos-label"> Conversaciones</span><span id="hilos-count" class="hilos-count"></span></button>
                 <button id="chat-reset" class="btn btn-ghost btn-sm" title="Guardar esta conversación y empezar otra nueva (otro tema)">＋ Conversación</button>
@@ -321,16 +317,43 @@
   <dialog id="admin-dialog" class="dialog dialog-wide">
     <div class="dialog-body">
       <h2>Administración</h2>
-      <h3 class="admin-subtitle">Modelos de IA</h3>
-      <p id="admin-summary" class="muted">Cargando…</p>
-      <div id="admin-models" class="admin-models"></div>
-      <h3 class="admin-subtitle">Servicios de Jarvis</h3>
-      <p class="muted">Enciende y apaga capacidades al instante (hablar, oír). Los servicios del sistema piden tu PIN.</p>
-      <p id="servicios-summary" class="muted">Cargando…</p>
-      <div id="admin-servicios" class="admin-models"></div>
+
+      <div class="admin-tabs" role="tablist">
+        <button type="button" class="admin-tab active" data-admin-tab="modelos" role="tab">Modelos</button>
+        <button type="button" class="admin-tab" data-admin-tab="servicios" role="tab">Servicios</button>
+        <button type="button" class="admin-tab" data-admin-tab="descargas" role="tab">Descargas</button>
+      </div>
+
+      <section class="admin-pane" data-admin-pane="modelos">
+        <p id="admin-summary" class="muted">Cargando…</p>
+        <div id="admin-models" class="admin-models"></div>
+        <div class="admin-pane-actions">
+          <button type="button" id="models-refresh" class="btn btn-primary">⟳ Restablecer y comprobar</button>
+        </div>
+      </section>
+
+      <section class="admin-pane hidden" data-admin-pane="servicios">
+        <p class="muted">Enciende y apaga capacidades al instante (hablar, oír). Los servicios del sistema piden tu PIN.</p>
+        <p id="servicios-summary" class="muted">Cargando…</p>
+        <div id="admin-servicios" class="admin-models"></div>
+      </section>
+
+      <section class="admin-pane hidden" data-admin-pane="descargas">
+        <h3 class="admin-subtitle">Descargas y Fetch de URLs</h3>
+        <p class="muted">Cómo trae el agente el contenido de una URL. Es una preferencia
+          de toda la aplicación, no de un chat concreto.</p>
+        <label class="admin-field">
+          Modo
+          <select id="app-fetch-mode" class="chat-select">
+            <option value="script">⬇ Scripts (recomendado)</option>
+            <option value="ia">IA (fetch del modelo)</option>
+          </select>
+        </label>
+        <p id="app-fetch-help" class="muted admin-help"></p>
+      </section>
+
       <div class="dialog-actions">
         <button type="button" class="btn btn-ghost" data-close>Cerrar</button>
-        <button type="button" id="models-refresh" class="btn btn-primary">⟳ Restablecer y comprobar</button>
       </div>
     </div>
   </dialog>

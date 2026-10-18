@@ -39,6 +39,7 @@ export class JarvisWebServer {
     getSystemHealthUseCase,
     getServicesUseCase,
     toggleServiceUseCase,
+    manageAppSettingsUseCase,
     manageConversationsUseCase,
     managePermissionsUseCase,
     manageResumeNoteUseCase,
@@ -71,6 +72,7 @@ export class JarvisWebServer {
     this.getSystemHealthUseCase = getSystemHealthUseCase;
     this.getServicesUseCase = getServicesUseCase;
     this.toggleServiceUseCase = toggleServiceUseCase;
+    this.manageAppSettingsUseCase = manageAppSettingsUseCase;
     this.manageConversationsUseCase = manageConversationsUseCase;
     this.managePermissionsUseCase = managePermissionsUseCase;
     this.manageResumeNoteUseCase = manageResumeNoteUseCase;
@@ -229,6 +231,29 @@ export class JarvisWebServer {
         const body = await this._readJsonBody(req);
         const result = await this.refreshModelsUseCase.execute(body?.model);
         return this._sendJson(res, body?.model ? 200 : 202, result);
+      } catch (error) {
+        return this._sendJson(res, 400, { error: error.message });
+      }
+    }
+
+    // --- Ajustes de TODA la aplicación (panel de Administración) ---
+    // GET /api/config  → { settings: { fetch_mode, model, reasoning_effort } }
+    // No depende de ninguna idea: se lee desde cualquier pantalla.
+    if (req.method === 'GET' && pathname === '/api/config') {
+      try {
+        return this._sendJson(res, 200, { settings: await this.manageAppSettingsUseCase.get() });
+      } catch (error) {
+        return this._sendJson(res, 400, { error: error.message });
+      }
+    }
+
+    // POST /api/config  { configId, value }  → guarda y devuelve los ajustes
+    if (req.method === 'POST' && pathname === '/api/config') {
+      try {
+        const body = await this._readJsonBody(req);
+        return this._sendJson(res, 200, {
+          settings: await this.manageAppSettingsUseCase.set(body.configId, body.value)
+        });
       } catch (error) {
         return this._sendJson(res, 400, { error: error.message });
       }

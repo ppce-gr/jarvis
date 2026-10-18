@@ -1197,6 +1197,20 @@ export class AcpConversationAdapter extends ConversationPort {
    * actual. La interfaz lo usa para ofrecer un selector real en vez de
    * obligar a tocar variables de entorno.
    */
+  /**
+   * Ajustes globales de la aplicación, sin depender de una idea abierta.
+   * Los lee el panel de Administración (modo de descargas, modelo, esfuerzo).
+   * A diferencia de `getConfig(projectId)`, NO necesita catálogo ni sesión.
+   */
+  async getSettings() {
+    await this._loadPreferred();
+    return {
+      fetch_mode: normalizarFetchMode(this.preferred.fetch_mode),
+      model: this.preferred.model,
+      reasoning_effort: this.preferred.reasoning_effort
+    };
+  }
+
   async getConfig(projectId) {
     if (!projectId) throw new Error('PROJECT_ID_REQUIRED');
     await this._loadPreferred();

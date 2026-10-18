@@ -884,6 +884,33 @@ html, body {
   white-space: nowrap;
 }
 
+/* Pestañas del panel de administración */
+.admin-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.admin-tab {
+  flex: 1 1 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  padding: 6px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.admin-tab:hover { color: var(--text); background: var(--bg-elev); }
+.admin-tab.active { color: #cfe6ff; background: #17324d; border-color: #23496f; }
+.admin-pane { display: flex; flex-direction: column; gap: 10px; }
+.admin-pane-actions { display: flex; justify-content: flex-end; }
+.admin-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.admin-help { font-size: 12px; }
+.admin-help code { color: var(--text); }
+
 /* ============================================================
    Rediseño · vistas (inicio / idea) y tarjetas tipo Obsidian
    ============================================================ */
