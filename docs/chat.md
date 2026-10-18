@@ -265,9 +265,9 @@ Los sub-chats funcionan con los **dos** protocolos: `acp` (por defecto) y `sdk`.
 
 ### Descargas y Fetch de URLs
 
-Cuando el agente tiene que traer el contenido de una URL hay dos modos, y se
-elige en la cabecera del chat (**⬇ Scripts / IA**) o en `chat-config.json`
-(`fetch_mode`):
+Cuando el agente tiene que traer el contenido de una URL hay dos modos. Se
+eligen en **⚙ Admin → pestaña Descargas** (es un ajuste de **toda la
+aplicación**, no de un chat concreto) o en `chat-config.json` (`fetch_mode`):
 
 - **`script` (por defecto)**: el agente **no** usa la herramienta de fetch del
   modelo; descarga con `curl`/`wget` a un fichero y lee el fichero local. Es el
@@ -278,6 +278,11 @@ elige en la cabecera del chat (**⬇ Scripts / IA**) o en `chat-config.json`
 El valor por defecto es siempre `script`: si falta o es inválido, se descarga
 con scripts. El modo se inyecta en el enunciado del agente (chat ACP, chat SDK y
 tareas del orquestador) al abrir sesión.
+
+El panel **⚙ Admin** se organiza en tres pestañas —**Modelos**, **Servicios** y
+**Descargas**— para no amontonar ajustes. El modo de descargas se lee con
+`GET /api/config` y se guarda con `POST /api/config`; ninguna de las dos rutas
+necesita una idea abierta, porque es configuración de la aplicación.
 
 Al dormirse, el proceso se cierra por EOF de stdin (cierre limpio de ACP) y las
 sesiones quedan persistidas para reanudarse al siguiente mensaje.

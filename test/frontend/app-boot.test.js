@@ -406,10 +406,22 @@ test('el botón del desplegable muestra el modelo elegido con su icono', async (
   assert.match(registro.get('#chat-model-label').textContent, /🟢 Bueno/);
 });
 
-test('el selector de fetch arranca en scripts', async () => {
-  const { registro, errores } = await arrancarConModelos();
+test('el modo de descargas vive en Admin y arranca en scripts', async () => {
+  const { registro, errores, jarvis } = await arrancarInterfaz({
+    respuestas: { ...RESPUESTAS_BASE, '/api/config': { settings: { fetch_mode: 'script' } } }
+  });
   assert.deepEqual(errores, []);
-  assert.equal(registro.get('#chat-fetch').value, 'script');
+  await jarvis.cargarAjustesApp();
+  assert.equal(registro.get('#app-fetch-mode').value, 'script');
+});
+
+test('el selector de fetch ya no está en el chat: es un ajuste de aplicación', () => {
+  const html = fs.readFileSync(INDEX, 'utf8');
+  assert.doesNotMatch(html, /id="chat-fetch"/, 'el chat no debe llevar el selector de fetch');
+  assert.match(html, /id="app-fetch-mode"/, 'debe estar en el panel de administración');
+  assert.match(html, /data-admin-tab="descargas"/, 'Admin debe tener su pestaña');
+  assert.match(html, /id="admin-servicios"/, 'los servicios siguen en su pestaña');
+  assert.match(html, /id="models-refresh"/, 'el refresco de modelos sigue existiendo');
 });
 
 /*

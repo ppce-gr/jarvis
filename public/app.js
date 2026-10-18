@@ -1856,8 +1856,6 @@ async function loadChatConfig() {
     );
     renderModelPicker(config.options, config.current);
     fillSimpleSelect(effortSel, config.options, 'reasoning_effort', config.current);
-    const fetchSel = $('#chat-fetch');
-    if (fetchSel) fetchSel.value = config.current?.fetch_mode || 'script';
     // Si ya hay una comprobación global en marcha, se sigue su avance.
     setRefreshing(Boolean(config.health?.checking));
     if (config.health?.checking) programarSondeoAdmin();
@@ -3211,8 +3209,64 @@ async function abrirAdmin() {
   const dialog = $('#admin-dialog');
   if (!dialog) return;
   try { dialog.showModal(); } catch { /* ya abierto */ }
-  await cargarSaludModelos();
-  await cargarServicios();
+  switchAdminTab('modelos');
+  await Promise.all([cargarSaludModelos(), cargarServicios(), cargarAjustesApp()]);
+}
+
+/** Cambia de pestaña dentro del panel de administración. */
+function switchAdminTab(tab) {
+  document.querySelectorAll('#admin-dialog .admin-tab').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.adminTab === tab);
+  });
+  document.querySelectorAll('#admin-dialog .admin-pane').forEach((pane) => {
+    pane.classList.toggle('hidden', pane.dataset.adminPane !== tab);
+  });
+}
+
+/**
+ * Ajustes de toda la aplicación (no de un chat). Hoy: el modo de descargas.
+ * Se leen de `/api/config`, que no depende de ninguna idea abierta.
+ */
+async function cargarAjustesApp() {
+  const sel = $('#app-fetch-mode');
+  const ayuda = $('#app-fetch-help');
+  try {
+    const { settings } = await api('/api/config');
+    const modo = settings?.fetch_mode === 'ia' ? 'ia' : 'script';
+    if (sel) sel.value = modo;
+    pintarAyudaFetch(modo, ayuda);
+  } catch (error) {
+    if (ayuda) ayuda.textContent = `No se pudo leer el ajuste: ${error.message}`;
+  }
+}
+
+function pintarAyudaFetch(modo, el) {
+  if (!el) return;
+  el.innerHTML = modo === 'ia'
+    ? 'La URL se le pasa a la herramienta de <strong>fetch del modelo</strong>. '
+      + 'En esta Raspberry puede agotar la memoria y tumbar el sistema.'
+    : 'El agente descarga con <code>curl</code>/<code>wget</code> y lee el fichero local. '
+      + 'Es el modo seguro en esta Raspberry.';
+}
+
+async function guardarAjusteApp(configId, value) {
+  const sel = $('#app-fetch-mode');
+  if (sel) sel.disabled = true;
+  try {
+    const { settings } = await api('/api/config', {
+      method: 'POST',
+      body: JSON.stringify({ configId, value })
+    });
+    const modo = settings?.fetch_mode === 'ia' ? 'ia' : 'script';
+    if (sel) sel.value = modo;
+    pintarAyudaFetch(modo, $('#app-fetch-help'));
+    toast('Ajuste guardado: se aplica al siguiente mensaje', 'ok');
+  } catch (error) {
+    toast(`No se pudo guardar: ${error.message}`, 'err');
+    await cargarAjustesApp();
+  } finally {
+    if (sel) sel.disabled = false;
+  }
 }
 
 async function cargarSaludModelos() {
@@ -3508,7 +3562,6 @@ function bindEvents() {
   });
   on('#borrar-confirm', 'click', confirmarBorrado);
   on('#chat-effort', 'change', (e) => saveChatConfig('reasoning_effort', e.target.value));
-  on('#chat-fetch', 'change', (e) => saveChatConfig('fetch_mode', e.target.value));
   // Desplegable de modelos: cada fila elige; su icono ⟳ comprueba sólo ese.
   on('#chat-model-btn', 'click', toggleModelMenu);
   on('#chat-model-menu', 'click', manejarMenuModelos);
@@ -3547,9 +3600,14 @@ function bindEvents() {
   on('#salud-pill', 'click', abrirSalud);
   on('#salud-refresh', 'click', abrirSalud);
 
-  // --- Administración de modelos ---
+  // --- Administración ---
   on('#admin-btn', 'click', abrirAdmin);
   on('#models-refresh', 'click', comprobarModelos);
+  // Pestañas del panel: Modelos / Servicios / Descargas.
+  document.querySelectorAll('#admin-dialog .admin-tab').forEach((tab) => {
+    tab.addEventListener('click', () => switchAdminTab(tab.dataset.adminTab));
+  });
+  on('#app-fetch-mode', 'change', (e) => guardarAjusteApp('fetch_mode', e.target.value));
   const adminDialog = $('#admin-dialog');
   if (adminDialog) {
     adminDialog.addEventListener('close', () => {
@@ -3648,6 +3706,10 @@ window.Jarvis = {
   renderPapeleraList,
   cargarPermisos,
   renderPermisos,
+  abrirAdmin,
+  switchAdminTab,
+  cargarAjustesApp,
+  guardarAjusteApp,
   switchTab,
   parseChecklist,
   construirGrafo,

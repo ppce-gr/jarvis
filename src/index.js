@@ -38,6 +38,7 @@ import { BrowseProjectFilesUseCase } from './application/BrowseProjectFilesUseCa
 import { ManageAttachmentsUseCase } from './application/ManageAttachmentsUseCase.js';
 import { ManageIdeasUseCase } from './application/ManageIdeasUseCase.js';
 import { ManageConversationsUseCase } from './application/ManageConversationsUseCase.js';
+import { ManageAppSettingsUseCase } from './application/ManageAppSettingsUseCase.js';
 import { ManagePermissionsUseCase } from './application/ManagePermissionsUseCase.js';
 import { ManageResumeNoteUseCase } from './application/ManageResumeNoteUseCase.js';
 import { GetGitStatusUseCase } from './application/GetGitStatusUseCase.js';
@@ -143,6 +144,7 @@ const getChatHistoryUseCase = new GetChatHistoryUseCase(conversationAdapter);
 const resetChatUseCase = new ResetChatUseCase(conversationAdapter);
 const conversationStoreAdapter = new FileSystemConversationStoreAdapter(brainDir);
 const manageConversationsUseCase = new ManageConversationsUseCase(conversationStoreAdapter, conversationAdapter);
+const manageAppSettingsUseCase = new ManageAppSettingsUseCase(conversationAdapter);
 const permissionAdapter = new FileSystemPermissionAdapter({ brainDir });
 const managePermissionsUseCase = new ManagePermissionsUseCase(permissionAdapter);
 const resumeNoteAdapter = new FileSystemResumeNoteAdapter(brainDir);
@@ -193,6 +195,7 @@ const webServer = new JarvisWebServer({
   getSystemHealthUseCase,
   getServicesUseCase,
   toggleServiceUseCase,
+  manageAppSettingsUseCase,
   manageConversationsUseCase,
   managePermissionsUseCase,
   manageResumeNoteUseCase,
