@@ -30,6 +30,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function arrancarInterfaz({ respuestas = {} } = {}) {
   const registro = new Map();
   const errores = [];
+  const urls = [];
 
   const fakeEl = (id = '') => ({
     id, innerHTML: '', textContent: '', value: '', style: {}, dataset: {},
@@ -65,6 +66,7 @@ async function arrancarInterfaz({ respuestas = {} } = {}) {
   global.setInterval = () => 0;
   global.clearInterval = () => {};
   global.fetch = async (url) => {
+    urls.push(String(url));
     for (const [clave, valor] of Object.entries(respuestas)) {
       if (url.includes(clave)) return { ok: true, json: async () => valor };
     }
@@ -78,7 +80,7 @@ async function arrancarInterfaz({ respuestas = {} } = {}) {
   new Function(src)();
   await new Promise((r) => setTimeout(r, 250));
 
-  return { registro, errores, jarvis: global.window.Jarvis };
+  return { registro, errores, urls, jarvis: global.window.Jarvis };
 }
 
 /** Abre una idea y deja que se asienten los fetch encadenados. */
@@ -835,15 +837,39 @@ test('el botón de conversaciones conserva su rótulo y añade el contador', asy
   const { registro, errores, jarvis } = await arrancarInterfaz({
     respuestas: {
       // Antes que `/chat` para que gane la ruta específica.
-      '/chat/conversaciones': { archivadas: [{ nombre: 'a.jsonl' }, { nombre: 'b.jsonl' }] },
+      '/chat/conversaciones': {
+        actual: { mensajes: 2, chats: 1 },
+        archivadas: [{ nombre: 'a.jsonl' }, { nombre: 'b.jsonl' }]
+      },
       ...RESPUESTAS_BASE
     }
   });
   assert.deepEqual(errores, []);
   jarvis.state.chat.projectId = 'idea-uno';
   await jarvis.actualizarBotonHilos();
-  assert.equal(registro.get('#hilos-count').textContent, ' (2)');
-  assert.match(registro.get('#chat-hilos').title, /2/);
+  assert.equal(registro.get('#hilos-count').textContent, ' (3)', 'cuenta la actual y las guardadas');
+  assert.match(registro.get('#chat-hilos').title, /3/);
+});
+
+test('continuar usa la ruta canónica del servidor', async () => {
+  const { errores, jarvis, urls } = await arrancarInterfaz({
+    respuestas: {
+      '/chat/continuar': { continuada: 'x.jsonl' },
+      ...RESPUESTAS_BASE
+    }
+  });
+  assert.deepEqual(errores, []);
+  jarvis.state.chat.projectId = 'idea-uno';
+  await jarvis.accionHilo('continuar', { nombre: 'x.jsonl' });
+
+  assert.ok(
+    urls.includes('/api/projects/idea-uno/chat/continuar'),
+    'debe llamar a /chat/continuar'
+  );
+  assert.ok(
+    !urls.some((u) => u.includes('/conversaciones/continuar')),
+    'no debe llamar a la ruta antigua (route not found)'
+  );
 });
 
 test('un chat de la conversación se puede abrir en solo lectura', async () => {
