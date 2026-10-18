@@ -21,9 +21,13 @@ export class FileSystemConversationStoreAdapter extends ConversationStorePort {
   static REGISTRO = '.registro.json';
   static MAX_BYTES = 4 * 1024 * 1024; // 4 MB por conversación
 
-  constructor(brainDir = process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault')) {
+  constructor(
+    brainDir = process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault'),
+    { maxBytes = FileSystemConversationStoreAdapter.MAX_BYTES } = {}
+  ) {
     super();
     this.brainDir = brainDir;
+    this.maxBytes = maxBytes;
   }
 
   _logs(projectId) { return path.join(this.brainDir, projectId, 'logs'); }
@@ -70,14 +74,41 @@ export class FileSystemConversationStoreAdapter extends ConversationStorePort {
     return base;
   }
 
+  /** Parsea líneas JSONL, ignorando las corruptas. */
+  _parsear(raw) {
+    return String(raw).split('\n').filter(Boolean)
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter(Boolean);
+  }
+
+  /**
+   * Lee una conversación. Si supera el tope, lee **solo la cola** (las últimas
+   * líneas) en vez de devolver vacío: así la conversación sigue apareciendo y
+   * se puede continuar. La compactación del adaptador mantiene los ficheros
+   * por debajo de este tope; esto es la red de seguridad.
+   */
   async _leer(file) {
     try {
       const st = await fs.stat(file);
-      if (!st.isFile() || st.size > FileSystemConversationStoreAdapter.MAX_BYTES) return [];
-      const raw = await fs.readFile(file, 'utf8');
-      return raw.split('\n').filter(Boolean)
-        .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-        .filter(Boolean);
+      if (!st.isFile()) return [];
+      const limite = this.maxBytes;
+      if (st.size <= limite) {
+        return this._parsear(await fs.readFile(file, 'utf8'));
+      }
+      // Cola del fichero, sin cargarlo entero.
+      const inicio = st.size - limite;
+      const fh = await fs.open(file, 'r');
+      try {
+        const buf = Buffer.alloc(limite);
+        await fh.read(buf, 0, limite, inicio);
+        let raw = buf.toString('utf8');
+        // La primera línea puede estar cortada: se descarta.
+        const nl = raw.indexOf('\n');
+        raw = nl >= 0 ? raw.slice(nl + 1) : '';
+        return this._parsear(raw);
+      } finally {
+        await fh.close();
+      }
     } catch {
       return [];
     }
@@ -147,6 +178,7 @@ export class FileSystemConversationStoreAdapter extends ConversationStorePort {
         chats: chats.length,
         chatsDetalle: chats,
         modificadoEn: st?.mtime?.toISOString?.() || null,
+        truncado: Boolean(st && st.size > this.maxBytes),
         ...this._extracto(mensajes)
       });
     }
@@ -159,6 +191,7 @@ export class FileSystemConversationStoreAdapter extends ConversationStorePort {
         chats: chatsActual.length,
         chatsDetalle: chatsActual,
         modificadoEn: stActual?.mtime?.toISOString?.() || null,
+        truncado: Boolean(stActual && stActual.size > this.maxBytes),
         ...this._extracto(actual)
       },
       archivadas

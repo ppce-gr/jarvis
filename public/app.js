@@ -2863,7 +2863,7 @@ function fichaConversacion(item, { actual } = {}) {
     + '<details class="hilo-detalle">'
     + '<summary>'
     + `<span class="hilo-titulo">${titulo}</span>`
-    + `<span class="hilo-meta muted"> · ${pluralChats(chats.length)} · ${item.mensajes || 0} mensajes</span>`
+    + `<span class="hilo-meta muted"> · ${pluralChats(chats.length)} · ${item.mensajes || 0} mensajes${item.truncado ? ' · recortada' : ''}</span>`
     + extracto
     + '</summary>'
     + `<ul class="hilo-chats">${detalle}</ul>`

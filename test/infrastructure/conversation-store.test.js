@@ -160,3 +160,33 @@ test('la papelera de conversaciones valida los refs', async () => {
   await assert.rejects(() => caso.restoreTrash('idea', '../x.jsonl'), /CONVERSATION_NAME_INVALID/);
   await assert.rejects(() => caso.remove('idea', 'no-existe.jsonl'), /CONVERSATION_NOT_FOUND/);
 });
+
+test('una conversación por encima del tope se lee por la cola y no desaparece', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'jarvis-conv-tail-'));
+  const logs = path.join(dir, 'idea', 'logs');
+  await fs.mkdir(logs, { recursive: true });
+  const store = new FileSystemConversationStoreAdapter(dir, { maxBytes: 150 });
+  const mensajes = [
+    { role: 'user', text: 'mensaje muy antiguo que se queda fuera' },
+    { role: 'assistant', text: 'respuesta antigua que tambien se queda fuera' },
+    { role: 'subchat', n: 2, resumen: 'resumen del tramo' },
+    { role: 'user', text: 'ultimo mensaje' },
+    { role: 'assistant', text: 'ultima respuesta' }
+  ];
+  await fs.writeFile(
+    path.join(logs, 'conversacion.jsonl'),
+    `${mensajes.map((m) => JSON.stringify(m)).join('\n')}\n`,
+    'utf8'
+  );
+
+  const list = await store.list('idea');
+  assert.ok(list.actual.mensajes >= 1, 'no debe quedar vacía');
+  assert.equal(list.actual.truncado, true, 'se marca como recortada');
+
+  const leidos = await store.read('idea', 'actual');
+  assert.ok(leidos.some((m) => m.text === 'ultimo mensaje'), 'incluye la cola');
+  assert.ok(
+    !leidos.some((m) => m.text === 'mensaje muy antiguo que se queda fuera'),
+    'la cabeza queda fuera'
+  );
+});

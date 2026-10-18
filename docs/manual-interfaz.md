@@ -121,6 +121,10 @@ editarlas a mano.
   muy larga, Jarvis la **parte solo en chats**: verás una marca **«Chat 2 · resumen
   del anterior»** (desplegable) y un contador **N chats** en la cabecera. La
   conversación sigue siendo la misma.
+- Las conversaciones muy largas se **compactan solas**: conservan los resúmenes de
+  los chats y el texto, y descartan la traza antigua. No desaparecen ni dejan de
+  poder continuarse; si un fichero es enorme, se lee por la cola y se marca como
+  **«recortada»**.
 - **🗂 Conversaciones** (en la cabecera; sólo icono en pantalla estrecha) abre el
   panel con **todas** las conversaciones de la idea: cada una muestra **cuántos
   chats** la componen y, desplegándola, el detalle de cada chat (con su resumen).

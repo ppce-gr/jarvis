@@ -210,6 +210,25 @@ El umbral se mide por **tokens estimados** (~4 caracteres por token) y por
 Al **continuar** una conversación guardada también se abre un chat nuevo con
 resumen, en vez de reinyectar solo los 20 últimos mensajes.
 
+### Tamaño de la conversación
+
+El transcript guarda el texto y también la **traza** de cada herramienta (salidas
+de `bash`, lecturas de ficheros, razonamiento). En una conversación larga eso pesa
+mucho más que la propia conversación. Para que nunca deje de verse:
+
+- Cuando el fichero supera **2 MB**, se **compacta** automáticamente: se conservan
+  **todos los resúmenes de los chats** (marcas `subchat`) y el **texto** de
+  usuario/Jarvis; se descarta la **traza antigua** (`tool`/`thought`). El **chat
+  actual** se conserva entero, con su traza.
+- Si aún queda demasiado texto antiguo, se conservan los últimos **300** mensajes
+  de texto; los anteriores siguen representados por los resúmenes de sus chats.
+- Red de seguridad: si un fichero ya supera los **4 MB**, la lectura devuelve la
+  **cola** (las últimas líneas) en vez de vacío, así la conversación sigue
+  apareciendo y se puede continuar. En la lista se marca como **«recortada»**.
+
+La compactación no toca la sesión viva del agente: el hilo sigue siendo coherente
+porque los resúmenes de los chats son el contexto.
+
 ### Auto-refresco tras una actualización
 
 La interfaz compara la versión que tiene cargada con la que ejecuta el proceso

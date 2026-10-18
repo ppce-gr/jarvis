@@ -9,6 +9,10 @@ import {
   normalizarFetchMode
 } from '../../domain/FetchPolicy.js';
 import {
+  COMPACTION_TRIGGER_BYTES,
+  compactarConversacion
+} from '../../domain/ConversationCompaction.js';
+import {
   summarizeTool,
   formatToolInput,
   formatToolDetail,
@@ -62,6 +66,7 @@ export class DshSdkConversationAdapter extends ConversationPort {
     fetchMode = process.env.JARVIS_FETCH_MODE || DEFAULT_FETCH_MODE,
     idleTimeoutMs = DshSdkConversationAdapter.DEFAULT_IDLE_MS,
     subchatLimits = null,
+    compactionBytes = COMPACTION_TRIGGER_BYTES,
     spawnFn = nodeSpawn
   } = {}) {
     super();
@@ -74,6 +79,7 @@ export class DshSdkConversationAdapter extends ConversationPort {
     this.reasoningEffort = reasoningEffort;
     this.idleTimeoutMs = idleTimeoutMs;
     this.spawnFn = spawnFn;
+    this.compactionBytes = compactionBytes;
     // Política de descargas: por defecto `script` (curl/wget), que no tumba la Pi.
     this.fetchMode = normalizarFetchMode(fetchMode);
     // Umbrales de los sub-chats: tokens estimados y bytes. Se pueden inyectar;
@@ -497,6 +503,9 @@ export class DshSdkConversationAdapter extends ConversationPort {
 
     // Sub-chats: si el hilo ya es muy largo (o se pidió al continuar), se
     // resume, se abre un proceso nuevo y el mensaje entra en la sesión nueva.
+    // Transcripción demasiado grande (traza acumulada): compactar antes.
+    await this._quizasCompactar(projectId);
+
     // `_quizasPartir` devuelve la sesión vigente (puede haber cambiado).
     const trasPartir = await this._quizasPartir(projectId, session);
     if (trasPartir) session = trasPartir;
@@ -573,10 +582,14 @@ export class DshSdkConversationAdapter extends ConversationPort {
    */
   async _quizasPartir(projectId, session) {
     const historial = await this.history(projectId);
-    const medida = medirConversacion(historial, this.subchatLimits);
+    // Se mide SOLO el chat actual (desde la última marca): los anteriores ya
+    // están resumidos en sus marcas y no deben volver a disparar la partición.
+    const ultimaMarca = historial.map((m) => m.role).lastIndexOf('subchat');
+    const tramo = ultimaMarca >= 0 ? historial.slice(ultimaMarca + 1) : historial;
+    const medida = medirConversacion(tramo, this.subchatLimits);
     const forzar = Boolean(session.resumirAlAbrir) || this._pendingSummaries.has(projectId);
     if (!forzar && !medida.debePartir) return null;
-    if (!historial.some((m) => m.role === 'user' || m.role === 'assistant')) return null;
+    if (!tramo.some((m) => m.role === 'user' || m.role === 'assistant')) return null;
 
     session.resumirAlAbrir = false;
     this._pendingSummaries.delete(projectId);
@@ -670,6 +683,37 @@ export class DshSdkConversationAdapter extends ConversationPort {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Si el transcript supera el umbral, lo compacta: conserva los resúmenes de
+   * los chats y el texto, y descarta la traza antigua (tool/thought).
+   */
+  async _quizasCompactar(projectId) {
+    const file = this._transcriptPath(projectId);
+    const st = await fs.stat(file).catch(() => null);
+    if (!st || !st.isFile() || st.size <= this.compactionBytes) {
+      return { compactado: false };
+    }
+    await (this._recordQueues.get(projectId) || Promise.resolve());
+    const mensajes = await this.history(projectId);
+    const compactados = compactarConversacion(mensajes);
+    if (compactados.length >= mensajes.length) return { compactado: false };
+
+    const previa = this._recordQueues.get(projectId) || Promise.resolve();
+    const siguiente = previa.then(async () => {
+      const tmp = `${file}.tmp`;
+      const cuerpo = compactados.map((m) => JSON.stringify(m)).join('\n') + '\n';
+      await fs.writeFile(tmp, cuerpo, 'utf8');
+      await fs.rename(tmp, file);
+    });
+    this._recordQueues.set(projectId, siguiente);
+    await siguiente;
+    this._emit(projectId, {
+      type: 'log',
+      text: 'Conversación compactada: se conservan los resúmenes de los chats y el texto; se descarta la traza antigua.'
+    });
+    return { compactado: true };
   }
 
   /** Últimos mensajes de usuario/Jarvis para devolver contexto a una sesión nueva. */
