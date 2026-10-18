@@ -437,6 +437,47 @@ test('fetch_mode se guarda y decide el enunciado del agente', async () => {
   await adapter.closeAll();
 });
 
+test('compacta el transcript cuando crece demasiado', async () => {
+  const ws = await tempWorkspace();
+  const adapter = new AcpConversationAdapter({
+    brainDir: ws,
+    spawnFn: fakeSpawn(),
+    compactionBytes: 300
+  });
+  const file = path.join(ws, 'demo', 'logs', 'conversacion.jsonl');
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const previos = [
+    { role: 'user', text: 'mensaje viejo' },
+    { role: 'assistant', text: 'respuesta vieja' },
+    { role: 'tool', id: 't1', text: 'bash', detail: 'x'.repeat(600) },
+    { role: 'thought', detail: 'razonamiento viejo' },
+    { role: 'subchat', n: 2, resumen: 'resumen del tramo', tokens: 10, bytes: 20 },
+    { role: 'user', text: 'mensaje actual' }
+  ];
+  await fs.writeFile(
+    file,
+    `${previos.map((m) => JSON.stringify(m)).join('\n')}\n`,
+    'utf8'
+  );
+
+  const eventos = [];
+  adapter.subscribe('demo', (e) => eventos.push(e));
+  await adapter.send('demo', 'nuevo mensaje');
+  await waitFor(() => eventos.some((e) => e.type === 'turn-end'));
+
+  const historial = await adapter.history('demo');
+  assert.ok(!historial.some((m) => m.id === 't1'), 'la traza antigua se descarta');
+  assert.ok(
+    !historial.some((m) => m.detail === 'razonamiento viejo'),
+    'el razonamiento antiguo se descarta'
+  );
+  assert.ok(historial.some((m) => m.role === 'subchat'), 'el resumen se conserva');
+  assert.ok(historial.some((m) => m.text === 'mensaje viejo'), 'el texto antiguo se conserva');
+  assert.ok(historial.some((m) => m.text === 'nuevo mensaje'), 'el mensaje nuevo entra');
+
+  await adapter.closeAll();
+});
+
 test('setConfig persiste la elección y la aplica a la sesión viva', async () => {
   const ws = await tempWorkspace();
   const record = path.join(ws, 'record.jsonl');

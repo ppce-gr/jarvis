@@ -21,6 +21,10 @@ import {
   fetchPolicyLines,
   normalizarFetchMode
 } from '../../domain/FetchPolicy.js';
+import {
+  COMPACTION_TRIGGER_BYTES,
+  compactarConversacion
+} from '../../domain/ConversationCompaction.js';
 import { JsonRpcStdioClient } from './JsonRpcStdioClient.js';
 import { FileSystemResumeNoteAdapter } from '../persistence/FileSystemResumeNoteAdapter.js';
 import { resolverWorkspace } from '../persistence/resolverWorkspace.js';
@@ -80,6 +84,7 @@ export class AcpConversationAdapter extends ConversationPort {
     healthFile = null,
     probeTimeoutMs = Number(process.env.JARVIS_MODEL_PROBE_TIMEOUT_MS || 45 * 1000),
     subchatLimits = null,
+    compactionBytes = COMPACTION_TRIGGER_BYTES,
     spawnFn = nodeSpawn
   } = {}) {
     super();
@@ -91,6 +96,8 @@ export class AcpConversationAdapter extends ConversationPort {
     this.permissionTimeoutMs = permissionTimeoutMs;
     this.stallTimeoutMs = stallTimeoutMs;
     this.spawnFn = spawnFn;
+    // A partir de este tamaño se compacta el transcript (traza antigua fuera).
+    this.compactionBytes = compactionBytes;
 
     // Sub-chats: umbral de contexto a partir del cual se resume y se abre
     // sesión nueva. Configurable por entorno o por opción (tests).
@@ -852,6 +859,9 @@ export class AcpConversationAdapter extends ConversationPort {
       throw new Error('CHAT_BUSY: ya hay una respuesta en curso; espera o pulsa Detener');
     }
 
+    // Transcripción demasiado grande (traza acumulada): compactar antes.
+    await this._quizasCompactar(projectId);
+
     // Sub-chats: si el hilo ya es muy largo (o se pidió al continuar), se
     // resume y se abre una sesión nueva ANTES de este mensaje. El usuario no
     // lo nota: ve el mismo chat, con una marca de «Chat n».
@@ -946,6 +956,39 @@ export class AcpConversationAdapter extends ConversationPort {
   }
 
   /**
+   * Si el transcript supera el umbral, lo compacta: conserva los resúmenes de
+   * los chats y el texto, y descarta la traza antigua (tool/thought), que es
+   * lo que infla el fichero. Se ejecuta antes de medir y de escribir.
+   */
+  async _quizasCompactar(projectId) {
+    const file = this._transcriptPath(projectId);
+    const st = await fs.stat(file).catch(() => null);
+    if (!st || !st.isFile() || st.size <= this.compactionBytes) {
+      return { compactado: false };
+    }
+    // Asegura que la cola de escritura ha volcado lo pendiente.
+    await (this._recordQueues.get(projectId) || Promise.resolve());
+    const mensajes = await this.history(projectId);
+    const compactados = compactarConversacion(mensajes);
+    if (compactados.length >= mensajes.length) return { compactado: false };
+
+    const previa = this._recordQueues.get(projectId) || Promise.resolve();
+    const siguiente = previa.then(async () => {
+      const tmp = `${file}.tmp`;
+      const cuerpo = compactados.map((m) => JSON.stringify(m)).join('\n') + '\n';
+      await fs.writeFile(tmp, cuerpo, 'utf8');
+      await fs.rename(tmp, file);
+    });
+    this._recordQueues.set(projectId, siguiente);
+    await siguiente;
+    this._emit(projectId, {
+      type: 'log',
+      text: 'Conversación compactada: se conservan los resúmenes de los chats y el texto; se descarta la traza antigua.'
+    });
+    return { compactado: true };
+  }
+
+  /**
    * Últimos mensajes de usuario/Jarvis del hilo actual, para devolver contexto
    * al abrir una sesión nueva. Se descarta el último (el mensaje recién escrito).
    */
@@ -994,10 +1037,14 @@ export class AcpConversationAdapter extends ConversationPort {
    */
   async _quizasPartir(projectId, session) {
     const historial = await this.history(projectId);
-    const medida = medirConversacion(historial, this.subchatLimits);
+    // Se mide SOLO el chat actual (desde la última marca): los anteriores ya
+    // están resumidos en sus marcas y no deben volver a disparar la partición.
+    const ultimaMarca = historial.map((m) => m.role).lastIndexOf('subchat');
+    const tramo = ultimaMarca >= 0 ? historial.slice(ultimaMarca + 1) : historial;
+    const medida = medirConversacion(tramo, this.subchatLimits);
     const forzar = Boolean(session.resumirAlAbrir);
     if (!forzar && !medida.debePartir) return;
-    if (!historial.some((m) => m.role === 'user' || m.role === 'assistant')) return;
+    if (!tramo.some((m) => m.role === 'user' || m.role === 'assistant')) return;
 
     session.resumirAlAbrir = false;
     // En una sesión nueva (continuar) el resumen necesita el transcrito; en un
