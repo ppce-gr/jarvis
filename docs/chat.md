@@ -254,6 +254,7 @@ Vale la pena distinguir **medido** de **esperado**:
 | `JARVIS_CHAT_IDLE_MS` | `900000` | Inactividad antes de dormir el proceso. |
 | `JARVIS_CHAT_MAX_TOKENS` | `30000` | Umbral de tokens para partir en sub-chat. |
 | `JARVIS_CHAT_MAX_BYTES` | `80000` | Umbral de bytes para partir en sub-chat. |
+| `JARVIS_FETCH_MODE` | `script` | Descargas de URLs: `script` (curl/wget) o `ia` (fetch del modelo). |
 | `JARVIS_PERMISSION_TIMEOUT_MS` | `120000` | Tope para contestar un permiso. |
 | `JARVIS_STALL_TIMEOUT_MS` | `600000` | Aviso si un turno lleva mucho sin emitir. |
 | `JARVIS_MODEL_PROBE_TIMEOUT_MS` | `45000` | Tope por modelo en la comprobación de Admin. |
@@ -261,6 +262,22 @@ Vale la pena distinguir **medido** de **esperado**:
 Los umbrales de sub-chat se cablean en el despliegue (`deploy/jarvis.conf.example`
 y la unidad que genera `deploy/instalar.sh`), así que se ajustan sin tocar código.
 Los sub-chats funcionan con los **dos** protocolos: `acp` (por defecto) y `sdk`.
+
+### Descargas y Fetch de URLs
+
+Cuando el agente tiene que traer el contenido de una URL hay dos modos, y se
+elige en la cabecera del chat (**⬇ Scripts / IA**) o en `chat-config.json`
+(`fetch_mode`):
+
+- **`script` (por defecto)**: el agente **no** usa la herramienta de fetch del
+  modelo; descarga con `curl`/`wget` a un fichero y lee el fichero local. Es el
+  modo seguro en la Raspberry Pi 3B, donde el fetch del modelo puede agotar la
+  memoria y tumbar la máquina.
+- **`ia`**: la URL se le pasa a la herramienta de fetch del modelo.
+
+El valor por defecto es siempre `script`: si falta o es inválido, se descarga
+con scripts. El modo se inyecta en el enunciado del agente (chat ACP, chat SDK y
+tareas del orquestador) al abrir sesión.
 
 Al dormirse, el proceso se cierra por EOF de stdin (cierre limpio de ACP) y las
 sesiones quedan persistidas para reanudarse al siguiente mensaje.

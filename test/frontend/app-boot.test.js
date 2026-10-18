@@ -406,6 +406,12 @@ test('el botón del desplegable muestra el modelo elegido con su icono', async (
   assert.match(registro.get('#chat-model-label').textContent, /🟢 Bueno/);
 });
 
+test('el selector de fetch arranca en scripts', async () => {
+  const { registro, errores } = await arrancarConModelos();
+  assert.deepEqual(errores, []);
+  assert.equal(registro.get('#chat-fetch').value, 'script');
+});
+
 /*
  * La pista del ratón debe dar el NOMBRE COMPLETO y el estado. En pantalla el
  * nombre puede quedar recortado con puntos suspensivos (la fila es una rejilla

@@ -110,6 +110,9 @@ editarlas a mano.
   ve, no el Markdown en crudo.
 - La **traza** de herramientas y razonamiento aparece plegada; se despliega para
   ver la entrada y la salida.
+- En la cabecera, **⬇ Scripts / IA** elige cómo se descargan las URLs:
+  **Scripts** (curl/wget; recomendado y por defecto, no tumba la Pi) o **IA** (la
+  URL va a la herramienta de fetch del modelo).
 - Hay dos cosas distintas: una **conversación** es un tema (puedes tener varias por
   idea); un **chat** es un tramo de esa conversación. Cuando una conversación se hace
   muy larga, Jarvis la **parte solo en chats**: verás una marca **«Chat 2 · resumen

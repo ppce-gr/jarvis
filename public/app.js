@@ -1856,6 +1856,8 @@ async function loadChatConfig() {
     );
     renderModelPicker(config.options, config.current);
     fillSimpleSelect(effortSel, config.options, 'reasoning_effort', config.current);
+    const fetchSel = $('#chat-fetch');
+    if (fetchSel) fetchSel.value = config.current?.fetch_mode || 'script';
     // Si ya hay una comprobación global en marcha, se sigue su avance.
     setRefreshing(Boolean(config.health?.checking));
     if (config.health?.checking) programarSondeoAdmin();
@@ -3506,6 +3508,7 @@ function bindEvents() {
   });
   on('#borrar-confirm', 'click', confirmarBorrado);
   on('#chat-effort', 'change', (e) => saveChatConfig('reasoning_effort', e.target.value));
+  on('#chat-fetch', 'change', (e) => saveChatConfig('fetch_mode', e.target.value));
   // Desplegable de modelos: cada fila elige; su icono ⟳ comprueba sólo ese.
   on('#chat-model-btn', 'click', toggleModelMenu);
   on('#chat-model-menu', 'click', manejarMenuModelos);

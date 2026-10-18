@@ -408,6 +408,31 @@ test('getConfig devuelve el catálogo que publica el motor', async () => {
   assert.ok(modelo, 'debe exponer la opción de modelo');
   assert.ok(current.model, 'debe indicar la selección actual');
   assert.equal(current.reasoning_effort, 'high');
+  assert.equal(current.fetch_mode, 'script', 'por defecto se descarga con scripts');
+
+  await adapter.closeAll();
+});
+
+test('fetch_mode se guarda y decide el enunciado del agente', async () => {
+  const ws = await tempWorkspace();
+  const adapter = new AcpConversationAdapter({ brainDir: ws, spawnFn: fakeSpawn() });
+
+  const eventos = [];
+  adapter.subscribe('demo', (e) => eventos.push(e));
+  await adapter.send('demo', 'hola');
+  await waitFor(() => eventos.some((e) => e.type === 'turn-end'));
+
+  await adapter.setConfig('fetch_mode', 'ia');
+  const guardado = JSON.parse(await fs.readFile(path.join(ws, 'chat-config.json'), 'utf8'));
+  assert.equal(guardado.fetch_mode, 'ia');
+
+  const cfg = await adapter.getConfig('demo');
+  assert.equal(cfg.current.fetch_mode, 'ia');
+
+  const conScripts = AcpConversationAdapter.buildOutgoingMessage('demo', 'hola', true, 'script');
+  assert.match(conScripts, /NO uses la herramienta de fetch/i);
+  const conIa = AcpConversationAdapter.buildOutgoingMessage('demo', 'hola', true, 'ia');
+  assert.match(conIa, /Puedes pasar la URL/);
 
   await adapter.closeAll();
 });

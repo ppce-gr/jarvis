@@ -72,6 +72,10 @@ JARVIS_CHAT_IDLE_MS="${JARVIS_CHAT_IDLE_MS:-900000}"
 # sesión nueva. Tokens estimados (~4 caracteres por token) y bytes de texto.
 JARVIS_CHAT_MAX_TOKENS="${JARVIS_CHAT_MAX_TOKENS:-30000}"
 JARVIS_CHAT_MAX_BYTES="${JARVIS_CHAT_MAX_BYTES:-80000}"
+# Descargas y Fetch de URLs: `script` (curl/wget; recomendado en la Pi) o `ia`
+# (la URL va a la herramienta de fetch del modelo). En esta Raspberry, `ia`
+# puede agotar la memoria; por eso el defecto es `script`.
+JARVIS_FETCH_MODE="${JARVIS_FETCH_MODE:-script}"
 
 # --- Respaldo ---------------------------------------------------
 # El temporizador NO crea commits en el código (es público y su historia la lee

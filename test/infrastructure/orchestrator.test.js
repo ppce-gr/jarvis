@@ -130,7 +130,23 @@ test('el runner recibe cwd del proyecto y el perfil configurado', async () => {
   assert.equal(seen.cwd, path.join(ws, 'demo'));
   assert.deepEqual(seen.args.slice(0, 2), ['--profile', 'headless']);
   assert.match(seen.args[2], /revisa esto/);
+  assert.match(seen.args[2], /NO uses la herramienta de fetch/i, 'por defecto, scripts');
   assert.equal(seen.env.DSH_HOME, '/tmp/fake-home');
+});
+
+test('el orquestador respeta el fetch_mode de chat-config.json', async () => {
+  const ws = await tempWorkspace();
+  await fs.writeFile(path.join(ws, 'chat-config.json'), JSON.stringify({ fetch_mode: 'ia' }));
+  let seen = null;
+  const adapter = new DshHeadlessOrchestratorAdapter({
+    brainDir: ws,
+    runner: async (opts) => { seen = opts; return { code: 0, stdout: 'ok' }; }
+  });
+
+  await adapter.executeTask('demo', 'revisa esto');
+  await drain(adapter);
+
+  assert.match(seen.args[2], /Puedes pasar la URL/);
 });
 
 test('las tareas se ejecutan en serie (cola de uno)', async () => {
