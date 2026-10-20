@@ -165,6 +165,12 @@ test('la interfaz declara inicio, idea y el botón de volver', () => {
   assert.match(html, /id="idea-grid"/, 'debe existir la rejilla de tarjetas');
 });
 
+test('la interfaz declara el modo solo conversación y su botón de salir', () => {
+  const html = fs.readFileSync(INDEX, 'utf8');
+  assert.match(html, /id="chat-focus"/, 'botón para entrar en solo conversación');
+  assert.match(html, /id="focus-exit"/, 'botón flotante para salir');
+});
+
 test('abrir una idea muestra su título y entra en la vista de idea', async () => {
   const { registro, errores, jarvis } = await arrancarInterfaz({ respuestas: RESPUESTAS_BASE });
   assert.deepEqual(errores, []);

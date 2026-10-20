@@ -134,6 +134,13 @@ editarlas a mano.
 - Cada chat del desglose lleva **Ver**: lo abre en un visor de **solo lectura** con
   sus mensajes tal como quedaron guardados (sin tocar la sesión del agente ni el
   hilo actual).
+- **⛶ Solo conversación** (en la cabecera del chat): oculta la cabecera global, la
+  barra de la idea, la barra lateral, las pestañas y la barra del orquestador;
+  queda sólo el chat. Se sale con **✕ Salir** (arriba a la derecha) o `Esc`.
+- El chat **no te baja solo** si estás leyendo hacia arriba: sólo sigue el final
+  si ya estabas abajo o si acabas de escribir o continuar una conversación.
+- Cada cuadro de texto lleva **⧉** arriba a la derecha para **copiar** su
+  contenido; el icono sigue visible aunque hagas scroll dentro del cuadro.
 
 ### Edición
 - Botón **✎ Editar** para escribir Markdown en crudo.
