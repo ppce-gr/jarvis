@@ -1350,3 +1350,40 @@ html, body {
   .home-tareas { margin: 0 16px 12px; }
   .tarea-item { flex-wrap: wrap; }
 }
+
+/* ============================================================
+   Modo «sólo conversación»
+   ------------------------------------------------------------
+   Oculta la cabecera global, la barra de la idea, las pestañas,
+   la barra lateral y la barra del orquestador. Queda el chat y
+   un botón flotante para salir (o Escape).
+   ============================================================ */
+body.modo-conversacion .topbar,
+body.modo-conversacion .idea-bar,
+body.modo-conversacion .tabs,
+body.modo-conversacion .sidebar,
+body.modo-conversacion .commandbar,
+body.modo-conversacion .chat-head,
+body.modo-conversacion #tarea-aviso { display: none !important; }
+body.modo-conversacion .pane-chat { overflow: hidden; }
+.focus-exit {
+  position: fixed; top: 10px; right: 12px; z-index: 80;
+  background: var(--bg-elev); border: 1px solid var(--border);
+}
+
+/* ============================================================
+   Copiar el contenido de cualquier cuadro de texto
+   ------------------------------------------------------------
+   El botón va absoluto sobre el cuadro: si el texto scrollea por
+   dentro, el botón sigue visible arriba a la derecha.
+   ============================================================ */
+.copy-wrap { position: relative; flex: 1 1 auto; min-width: 0; }
+.copy-wrap > textarea { width: 100%; box-sizing: border-box; padding-right: 38px; }
+#chat-input, #markdown-editor { padding-right: 38px; }
+.copy-btn {
+  position: absolute; top: 6px; right: 6px; z-index: 3;
+  width: 26px; height: 26px; padding: 0; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--bg-elev);
+  color: var(--text-dim); cursor: pointer; font-size: 13px; line-height: 1;
+}
+.copy-btn:hover { color: var(--text); border-color: var(--accent-strong); }

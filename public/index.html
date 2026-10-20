@@ -105,6 +105,7 @@
                   <div id="chat-model-menu" class="model-picker-menu hidden" role="listbox" aria-label="Modelos"></div>
                 </div>
                 <select id="chat-effort" class="chat-select chat-select-sm" title="Esfuerzo de razonamiento"></select>
+                <button id="chat-focus" class="btn btn-ghost btn-sm" title="Solo conversación: oculta el resto y deja sólo el chat" aria-pressed="false">⛶</button>
                 <button id="chat-stop" class="btn btn-ghost btn-sm hidden" title="Detener la respuesta en curso (el agente conserva lo hablado)">■ Detener</button>
                 <button id="chat-hilos" class="btn btn-ghost btn-sm" title="Conversaciones de esta idea: verlas, ver sus chats y continuar una"><span aria-hidden="true">🗂</span><span class="hilos-label"> Conversaciones</span><span id="hilos-count" class="hilos-count"></span></button>
                 <button id="chat-reset" class="btn btn-ghost btn-sm" title="Guardar esta conversación y empezar otra nueva (otro tema)">＋ Conversación</button>
@@ -467,6 +468,8 @@
       </div>
     </div>
   </dialog>
+
+  <button id="focus-exit" type="button" class="btn btn-ghost btn-sm focus-exit hidden" title="Salir del modo sólo conversación">✕ Salir</button>
 
   <div id="toast" class="toast hidden"></div>
 

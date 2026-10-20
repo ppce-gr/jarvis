@@ -18,7 +18,7 @@ const state = {
   currentNote: null,
   zone: [],
   editing: false,
-  chat: { projectId: null, source: null, messages: [], busy: false, streaming: '' }
+  chat: { projectId: null, source: null, messages: [], busy: false, streaming: '', forzarScroll: false }
 };
 /* ---------------- Utilidades DOM ---------------- */
 const $ = (sel) => document.querySelector(sel);
@@ -709,7 +709,11 @@ async function openNote(noteId) {
 function setEditing(on) {
   state.editing = on;
   $('#markdown-view').classList.toggle('hidden', on);
-  $('#markdown-editor').classList.toggle('hidden', !on);
+  const editor = $('#markdown-editor');
+  editor.classList.toggle('hidden', !on);
+  // El botón de copiar vive en un envoltorio: se oculta con el editor.
+  const wrap = editor.closest ? editor.closest('.copy-wrap') : null;
+  if (wrap) wrap.classList.toggle('hidden', !on);
   $('#save-note-btn').classList.toggle('hidden', !on);
   $('#edit-toggle').textContent = on ? '👁 Ver' : '✎ Editar';
 }
@@ -2385,6 +2389,11 @@ function manejarAccionMensaje(event) {
 function renderChat() {
   const box = $('#chat-messages');
   const messages = state.chat.messages;
+  // Posición actual: si el usuario está leyendo hacia arriba, no se le baja.
+  const scrollPrevio = box ? box.scrollTop : 0;
+  const estabaCerca = box
+    ? (box.scrollHeight - box.scrollTop - box.clientHeight) <= 120
+    : true;
   // Recuerda qué detalles estaban desplegados para no cerrarlos al repintar.
   // Al recargar la página este conjunto nace vacío: todo plegado, como se pidió.
   const abiertos = new Set();
@@ -2470,7 +2479,16 @@ function renderChat() {
   if (state.chat.streaming) {
     ensureStreamingBubble().textContent = state.chat.streaming;
   }
-  scrollChatToEnd();
+  // Bajar sólo si el usuario ya estaba al final (o si él acaba de escribir o
+  // continuar una conversación). Si estaba leyendo arriba, se respeta.
+  if (state.chat.forzarScroll) {
+    state.chat.forzarScroll = false;
+    scrollChatToEnd(true);
+  } else if (estabaCerca) {
+    scrollChatToEnd(true);
+  } else if (box) {
+    box.scrollTop = scrollPrevio;
+  }
 }
 
 /** Muestra cuántos sub-chats ha usado la conversación (1 = sin partir). */
@@ -2483,9 +2501,69 @@ function actualizarContadorSubchats(messages = state.chat.messages) {
   el.title = n > 1 ? `Esta conversación se ha partido en ${n} chats para no gastar de más` : '';
 }
 
-function scrollChatToEnd() {
+/* ---------------- Modo «sólo conversación» ---------------- */
+function activarModoConversacion() {
+  document.body.classList.add('modo-conversacion');
+  const salir = $('#focus-exit');
+  if (salir) salir.classList.remove('hidden');
+  const btn = $('#chat-focus');
+  if (btn) {
+    btn.title = 'Salir del modo sólo conversación';
+    btn.setAttribute('aria-pressed', 'true');
+  }
+  scrollChatToEnd();
+}
+
+function desactivarModoConversacion() {
+  document.body.classList.remove('modo-conversacion');
+  const salir = $('#focus-exit');
+  if (salir) salir.classList.add('hidden');
+  const btn = $('#chat-focus');
+  if (btn) {
+    btn.title = 'Solo conversación: oculta el resto y deja sólo el chat';
+    btn.setAttribute('aria-pressed', 'false');
+  }
+}
+
+function alternarModoConversacion() {
+  if (document.body.classList.contains('modo-conversacion')) desactivarModoConversacion();
+  else activarModoConversacion();
+}
+
+/* ---------------- Copiar el contenido de los cuadros de texto ---------------- */
+function mejorarCuadrosDeTexto() {
+  for (const area of document.querySelectorAll('textarea')) {
+    if (!area || (area.dataset && area.dataset.copyWrap === '1') || !area.parentNode) continue;
+    const wrap = document.createElement('div');
+    wrap.className = 'copy-wrap';
+    // Si el cuadro nace oculto (p. ej. el editor de notas), el envoltorio también.
+    if (area.classList && area.classList.contains('hidden')) wrap.classList.add('hidden');
+    area.parentNode.insertBefore(wrap, area);
+    wrap.appendChild(area);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'copy-btn';
+    btn.title = 'Copiar el contenido';
+    btn.setAttribute('aria-label', 'Copiar el contenido');
+    btn.textContent = '⧉';
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      copiarTexto(area.value);
+    });
+    wrap.appendChild(btn);
+    if (area.dataset) area.dataset.copyWrap = '1';
+  }
+}
+
+function scrollChatToEnd(forzar = false) {
   const box = $('#chat-messages');
-  if (box) box.scrollTop = box.scrollHeight;
+  if (!box) return;
+  // Margen de 120 px: si el usuario está cerca del final, se le sigue; si ha
+  // subido a leer un mensaje, no se le arrastra hacia abajo.
+  const margen = 120;
+  const cerca = (box.scrollHeight - box.scrollTop - box.clientHeight) <= margen;
+  if (forzar || cerca) box.scrollTop = box.scrollHeight;
 }
 
 async function sendChatMessage(event) {
@@ -2510,6 +2588,7 @@ async function enviarTexto(text) {
 
   // Optimista: pintamos la pregunta ya mismo.
   state.chat.messages.push({ role: 'user', text: limpio, at: new Date().toISOString() });
+  state.chat.forzarScroll = true;
   renderChat();
   setChatStatus('running');
 
@@ -2955,6 +3034,7 @@ async function accionHilo(accion, dataset) {
       await api(`/api/projects/${encodeURIComponent(pid)}/chat/continuar`, { method: 'POST', body: JSON.stringify({ nombre: dataset.nombre }) });
       const dlg = $('#hilos-dialog');
       if (dlg && dlg.open) dlg.close();
+      state.chat.forzarScroll = true;
       await resyncChat();
       actualizarBotonHilos();
       toast('Conversación recuperada', 'ok');
@@ -3556,6 +3636,15 @@ function bindEvents() {
   on('#chat-messages', 'click', manejarAccionMensaje);
   on('#chat-reset', 'click', resetChat);
   on('#chat-hilos', 'click', abrirHilos);
+  on('#chat-focus', 'click', alternarModoConversacion);
+  on('#focus-exit', 'click', desactivarModoConversacion);
+  // Botón de copiar en cada cuadro de texto y salida del modo focus con Escape.
+  mejorarCuadrosDeTexto();
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.body.classList.contains('modo-conversacion')) {
+      desactivarModoConversacion();
+    }
+  });
   on('#hilos-nueva', 'click', async () => {
     const dlg = $('#hilos-dialog');
     if (dlg && dlg.open) dlg.close();
