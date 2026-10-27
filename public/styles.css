@@ -32,6 +32,8 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background:
     radial-gradient(1100px 700px at 88% -10%, rgba(83, 193, 255, .16), transparent 60%),
     radial-gradient(900px 720px at -12% 110%, rgba(0, 210, 255, .12), transparent 55%),
@@ -45,6 +47,7 @@ html, body {
   font-size: 15px;
   line-height: 1.55;
   -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 #app {
@@ -1387,3 +1390,41 @@ body.modo-conversacion .pane-chat { overflow: hidden; }
   color: var(--text-dim); cursor: pointer; font-size: 13px; line-height: 1;
 }
 .copy-btn:hover { color: var(--text); border-color: var(--accent-strong); }
+
+/* ============================================================
+   Móvil: ancho, tipografía y controles
+   ------------------------------------------------------------
+   - Las pestañas se envuelven en vez de scrollear en horizontal.
+   - Los controles de texto usan 16 px para que iOS no haga zoom
+     al enfocarlos (el zoom hacía que todo se viera enorme).
+   - Nada de scroll horizontal: el contenido se ajusta al ancho.
+   ============================================================ */
+@media (max-width: 820px) {
+  .tabs { flex-wrap: wrap; overflow-x: visible; }
+  #chat-input, #command-input, .dialog input, .dialog textarea, .dialog select {
+    font-size: 16px;
+  }
+  #chat-input { min-height: 44px; max-height: 28vh; }
+  .topbar { flex-wrap: wrap; height: auto; min-height: var(--topbar-h); padding: 6px 10px; }
+  .idea-bar { flex-wrap: wrap; }
+  .chat-messages { overflow-x: hidden; }
+  .markdown img, .markdown table { max-width: 100%; }
+  .markdown table { display: block; overflow-x: auto; }
+}
+
+@media (max-width: 620px) {
+  body { font-size: 14px; }
+  .markdown h1 { font-size: 21px; }
+  .markdown h2 { font-size: 18px; }
+  .markdown h3 { font-size: 16px; }
+  .note-header h1 { font-size: 20px; }
+  .idea-bar-titles h1 { font-size: 19px; }
+  .msg-bubble.markdown h1 { font-size: 17px; }
+  .msg-bubble.markdown h2 { font-size: 16px; }
+}
+
+/* Móvil apaisado (p. ej. 844×390): las pestañas también se envuelven en vez
+   de crear una fila con scroll horizontal. */
+@media (max-width: 900px) {
+  .tabs { flex-wrap: wrap; overflow-x: visible; }
+}
