@@ -1804,6 +1804,7 @@ async function openChat(projectId) {
   state.chat.messages = [];
   state.chat.streaming = '';
   renderChat();
+  ajustarAlturaChatInput();
 
   await resyncChat();
   loadChatConfig();
@@ -2566,6 +2567,28 @@ function scrollChatToEnd(forzar = false) {
   if (forzar || cerca) box.scrollTop = box.scrollHeight;
 }
 
+/** Ajusta la altura del cuadro de chat a su contenido (sin quedar enorme). */
+function ajustarAlturaChatInput() {
+  const el = $('#chat-input');
+  if (!el) return;
+  el.style.height = 'auto';
+  let alto;
+  if (el.value) {
+    alto = el.scrollHeight;
+  } else if (typeof getComputedStyle !== 'function') {
+    alto = el.scrollHeight || 44;
+  } else {
+    // Vacío: una sola línea. `scrollHeight` cuenta el placeholder, que puede
+    // ocupar dos líneas y dejar el cuadro grande hasta que se escribe algo.
+    const cs = getComputedStyle(el);
+    const linea = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5 || 21;
+    const relleno = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const bordes = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+    alto = linea + relleno + bordes;
+  }
+  el.style.height = `${Math.min(alto, 200)}px`;
+}
+
 async function sendChatMessage(event) {
   if (event) event.preventDefault();
   // Mientras el agente trabaja, este mismo botón hace de «Detener».
@@ -2574,6 +2597,7 @@ async function sendChatMessage(event) {
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
+  ajustarAlturaChatInput();
   await enviarTexto(text);
 }
 
@@ -3680,10 +3704,7 @@ function bindEvents() {
       sendChatMessage(event);
     }
   });
-  chatInput.addEventListener('input', () => {
-    chatInput.style.height = 'auto';
-    chatInput.style.height = `${Math.min(chatInput.scrollHeight, 200)}px`;
-  });
+  chatInput.addEventListener('input', ajustarAlturaChatInput);
 
   on('#menu-toggle', 'click', () => $('#sidebar').classList.toggle('open'));
 
