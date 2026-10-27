@@ -24,6 +24,15 @@ root.
 
 3. En el móvil puedes añadirla a la pantalla de inicio para usarla como app.
 
+### Móvil y pantallas estrechas
+
+La interfaz se adapta al ancho disponible, en vertical y en apaisado, sin scroll
+horizontal: las pestañas y las barras se envuelven cuando no caben y las tablas
+e imágenes largas se desplazan dentro de su propio recuadro. Los campos de texto
+usan 16 px en el móvil para que iOS no amplíe la página al enfocarlos, y el
+cuadro del chat empieza en una línea: crece al escribir y vuelve a encogerse al
+vaciarlo.
+
 ## Zonas de la pantalla
 
 ```text
