@@ -20,6 +20,8 @@ const state = {
   editing: false,
   chat: { projectId: null, source: null, messages: [], busy: false, streaming: '', forzarScroll: false }
 };
+// Cada cambio de idea invalida las respuestas que aún estén en vuelo.
+let projectToken = 0;
 /* ---------------- Utilidades DOM ---------------- */
 const $ = (sel) => document.querySelector(sel);
 
@@ -606,6 +608,7 @@ function renderGrafoIdeas() {
 
 async function selectProject(projectId) {
   state.currentProjectId = projectId;
+  const token = ++projectToken;
   state.currentNoteId = null;
   state.currentNote = null;
   state.editing = false;
@@ -621,15 +624,19 @@ async function selectProject(projectId) {
   cargarTareaIdea(projectId);
   await loadNotes();
   await Promise.all([loadZone('code'), loadZone('logs')]);
+  if (token !== projectToken) return;
   switchTab('chat');
   showEmptyConceptual();
   await refreshTaskStatus();
+  if (token !== projectToken) return;
   openChat(projectId);
 }
 
 async function loadNotes() {
-  if (!state.currentProjectId) return;
-  const data = await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/conceptual`);
+  const projectId = state.currentProjectId;
+  if (!projectId) return;
+  const data = await api(`/api/projects/${encodeURIComponent(projectId)}/conceptual`);
+  if (projectId !== state.currentProjectId) return; // respuesta de una idea anterior
   // Si el servidor devolviera algo inesperado, no se debe romper el render.
   state.notes = Array.isArray(data.notes) ? data.notes : [];
   if (data.error) toast(`No se pudieron leer las notas: ${data.error}`, 'err');
@@ -1256,11 +1263,13 @@ function renderArbolArchivos(nodo, zone) {
 }
 
 async function loadZone(zone) {
-  if (!state.currentProjectId) return;
+  const projectId = state.currentProjectId;
+  if (!projectId) return;
   try {
     const { files } = await api(
-      `/api/projects/${encodeURIComponent(state.currentProjectId)}/files?zone=${zone}`
+      `/api/projects/${encodeURIComponent(projectId)}/files?zone=${zone}`
     );
+    if (projectId !== state.currentProjectId) return; // respuesta de una idea anterior
     const ul = zone === 'code' ? $('#code-file-list') : $('#logs-file-list');
     if (!files || !files.length) {
       ul.innerHTML = '<li class="muted" style="cursor:default">Vacío por ahora</li>';
@@ -1280,10 +1289,12 @@ function manejarArchivoClick(event, zone) {
 }
 
 async function openZoneFile(zone, filePath, li) {
+  const projectId = state.currentProjectId;
   try {
     const data = await api(
-      `/api/projects/${encodeURIComponent(state.currentProjectId)}/files/content?zone=${zone}&path=${encodeURIComponent(filePath)}`
+      `/api/projects/${encodeURIComponent(projectId)}/files/content?zone=${zone}&path=${encodeURIComponent(filePath)}`
     );
+    if (projectId !== state.currentProjectId) return; // respuesta de una idea anterior
     const view = zone === 'code' ? $('#code-file-view') : $('#logs-file-view');
     view.textContent = data.content || '(vacío)';
     const ul = zone === 'code' ? $('#code-file-list') : $('#logs-file-list');
@@ -1311,9 +1322,11 @@ function formatBytes(n) {
 }
 
 async function cargarAdjuntos() {
-  if (!state.currentProjectId) return;
+  const projectId = state.currentProjectId;
+  if (!projectId) return;
   try {
-    const data = await api(`/api/projects/${encodeURIComponent(state.currentProjectId)}/adjuntos`);
+    const data = await api(`/api/projects/${encodeURIComponent(projectId)}/adjuntos`);
+    if (projectId !== state.currentProjectId) return; // respuesta de una idea anterior
     adjuntosActuales = Array.isArray(data.adjuntos) ? data.adjuntos : [];
     renderAdjuntos(data.historial || [], data.orfaNos || []);
   } catch (error) {
@@ -2781,9 +2794,10 @@ async function cargarTareaIdea(projectId) {
   if (!cont) return;
   try {
     const nota = await api(`/api/projects/${encodeURIComponent(projectId)}/tarea-en-curso`);
+    if (projectId !== state.currentProjectId) return;
     pintarAvisoTarea(projectId, nota);
   } catch {
-    pintarAvisoTarea(projectId, null);
+    if (projectId === state.currentProjectId) pintarAvisoTarea(projectId, null);
   }
 }
 
