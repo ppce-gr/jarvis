@@ -126,3 +126,18 @@ test('sube los commits pendientes aunque no haya cambios que commitear', async (
   assert.match(salida, /subido a origin\/main/);
   assert.equal(await pendientes(), '0', 'no debe quedarse nada sin subir');
 });
+
+test('no intenta subir si el historial supera el límite de tamaño', async (t) => {
+  const e = await entorno();
+  t.after(() => fs.rm(e.dir, { recursive: true, force: true }));
+
+  await fs.writeFile(path.join(e.code, 'pendiente.txt'), 'nuevo');
+  await e.git(['add', '-A']);
+  await e.git(['commit', '-qm', 'local sin subir']);
+
+  const { salida, code } = await e.correr({ JARVIS_BACKUP_MAX_GIT_MB: '0' });
+  assert.match(salida, /el historial ocupa 1 MB \(límite 0 MB\)/);
+  assert.equal(code, 1, 'debe avisar de que no se subió');
+  const pendientes = (await execFileAsync('git', ['rev-list', '--count', 'origin/main..HEAD'], { cwd: e.code })).stdout.trim();
+  assert.notEqual(pendientes, '0', 'no debe intentar el push');
+});

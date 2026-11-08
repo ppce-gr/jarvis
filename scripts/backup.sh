@@ -29,6 +29,13 @@
 #  el código:  JARVIS_BACKUP_COMMIT_CODE=1
 # ============================================================
 set -uo pipefail
+# Nunca esperar a que alguien teclee credenciales: el backup corre solo.
+export GIT_TERMINAL_PROMPT=0
+
+# Límites para que un remoto lento no secuestre la Raspberry.
+FETCH_TIMEOUT="${JARVIS_BACKUP_FETCH_TIMEOUT:-60}"
+PUSH_TIMEOUT="${JARVIS_BACKUP_PUSH_TIMEOUT:-180}"
+MAX_GIT_MB="${JARVIS_BACKUP_MAX_GIT_MB:-512}"
 
 CODE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BRAIN_DIR="${JARVIS_BRAIN_DIR:-$(cd "$CODE_DIR/.." && pwd)/jarvis-vault}"
@@ -36,6 +43,15 @@ MESSAGE="${1:-chore(jarvis): autosave $(date '+%Y-%m-%d %H:%M:%S')}"
 COMMIT_CODE="$( [ "${JARVIS_BACKUP_COMMIT_CODE:-0}" = "1" ] && echo si || echo no )"
 
 FALLOS=0
+
+# Git sin mantenimiento automático. En la Pi, un `git gc`/repack sobre un
+# historial grande puede tenerla media hora ocupada y dejar el chat sin CPU.
+# Se pasa por entorno para que también lo respete `timeout`.
+export GIT_CONFIG_COUNT=2
+export GIT_CONFIG_KEY_0=gc.auto
+export GIT_CONFIG_VALUE_0=0
+export GIT_CONFIG_KEY_1=maintenance.auto
+export GIT_CONFIG_VALUE_1=false
 
 # Respalda un repositorio: commit de lo que haya (si se permite) y push de lo pendiente.
 respaldar_repo() {
@@ -99,9 +115,27 @@ respaldar_repo() {
     return
   fi
 
-  local error_git
-  if ! error_git="$(git -C "$dir" fetch origin "$rama" 2>&1 >/dev/null)"; then
-    echo "[backup]    ERROR: no se pudo contactar con el remoto." >&2
+  # Un historial enorme no se puede subir desde la Pi sin dejarla sin aire.
+  # El commit local ya está hecho; se avisa y se evita el push eterno.
+  local git_mb
+  git_mb="$(du -sm "$dir/.git" 2>/dev/null | awk '{print $1}')"
+  git_mb="${git_mb:-0}"
+  if [ "$git_mb" -gt "$MAX_GIT_MB" ] && [ "${JARVIS_BACKUP_FORZAR_PUSH:-0}" != "1" ]; then
+    echo "[backup]    AVISO: el historial ocupa ${git_mb} MB (límite ${MAX_GIT_MB} MB)." >&2
+    echo "[backup]    No se intenta subir para no secuestrar la Pi; el commit local sí queda hecho." >&2
+    echo "[backup]    Limpia el historial o usa JARVIS_BACKUP_FORZAR_PUSH=1 para intentarlo igual." >&2
+    FALLOS=$((FALLOS + 1))
+    return
+  fi
+
+  local error_git rc_fetch=0
+  error_git="$(timeout "$FETCH_TIMEOUT" git -C "$dir" fetch origin "$rama" 2>&1 >/dev/null)" || rc_fetch=$?
+  if [ "$rc_fetch" -ne 0 ]; then
+    if [ "$rc_fetch" -eq 124 ]; then
+      echo "[backup]    ERROR: el fetch superó ${FETCH_TIMEOUT}s; se aborta." >&2
+    else
+      echo "[backup]    ERROR: no se pudo contactar con el remoto." >&2
+    fi
     echo "$error_git" | head -3 | sed 's/^/               /' >&2
     # El fallo más habitual no es la red, sino la clave de host sin aceptar.
     if echo "$error_git" | grep -q "Host key verification failed"; then
@@ -120,10 +154,16 @@ respaldar_repo() {
   fi
 
   echo "[backup]    ${pendientes} commit(s) pendientes de subir..."
-  if git -C "$dir" push origin "$rama" >/dev/null 2>&1; then
+  local push_rc=0 push_out
+  push_out="$(timeout "$PUSH_TIMEOUT" git -C "$dir" push origin "$rama" 2>&1)" || push_rc=$?
+  if [ "$push_rc" -eq 0 ]; then
     echo "[backup]    subido a origin/${rama}"
   else
     echo "[backup]    ERROR: no se pudo subir; sigue sólo en la SD." >&2
+    if [ "$push_rc" -eq 124 ]; then
+      echo "[backup]    El push superó ${PUSH_TIMEOUT}s y se abortó para liberar la Pi." >&2
+    fi
+    echo "$push_out" | tail -5 | sed 's/^/               /' >&2
     FALLOS=$((FALLOS + 1))
   fi
 }
