@@ -127,17 +127,17 @@ test('sube los commits pendientes aunque no haya cambios que commitear', async (
   assert.equal(await pendientes(), '0', 'no debe quedarse nada sin subir');
 });
 
-test('no intenta subir si el historial supera el límite de tamaño', async (t) => {
+test('aborta el commit de la memoria si un fichero supera el límite', async (t) => {
   const e = await entorno();
   t.after(() => fs.rm(e.dir, { recursive: true, force: true }));
 
-  await fs.writeFile(path.join(e.code, 'pendiente.txt'), 'nuevo');
-  await e.git(['add', '-A']);
-  await e.git(['commit', '-qm', 'local sin subir']);
+  await fs.writeFile(path.join(e.brain, 'enorme.bin'), Buffer.alloc(2 * 1024 * 1024, 120));
+  const antes = await e.commits(e.brain);
 
-  const { salida, code } = await e.correr({ JARVIS_BACKUP_MAX_GIT_MB: '0' });
-  assert.match(salida, /el historial ocupa 1 MB \(límite 0 MB\)/);
-  assert.equal(code, 1, 'debe avisar de que no se subió');
-  const pendientes = (await execFileAsync('git', ['rev-list', '--count', 'origin/main..HEAD'], { cwd: e.code })).stdout.trim();
-  assert.notEqual(pendientes, '0', 'no debe intentar el push');
+  const { salida, code } = await e.correr({ JARVIS_BACKUP_MAX_FILE_MB: '1' });
+  assert.match(salida, /ABORTADO: ficheros demasiado grandes/);
+  assert.match(salida, /límite 1 MB/);
+  assert.equal(code, 1, 'debe avisar de que no se guardó');
+  assert.equal(await e.commits(e.brain), antes, 'no debe crear el commit');
+  assert.ok(await fs.stat(path.join(e.brain, 'enorme.bin')), 'el fichero sigue en disco');
 });

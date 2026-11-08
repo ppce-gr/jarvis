@@ -49,10 +49,13 @@ test('extractText sólo acepta bloques de texto de ACP', () => {
   assert.equal(AcpConversationAdapter.extractText(null), '');
 });
 
-test('el contexto va sólo en el primer mensaje', () => {
+test('el contexto va en el primer mensaje y el recordatorio en los siguientes', () => {
   const first = AcpConversationAdapter.buildOutgoingMessage('demo', 'hola', true);
   assert.match(first, /proyecto "demo"/);
-  assert.equal(AcpConversationAdapter.buildOutgoingMessage('demo', 'sigue', false), 'sigue');
+  assert.match(first, /code\/output\//);
+  const later = AcpConversationAdapter.buildOutgoingMessage('demo', 'sigue', false);
+  assert.match(later, /^sigue/);
+  assert.match(later, /temporales/i);
 });
 
 /* ================================================================

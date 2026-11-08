@@ -55,6 +55,11 @@ test('FileSystemProjectRepository lista y recupera proyectos', async () => {
   const alfa = await repo.findById('alfa');
   assert.match(alfa.description, /Alfa/);
   assert.equal(alfa.isArchived(), false);
+
+  // La carpeta de entregables se crea y se ignora sola.
+  const ignore = await fs.readFile(path.join(dir, 'alfa', 'code', 'output', '.gitignore'), 'utf8');
+  assert.match(ignore, /^\*$/m);
+  assert.match(ignore, /^!\.gitignore$/m);
 });
 
 test('FileSystemBrowserAdapter lista y lee dentro de la zona permitida', async () => {

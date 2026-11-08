@@ -156,6 +156,8 @@ El script de mantenimiento reúne las operaciones en un solo sitio:
 
 ## Documentación
 
+- [`docs/temporales.md`](docs/temporales.md): temporales por idea y carpeta `code/output/` para descargables.
+
 | Documento | Contenido |
 |---|---|
 | [`docs/arquitectura-jarvis-pi3.md`](docs/arquitectura-jarvis-pi3.md) | Visión, principios y flujo de trabajo. |

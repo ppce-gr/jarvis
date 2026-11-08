@@ -25,6 +25,8 @@ import {
   COMPACTION_TRIGGER_BYTES,
   compactarConversacion
 } from '../../domain/ConversationCompaction.js';
+import { workspacePolicyLines } from '../../domain/WorkspacePolicy.js';
+import { resolverTmpDir, asegurarTmpProyecto } from '../fs/TempWorkspace.js';
 import { JsonRpcStdioClient } from './JsonRpcStdioClient.js';
 import { FileSystemResumeNoteAdapter } from '../persistence/FileSystemResumeNoteAdapter.js';
 import { resolverWorkspace } from '../persistence/resolverWorkspace.js';
@@ -85,10 +87,12 @@ export class AcpConversationAdapter extends ConversationPort {
     probeTimeoutMs = Number(process.env.JARVIS_MODEL_PROBE_TIMEOUT_MS || 45 * 1000),
     subchatLimits = null,
     compactionBytes = COMPACTION_TRIGGER_BYTES,
+    tmpDir = null,
     spawnFn = nodeSpawn
   } = {}) {
     super();
     this.brainDir = brainDir;
+    this.tmpDir = tmpDir || resolverTmpDir(brainDir);
     this.dshBin = dshBin;
     this.profile = profile;
     this.dshHome = dshHome;
@@ -736,8 +740,12 @@ export class AcpConversationAdapter extends ConversationPort {
   }
 
   /** Contexto del proyecto en el primer mensaje de la sesión. */
-  static buildOutgoingMessage(projectId, text, isFirstOfSession, fetchMode = DEFAULT_FETCH_MODE) {
-    if (!isFirstOfSession) return text;
+  static buildOutgoingMessage(projectId, text, isFirstOfSession, fetchMode = DEFAULT_FETCH_MODE, tmpDir = null) {
+    const tmpRoot = tmpDir || process.env.JARVIS_TMP_DIR
+      || path.resolve(process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault'), '..', 'tmp');
+    if (!isFirstOfSession) {
+      return `${text}\n\n${fetchPolicyLines(fetchMode).join('\n')}\n\n${workspacePolicyLines(projectId, tmpRoot, { short: true }).join('\n')}`;
+    }
     return [
       `Trabajas dentro del proyecto "${projectId}" de Jarvis.`,
       'El directorio de trabajo actual ES la carpeta del proyecto.',
@@ -765,6 +773,8 @@ export class AcpConversationAdapter extends ConversationPort {
       '  la idea sin borrar) y borrar. El historial queda registrado.',
       '',
       ...fetchPolicyLines(fetchMode),
+      '',
+      ...workspacePolicyLines(projectId, tmpRoot),
       '',
       'Permisos de sistema (NO tienes root):',
       '- Si necesitas algo del sistema (reiniciar un servicio, editar `/etc`, GPIO,',
@@ -846,6 +856,7 @@ export class AcpConversationAdapter extends ConversationPort {
     const clean = String(text ?? '').trim();
     if (!clean) throw new Error('MESSAGE_REQUIRED');
 
+    await asegurarTmpProyecto(this.tmpDir, projectId).catch(() => {});
     const session = await this._ensureSession(projectId);
     if (!session.ready || !session.sessionId) {
       throw new Error('No se pudo preparar la sesión de conversación con ACP');
@@ -878,7 +889,7 @@ export class AcpConversationAdapter extends ConversationPort {
     const isFirstOfSession = session.turnCount === 0;
     session.turnCount += 1;
     let outgoing = AcpConversationAdapter.buildOutgoingMessage(
-      projectId, clean, isFirstOfSession, this.preferred.fetch_mode
+      projectId, clean, isFirstOfSession, this.preferred.fetch_mode, this.tmpDir
     );
     if (isFirstOfSession) {
       // Reanudación: si una sesión anterior dejó `tarea-en-curso.md`, es lo
