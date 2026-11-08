@@ -198,6 +198,18 @@ JARVIS_BACKUP_COMMIT_CODE=1 bash scripts/backup.sh
 Y `mantenimiento.sh respaldo` sí commitea el código: pedir un respaldo a mano es
 exactamente decir «guarda lo que tengo ahora».
 
+El backup está protegido contra atascos que dejarían la Pi sin CPU:
+
+- no lanza `git gc`/mantenimiento automático; en la Pi un repack grande puede
+  tenerla media hora ocupada;
+- `fetch` y `push` tienen timeout (60 s y 180 s por defecto);
+- si el historial del repositorio supera **512 MB**, no intenta el `push`:
+  avisa y deja el commit local hecho. Se puede forzar con
+  `JARVIS_BACKUP_FORZAR_PUSH=1`.
+
+Así un historial enorme no vuelve a secuestrar el chat. Para limpiarlo, sube
+desde un ordenador o reescribe la historia del vault a mano.
+
 ---
 
 ## Paso 5 · Autoactualización
