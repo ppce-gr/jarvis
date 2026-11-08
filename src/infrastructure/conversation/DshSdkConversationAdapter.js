@@ -12,6 +12,8 @@ import {
   COMPACTION_TRIGGER_BYTES,
   compactarConversacion
 } from '../../domain/ConversationCompaction.js';
+import { workspacePolicyLines } from '../../domain/WorkspacePolicy.js';
+import { resolverTmpDir, asegurarTmpProyecto } from '../fs/TempWorkspace.js';
 import {
   summarizeTool,
   formatToolInput,
@@ -67,10 +69,12 @@ export class DshSdkConversationAdapter extends ConversationPort {
     idleTimeoutMs = DshSdkConversationAdapter.DEFAULT_IDLE_MS,
     subchatLimits = null,
     compactionBytes = COMPACTION_TRIGGER_BYTES,
+    tmpDir = null,
     spawnFn = nodeSpawn
   } = {}) {
     super();
     this.brainDir = brainDir;
+    this.tmpDir = tmpDir || resolverTmpDir(brainDir);
     this.dshBin = dshBin;
     this.profile = profile;
     this.dshHome = dshHome;
@@ -399,8 +403,12 @@ export class DshSdkConversationAdapter extends ConversationPort {
    * porque el agente nuevo no recuerda nada. El mensaje original del usuario es
    * el que se guarda en el transcript; esto es sólo lo que viaja al modelo.
    */
-  static buildOutgoingMessage(projectId, text, isFirstOfSession, fetchMode = DEFAULT_FETCH_MODE) {
-    if (!isFirstOfSession) return text;
+  static buildOutgoingMessage(projectId, text, isFirstOfSession, fetchMode = DEFAULT_FETCH_MODE, tmpDir = null) {
+    const tmpRoot = tmpDir || process.env.JARVIS_TMP_DIR
+      || path.resolve(process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault'), '..', 'tmp');
+    if (!isFirstOfSession) {
+      return `${text}\n\n${fetchPolicyLines(fetchMode).join('\n')}\n\n${workspacePolicyLines(projectId, tmpRoot, { short: true }).join('\n')}`;
+    }
     return [
       `Trabajas dentro del proyecto "${projectId}" de Jarvis.`,
       'El directorio de trabajo actual ES la carpeta del proyecto.',
@@ -428,6 +436,8 @@ export class DshSdkConversationAdapter extends ConversationPort {
       '  la idea sin borrar) y borrar. El historial queda registrado.',
       '',
       ...fetchPolicyLines(fetchMode),
+      '',
+      ...workspacePolicyLines(projectId, tmpRoot),
       '',
       'Permisos de sistema (NO tienes root):',
       '- Si necesitas algo del sistema (reiniciar un servicio, editar `/etc`, GPIO,',
@@ -498,6 +508,7 @@ export class DshSdkConversationAdapter extends ConversationPort {
     if (!projectId) throw new Error('PROJECT_ID_REQUIRED');
     const clean = String(text ?? '').trim();
     if (!clean) throw new Error('MESSAGE_REQUIRED');
+    await asegurarTmpProyecto(this.tmpDir, projectId).catch(() => {});
 
     let session = await this._ensureSession(projectId);
 
@@ -522,7 +533,7 @@ export class DshSdkConversationAdapter extends ConversationPort {
     const isFirstOfSession = session.turnCount === 0;
     session.turnCount += 1;
     let outgoing = DshSdkConversationAdapter.buildOutgoingMessage(
-      projectId, clean, isFirstOfSession, this.fetchMode
+      projectId, clean, isFirstOfSession, this.fetchMode, this.tmpDir
     );
     if (isFirstOfSession) {
       // Sesión nueva (arranque de Jarvis o «continuar»): si el sub-chat trae

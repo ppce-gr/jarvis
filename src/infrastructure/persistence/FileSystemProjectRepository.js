@@ -105,7 +105,14 @@ export class FileSystemProjectRepository extends ProjectRepositoryPort {
   async save(project) {
     const projectDir = path.join(this.brainDir, project.id);
     await fs.mkdir(path.join(projectDir, 'conceptual'), { recursive: true });
-    await fs.mkdir(path.join(projectDir, 'code'), { recursive: true });
+    const outputDir = path.join(projectDir, 'code', 'output');
+    await fs.mkdir(outputDir, { recursive: true });
+    // La propia carpeta se ignora: todo lo descargable queda fuera de Git.
+    await fs.writeFile(
+      path.join(outputDir, '.gitignore'),
+      '# Todo lo que se descarga desde la vista de código.\n*\n!.gitignore\n',
+      { flag: 'wx' }
+    ).catch(() => {});
     await fs.mkdir(path.join(projectDir, 'logs'), { recursive: true });
 
     if (project.description) {

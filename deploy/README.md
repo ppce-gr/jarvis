@@ -203,12 +203,12 @@ El backup está protegido contra atascos que dejarían la Pi sin CPU:
 - no lanza `git gc`/mantenimiento automático; en la Pi un repack grande puede
   tenerla media hora ocupada;
 - `fetch` y `push` tienen timeout (60 s y 180 s por defecto);
-- si el historial del repositorio supera **512 MB**, no intenta el `push`:
-  avisa y deja el commit local hecho. Se puede forzar con
-  `JARVIS_BACKUP_FORZAR_PUSH=1`.
+- si un fichero que se va a commitear supera **20 MB**, aborta el commit y
+  avisa: lo intermedio debe ir a la carpeta temporal de la idea y lo
+  descargable a `code/output/`, que está ignorado.
 
-Así un historial enorme no vuelve a secuestrar el chat. Para limpiarlo, sube
-desde un ordenador o reescribe la historia del vault a mano.
+Así los artefactos pesados no vuelven a entrar en la memoria ni a secuestrar
+el chat. El límite se puede ajustar con `JARVIS_BACKUP_MAX_FILE_MB`.
 
 ---
 

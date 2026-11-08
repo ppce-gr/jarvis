@@ -35,7 +35,7 @@ export GIT_TERMINAL_PROMPT=0
 # Límites para que un remoto lento no secuestre la Raspberry.
 FETCH_TIMEOUT="${JARVIS_BACKUP_FETCH_TIMEOUT:-60}"
 PUSH_TIMEOUT="${JARVIS_BACKUP_PUSH_TIMEOUT:-180}"
-MAX_GIT_MB="${JARVIS_BACKUP_MAX_GIT_MB:-512}"
+MAX_FILE_MB="${JARVIS_BACKUP_MAX_FILE_MB:-20}"
 
 CODE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BRAIN_DIR="${JARVIS_BRAIN_DIR:-$(cd "$CODE_DIR/.." && pwd)/jarvis-vault}"
@@ -85,6 +85,25 @@ respaldar_repo() {
   else
     git -C "$dir" add -A
 
+    # Ficheros demasiado grandes: el commit se aborta. Lo intermedio va a la
+    # carpeta temporal de la idea y lo descargable a code/output/ (ignorado).
+    local grandes="" f mb
+    while IFS= read -r -d '' f; do
+      mb="$(du -sm -- "$dir/$f" 2>/dev/null | cut -f1)"
+      mb="${mb:-0}"
+      if [ "$mb" -gt "$MAX_FILE_MB" ]; then
+        grandes="${grandes}${f} (${mb} MB)"$'\n'
+      fi
+    done < <(git -C "$dir" diff --cached --name-only -z --diff-filter=ACMR)
+    if [ -n "$grandes" ]; then
+      echo "[backup]    ABORTADO: ficheros demasiado grandes (límite ${MAX_FILE_MB} MB):" >&2
+      printf '%s' "$grandes" | sed 's/^/               /' >&2
+      echo "[backup]    Muévelos a la carpeta temporal de la idea o a code/output/." >&2
+      git -C "$dir" reset >/dev/null
+      FALLOS=$((FALLOS + 1))
+      return
+    fi
+
     # Guarda: si se cuela algo sensible, se aborta SIN commitear.
     local sensible
     sensible="$(git -C "$dir" diff --cached --name-only \
@@ -111,19 +130,6 @@ respaldar_repo() {
   # --- Push de lo pendiente (aunque no haya cambios nuevos) ---
   if ! git -C "$dir" remote get-url origin >/dev/null 2>&1; then
     echo "[backup]    sin remoto 'origin': sólo respaldo local." >&2
-    FALLOS=$((FALLOS + 1))
-    return
-  fi
-
-  # Un historial enorme no se puede subir desde la Pi sin dejarla sin aire.
-  # El commit local ya está hecho; se avisa y se evita el push eterno.
-  local git_mb
-  git_mb="$(du -sm "$dir/.git" 2>/dev/null | awk '{print $1}')"
-  git_mb="${git_mb:-0}"
-  if [ "$git_mb" -gt "$MAX_GIT_MB" ] && [ "${JARVIS_BACKUP_FORZAR_PUSH:-0}" != "1" ]; then
-    echo "[backup]    AVISO: el historial ocupa ${git_mb} MB (límite ${MAX_GIT_MB} MB)." >&2
-    echo "[backup]    No se intenta subir para no secuestrar la Pi; el commit local sí queda hecho." >&2
-    echo "[backup]    Limpia el historial o usa JARVIS_BACKUP_FORZAR_PUSH=1 para intentarlo igual." >&2
     FALLOS=$((FALLOS + 1))
     return
   fi

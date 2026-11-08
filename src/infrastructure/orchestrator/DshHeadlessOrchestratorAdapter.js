@@ -7,6 +7,8 @@ import {
   fetchPolicyLines,
   normalizarFetchMode
 } from '../../domain/FetchPolicy.js';
+import { workspacePolicyLines } from '../../domain/WorkspacePolicy.js';
+import { resolverTmpDir, asegurarTmpProyecto } from '../fs/TempWorkspace.js';
 
 /**
  * Adaptador de Infraestructura: DshHeadlessOrchestratorAdapter
@@ -42,10 +44,12 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
     dshHome = process.env.DSH_HOME || undefined,
     timeoutMs = Number(process.env.JARVIS_TASK_TIMEOUT_MS || 15 * 60 * 1000),
     fetchMode = process.env.JARVIS_FETCH_MODE || DEFAULT_FETCH_MODE,
+    tmpDir = null,
     runner = null
   } = {}) {
     super();
     this.brainDir = brainDir;
+    this.tmpDir = tmpDir || resolverTmpDir(brainDir);
     this.dshBin = dshBin;
     this.profile = profile;
     this.dshHome = dshHome;
@@ -148,6 +152,8 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
       '',
       ...fetchPolicyLines(fetchMode),
       '',
+      ...workspacePolicyLines(projectId, this.tmpDir),
+      '',
       'Orden del usuario:',
       instruction,
       '',
@@ -224,6 +230,7 @@ export class DshHeadlessOrchestratorAdapter extends OrchestratorPort {
   async _run(task) {
     const logsDir = this._logsDir(task.projectId);
     await fs.mkdir(logsDir, { recursive: true });
+    await asegurarTmpProyecto(this.tmpDir, task.projectId).catch(() => {});
 
     const logPath = path.join(this._projectDir(task.projectId), task.logFile);
     const summaryPath = path.join(logsDir, 'orchestrator.log');

@@ -116,13 +116,17 @@ test('buildOutgoingMessage da contexto sólo en el primer mensaje', () => {
   assert.match(first, /bloquea/i, 'las dudas bloqueantes se preguntan en el chat');
   assert.match(first, /puntos-clave\.md/);
   assert.match(first, /NO uses la herramienta de fetch/i, 'por defecto se descarga con scripts');
+  assert.match(first, /code\/output\//, 'los entregables van a code/output');
+  assert.match(first, /temporales/i);
   assert.match(first, /hola$/);
 
   const conIa = DshSdkConversationAdapter.buildOutgoingMessage('demo', 'hola', true, 'ia');
   assert.match(conIa, /Puedes pasar la URL/);
 
   const later = DshSdkConversationAdapter.buildOutgoingMessage('demo', 'sigue', false);
-  assert.equal(later, 'sigue');
+  assert.match(later, /^sigue/);
+  assert.match(later, /temporales/i, 'el recordatorio viaja también en mensajes posteriores');
+  assert.match(later, /NO uses la herramienta de fetch/i);
 });
 
 test('la política de fetch viaja en cada mensaje, no solo en el primero', async () => {
