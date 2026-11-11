@@ -15,7 +15,10 @@
 
 export const CHAT_LIMITS = Object.freeze({
   maxTokens: 30000,
-  maxBytes: 80000
+  maxBytes: 80000,
+  // Umbral dinámico de mensajes del chat actual. Al alcanzarlo se resume el
+  // tramo y se abre una sesión nueva, aunque aún quepan en tokens.
+  maxMensajes: 20
 });
 
 const encoder = typeof TextEncoder === 'function' ? new TextEncoder() : null;
@@ -29,12 +32,14 @@ export function estimarTokens(texto) {
 }
 
 /** Normaliza límites: cualquier valor inválido cae al de por defecto. */
-export function normalizarLimites({ maxTokens, maxBytes } = {}) {
+export function normalizarLimites({ maxTokens, maxBytes, maxMensajes } = {}) {
   return {
     maxTokens: Number.isFinite(maxTokens) && maxTokens > 0
       ? Math.floor(maxTokens) : CHAT_LIMITS.maxTokens,
     maxBytes: Number.isFinite(maxBytes) && maxBytes > 0
-      ? Math.floor(maxBytes) : CHAT_LIMITS.maxBytes
+      ? Math.floor(maxBytes) : CHAT_LIMITS.maxBytes,
+    maxMensajes: Number.isFinite(maxMensajes) && maxMensajes > 0
+      ? Math.floor(maxMensajes) : CHAT_LIMITS.maxMensajes
   };
 }
 
@@ -59,6 +64,8 @@ export function medirConversacion(mensajes, limites = CHAT_LIMITS) {
     tokens,
     bytes,
     mensajes: mensajesContados,
-    debePartir: tokens >= lim.maxTokens || bytes >= lim.maxBytes
+    debePartir: tokens >= lim.maxTokens
+      || bytes >= lim.maxBytes
+      || mensajesContados >= lim.maxMensajes
   };
 }

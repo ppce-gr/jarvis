@@ -199,16 +199,27 @@ El usuario **no nota el corte**: ve el mismo chat, con una **marca** entre tramo
 la cabecera («2 chats»). En **🗂 Conversaciones** cada conversación dice **cuántos
 chats** la componen y, al desplegarla, lista cada chat con su resumen.
 
-El umbral se mide por **tokens estimados** (~4 caracteres por token) y por
-**tamaño del texto**, y es configurable:
+El umbral se mide por **tokens estimados** (~4 caracteres por token), por
+**tamaño del texto** y por **número de mensajes** del chat actual. Cualquiera de
+los tres dispara el resumen y la sesión nueva:
 
 | Variable | Por defecto |
 |---|---|
 | `JARVIS_CHAT_MAX_TOKENS` | `30000` |
 | `JARVIS_CHAT_MAX_BYTES` | `80000` |
+| `JARVIS_CHAT_MAX_MESSAGES` | `20` |
+
+Al resumir, el resumen anterior y el nuevo se fusionan en una marca `subchat`; el
+historial reciente se vacía al abrir la sesión nueva, sin que el usuario lo note.
 
 Al **continuar** una conversación guardada también se abre un chat nuevo con
 resumen, en vez de reinyectar solo los 20 últimos mensajes.
+
+El prompt se envía siempre en este orden: instrucciones estáticas (rol, reglas,
+políticas) → resumen acumulado → historial reciente → estado de reanudación →
+mensaje del usuario. Así el prefijo estable no cambia con cada turno. El motor
+DSH no expone bloques `system`/`cache_control` como Anthropic; la caché la
+gestiona él, y este orden es el que mejor la aprovecha.
 
 ### Tamaño de la conversación
 
