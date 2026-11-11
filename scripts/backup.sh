@@ -87,8 +87,12 @@ respaldar_repo() {
 
     # Ficheros demasiado grandes: el commit se aborta. Lo intermedio va a la
     # carpeta temporal de la idea y lo descargable a code/output/ (ignorado).
-    local grandes="" f mb
+    local grandes="" f mb modo
     while IFS= read -r -d '' f; do
+      # Un gitlink (submódulo) apunta a otro repositorio: no es un fichero
+      # grande aunque su carpeta de trabajo pese cientos de MB.
+      modo="$(git -C "$dir" ls-files -s -- "$f" 2>/dev/null | awk '{print $1}')"
+      [ "$modo" = "160000" ] && continue
       mb="$(du -sm -- "$dir/$f" 2>/dev/null | cut -f1)"
       mb="${mb:-0}"
       if [ "$mb" -gt "$MAX_FILE_MB" ]; then
