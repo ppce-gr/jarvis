@@ -3,16 +3,17 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ConversationPort } from '../../domain/ports/ConversationPort.js';
 import { medirConversacion, normalizarLimites } from '../../domain/ChatContext.js';
+import { DEFAULT_FETCH_MODE, normalizarFetchMode } from '../../domain/FetchPolicy.js';
 import {
-  DEFAULT_FETCH_MODE,
-  fetchPolicyLines,
-  normalizarFetchMode
-} from '../../domain/FetchPolicy.js';
+  buildFirstMessage,
+  buildFollowupMessage,
+  preambleHistorial,
+  preambleSubchat
+} from '../../domain/AgentInstructions.js';
 import {
   COMPACTION_TRIGGER_BYTES,
   compactarConversacion
 } from '../../domain/ConversationCompaction.js';
-import { workspacePolicyLines } from '../../domain/WorkspacePolicy.js';
 import { resolverTmpDir, asegurarTmpProyecto } from '../fs/TempWorkspace.js';
 import {
   summarizeTool,
@@ -90,7 +91,8 @@ export class DshSdkConversationAdapter extends ConversationPort {
     // si no, se leen del entorno y, si tampoco, caen a los del dominio.
     this.subchatLimits = normalizarLimites(subchatLimits || {
       maxTokens: Number(process.env.JARVIS_CHAT_MAX_TOKENS),
-      maxBytes: Number(process.env.JARVIS_CHAT_MAX_BYTES)
+      maxBytes: Number(process.env.JARVIS_CHAT_MAX_BYTES),
+      maxMensajes: Number(process.env.JARVIS_CHAT_MAX_MESSAGES)
     });
 
     /** @type {Map<string, object>} projectId -> sesión */
@@ -407,60 +409,9 @@ export class DshSdkConversationAdapter extends ConversationPort {
     const tmpRoot = tmpDir || process.env.JARVIS_TMP_DIR
       || path.resolve(process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault'), '..', 'tmp');
     if (!isFirstOfSession) {
-      return `${text}\n\n${fetchPolicyLines(fetchMode).join('\n')}\n\n${workspacePolicyLines(projectId, tmpRoot, { short: true }).join('\n')}`;
+      return buildFollowupMessage({ projectId, text, fetchMode, tmpDir: tmpRoot });
     }
-    return [
-      `Trabajas dentro del proyecto "${projectId}" de Jarvis.`,
-      'El directorio de trabajo actual ES la carpeta del proyecto.',
-      '- El diseño y el contexto de esta idea viven en `conceptual/`; empieza por `_indice.md`.',
-      '- Cuando lleguéis a un acuerdo, escríbelo en la nota conceptual que corresponda.',
-      '- El código y los artefactos van en `code/`.',
-      '- No modifiques nada fuera de este proyecto.',
-      '',
-      'Seguimiento de la conversación (notas en `conceptual/`):',
-      '- `preguntas.md`: SOLO las preguntas que hace el USUARIO, con su respuesta ya',
-      '  verificada (`- [x] <pregunta> — <respuesta breve>`). Las peticiones o tareas',
-      '  que te pida NO se anotan aquí.',
-      '- `dudas.md`: las dudas TUYAS que NO bloquean el trabajo, para que el usuario',
-      '  las responda una a una en la pestaña Dudas. Anótalas como `- [ ] <duda>`.',
-      '  Nunca las marques respondidas tú: las responde él. Si una duda BLOQUEA el',
-      '  trabajo, pregúntala en el chat y no la escribas.',
-      '- `puntos-clave.md`: los pilares de la idea; se usan para colorear el mapa.',
-      'Mantén estas listas al día al final del turno en que haya algo que anotar, sin',
-      'reescribir lo que ya está.',
-      '',
-      'Ficheros que te pasa el usuario:',
-      '- Llegan a `adjuntos/`. Cuando uses uno, muévelo a su sitio dentro del',
-      '  proyecto (p. ej. `code/` o `conceptual/`) sin borrarlo del disco.',
-      '- La pestaña Adjuntos permite al usuario subir, mover, desasociar (quitar de',
-      '  la idea sin borrar) y borrar. El historial queda registrado.',
-      '',
-      ...fetchPolicyLines(fetchMode),
-      '',
-      ...workspacePolicyLines(projectId, tmpRoot),
-      '',
-      'Permisos de sistema (NO tienes root):',
-      '- Si necesitas algo del sistema (reiniciar un servicio, editar `/etc`, GPIO,',
-      '  paquetes), NO lo intentes: pide permiso y espera. Lo aprueba el usuario',
-      '  1 a 1 con su PIN; nada se ejecuta hasta entonces.',
-      '- Pide así (con el id de tu idea):',
-      '  curl -s -XPOST localhost:3081/api/projects/<idea>/permisos \\',
-      '    -H "Content-Type: application/json" \\',
-      '    -d \'{"comando":"...","motivo":"..."}\'',
-      '- El resultado queda en `logs/permisos/resultados/`. Si no aparece, aún no lo',
-      '  ha aprobado: espera, no lo repitas en bucle.',
-      '',
-      'Reanudación tras un reinicio:',
-      '- Si vas a pedir la actualización de Jarvis (tocar `.solicitar-actualizacion`),',
-      '  ANTES escribe `tarea-en-curso.md` en la raíz del proyecto con tres apartados:',
-      '  `## Qué estaba haciendo`, `## Qué falta` y `## Siguiente paso`. El reinicio',
-      '  matará tu sesión; esa nota se te devolverá al reanudar.',
-      '- Cuando la tarea termine, BORRA `tarea-en-curso.md`: mientras siga ahí, se te',
-      '  inyectará al abrir sesión como trabajo pendiente.',
-      '',
-      'Mensaje del usuario:',
-      text
-    ].join('\n');
+    return buildFirstMessage({ projectId, text, fetchMode, tmpDir: tmpRoot });
   }
 
   /* ------------------------------------------------------------------
@@ -532,26 +483,32 @@ export class DshSdkConversationAdapter extends ConversationPort {
 
     const isFirstOfSession = session.turnCount === 0;
     session.turnCount += 1;
-    let outgoing = DshSdkConversationAdapter.buildOutgoingMessage(
-      projectId, clean, isFirstOfSession, this.fetchMode, this.tmpDir
-    );
+    let outgoing;
     if (isFirstOfSession) {
-      // Sesión nueva (arranque de Jarvis o «continuar»): si el sub-chat trae
-      // resumen, ése manda (es más denso y no pierde el hilo); si no, se
-      // reinyectan los últimos mensajes del hilo actual.
+      // Orden de caché: estático → resumen → historial → mensaje.
+      let summary = '';
+      let history = [];
       if (session.prelude) {
-        outgoing = `${DshSdkConversationAdapter._preambleSubchat(session.prelude)}\n\n${outgoing}`;
+        summary = session.prelude;
         session.prelude = null;
       } else {
-        const previos = await this._historialReinyeccion(projectId);
-        if (previos.length) outgoing = `${DshSdkConversationAdapter._preambleHistorial(previos)}\n\n${outgoing}`;
+        history = await this._historialReinyeccion(projectId);
       }
-    }
-
-    // El modo de descarga puede cambiar a mitad de conversación: se recuerda en
-    // cada mensaje (el primero ya lo lleva en el preámbulo).
-    if (!isFirstOfSession) {
-      outgoing = `${outgoing}\n\n${fetchPolicyLines(this.fetchMode).join('\n')}`;
+      outgoing = buildFirstMessage({
+        projectId,
+        text: clean,
+        fetchMode: this.fetchMode,
+        tmpDir: this.tmpDir,
+        summary,
+        history
+      });
+    } else {
+      outgoing = buildFollowupMessage({
+        projectId,
+        text: clean,
+        fetchMode: this.fetchMode,
+        tmpDir: this.tmpDir
+      });
     }
 
     try {
@@ -671,13 +628,11 @@ export class DshSdkConversationAdapter extends ConversationPort {
 
   /** Bloque que abre un sub-chat con el resumen del anterior. */
   static _preambleSubchat(resumen) {
-    return [
-      'Este chat continúa una conversación anterior de este mismo proyecto.',
-      'Resumen del contexto (continúa sin repetirlo):',
-      '',
-      String(resumen || '').trim(),
-      ''
-    ].join('\n');
+    return preambleSubchat(resumen);
+  }
+
+  static _preambleHistorial(mensajes) {
+    return preambleHistorial(mensajes);
   }
 
   async history(projectId) {

@@ -54,7 +54,7 @@ test('el contexto va en el primer mensaje y el recordatorio en los siguientes', 
   assert.match(first, /proyecto "demo"/);
   assert.match(first, /code\/output\//);
   const later = AcpConversationAdapter.buildOutgoingMessage('demo', 'sigue', false);
-  assert.match(later, /^sigue/);
+  assert.match(later, /sigue$/);
   assert.match(later, /temporales/i);
 });
 

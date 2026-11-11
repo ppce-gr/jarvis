@@ -124,7 +124,7 @@ test('buildOutgoingMessage da contexto sólo en el primer mensaje', () => {
   assert.match(conIa, /Puedes pasar la URL/);
 
   const later = DshSdkConversationAdapter.buildOutgoingMessage('demo', 'sigue', false);
-  assert.match(later, /^sigue/);
+  assert.match(later, /sigue$/);
   assert.match(later, /temporales/i, 'el recordatorio viaja también en mensajes posteriores');
   assert.match(later, /NO uses la herramienta de fetch/i);
 });
@@ -174,7 +174,7 @@ test('el contexto del proyecto se inyecta sólo en el primer turno', async () =>
   const prompts = calls.filter((c) => c.method === 'session/prompt');
 
   assert.match(prompts[0].params.contentBlocks[0].text, /proyecto "demo"/);
-  assert.match(prompts[1].params.contentBlocks[0].text, /^segundo turno/);
+  assert.match(prompts[1].params.contentBlocks[0].text, /segundo turno$/);
   assert.match(prompts[1].params.contentBlocks[0].text, /NO uses la herramienta de fetch/);
 
   // El transcript guarda lo que escribió el usuario, sin el preámbulo.
@@ -297,7 +297,10 @@ test('reset reinicia la conversación y permite volver a hablar', async () => {
   const before = await adapter.status('demo');
   assert.equal(before.sessionId, 'jarvis-demo');
 
+  const vieja = adapter._sessions.get('demo');
+  const salida = new Promise((resolve) => vieja.child.once('close', resolve));
   await adapter.reset('demo');
+  await salida;                         // el proceso viejo debe morir antes de seguir
 
   const after = await adapter.status('demo');
   assert.equal(after.status, 'stopped');

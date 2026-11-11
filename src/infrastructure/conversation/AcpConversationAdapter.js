@@ -16,16 +16,18 @@ import {
   sanitizeActivity
 } from '../../domain/ActivityTrace.js';
 import { medirConversacion, normalizarLimites } from '../../domain/ChatContext.js';
+import { DEFAULT_FETCH_MODE, normalizarFetchMode } from '../../domain/FetchPolicy.js';
 import {
-  DEFAULT_FETCH_MODE,
-  fetchPolicyLines,
-  normalizarFetchMode
-} from '../../domain/FetchPolicy.js';
+  buildFirstMessage,
+  buildFollowupMessage,
+  preambleHistorial,
+  preambleSubchat,
+  preambleTarea
+} from '../../domain/AgentInstructions.js';
 import {
   COMPACTION_TRIGGER_BYTES,
   compactarConversacion
 } from '../../domain/ConversationCompaction.js';
-import { workspacePolicyLines } from '../../domain/WorkspacePolicy.js';
 import { resolverTmpDir, asegurarTmpProyecto } from '../fs/TempWorkspace.js';
 import { JsonRpcStdioClient } from './JsonRpcStdioClient.js';
 import { FileSystemResumeNoteAdapter } from '../persistence/FileSystemResumeNoteAdapter.js';
@@ -107,7 +109,8 @@ export class AcpConversationAdapter extends ConversationPort {
     // sesión nueva. Configurable por entorno o por opción (tests).
     this.subchatLimits = normalizarLimites(subchatLimits || {
       maxTokens: Number(process.env.JARVIS_CHAT_MAX_TOKENS),
-      maxBytes: Number(process.env.JARVIS_CHAT_MAX_BYTES)
+      maxBytes: Number(process.env.JARVIS_CHAT_MAX_BYTES),
+      maxMensajes: Number(process.env.JARVIS_CHAT_MAX_MESSAGES)
     });
 
     // Nota de reanudación: la deja el agente antes de reiniciar Jarvis, y se
@@ -744,60 +747,9 @@ export class AcpConversationAdapter extends ConversationPort {
     const tmpRoot = tmpDir || process.env.JARVIS_TMP_DIR
       || path.resolve(process.env.JARVIS_BRAIN_DIR || path.resolve(process.cwd(), '..', 'jarvis-vault'), '..', 'tmp');
     if (!isFirstOfSession) {
-      return `${text}\n\n${fetchPolicyLines(fetchMode).join('\n')}\n\n${workspacePolicyLines(projectId, tmpRoot, { short: true }).join('\n')}`;
+      return buildFollowupMessage({ projectId, text, fetchMode, tmpDir: tmpRoot });
     }
-    return [
-      `Trabajas dentro del proyecto "${projectId}" de Jarvis.`,
-      'El directorio de trabajo actual ES la carpeta del proyecto.',
-      '- El diseño y el contexto de esta idea viven en `conceptual/`; empieza por `_indice.md`.',
-      '- Cuando lleguéis a un acuerdo, escríbelo en la nota conceptual que corresponda.',
-      '- El código y los artefactos van en `code/`.',
-      '- No modifiques nada fuera de este proyecto.',
-      '',
-      'Seguimiento de la conversación (notas en `conceptual/`):',
-      '- `preguntas.md`: SOLO las preguntas que hace el USUARIO, con su respuesta ya',
-      '  verificada (`- [x] <pregunta> — <respuesta breve>`). Las peticiones o tareas',
-      '  que te pida NO se anotan aquí.',
-      '- `dudas.md`: las dudas TUYAS que NO bloquean el trabajo, para que el usuario',
-      '  las responda una a una en la pestaña Dudas. Anótalas como `- [ ] <duda>`.',
-      '  Nunca las marques respondidas tú: las responde él. Si una duda BLOQUEA el',
-      '  trabajo, pregúntala en el chat y no la escribas.',
-      '- `puntos-clave.md`: los pilares de la idea; se usan para colorear el mapa.',
-      'Mantén estas listas al día al final del turno en que haya algo que anotar, sin',
-      'reescribir lo que ya está.',
-      '',
-      'Ficheros que te pasa el usuario:',
-      '- Llegan a `adjuntos/`. Cuando uses uno, muévelo a su sitio dentro del',
-      '  proyecto (p. ej. `code/` o `conceptual/`) sin borrarlo del disco.',
-      '- La pestaña Adjuntos permite al usuario subir, mover, desasociar (quitar de',
-      '  la idea sin borrar) y borrar. El historial queda registrado.',
-      '',
-      ...fetchPolicyLines(fetchMode),
-      '',
-      ...workspacePolicyLines(projectId, tmpRoot),
-      '',
-      'Permisos de sistema (NO tienes root):',
-      '- Si necesitas algo del sistema (reiniciar un servicio, editar `/etc`, GPIO,',
-      '  paquetes), NO lo intentes: pide permiso y espera. Lo aprueba el usuario',
-      '  1 a 1 con su PIN; nada se ejecuta hasta entonces.',
-      '- Pide así (con el id de tu idea):',
-      '  curl -s -XPOST localhost:3081/api/projects/<idea>/permisos \\',
-      '    -H "Content-Type: application/json" \\',
-      '    -d \'{"comando":"...","motivo":"..."}\'',
-      '- El resultado queda en `logs/permisos/resultados/`. Si no aparece, aún no lo',
-      '  ha aprobado: espera, no lo repitas en bucle.',
-      '',
-      'Reanudación tras un reinicio:',
-      '- Si vas a pedir la actualización de Jarvis (tocar `.solicitar-actualizacion`),',
-      '  ANTES escribe `tarea-en-curso.md` en la raíz del proyecto con tres apartados:',
-      '  `## Qué estaba haciendo`, `## Qué falta` y `## Siguiente paso`. El reinicio',
-      '  matará tu sesión; esa nota se te devolverá al reanudar.',
-      '- Cuando la tarea termine, BORRA `tarea-en-curso.md`: mientras siga ahí, se te',
-      '  inyectará al abrir sesión como trabajo pendiente.',
-      '',
-      'Mensaje del usuario:',
-      text
-    ].join('\n');
+    return buildFirstMessage({ projectId, text, fetchMode, tmpDir: tmpRoot });
   }
 
   /* ------------------------------------------------------------------
@@ -888,33 +840,34 @@ export class AcpConversationAdapter extends ConversationPort {
 
     const isFirstOfSession = session.turnCount === 0;
     session.turnCount += 1;
-    let outgoing = AcpConversationAdapter.buildOutgoingMessage(
-      projectId, clean, isFirstOfSession, this.preferred.fetch_mode, this.tmpDir
-    );
+    let outgoing;
     if (isFirstOfSession) {
-      // Reanudación: si una sesión anterior dejó `tarea-en-curso.md`, es lo
-      // primero que ve el agente. Después, el contexto del hilo reciente.
+      // Orden de caché: estático → resumen → historial → estado → mensaje.
       const nota = await this._resumeNotes.get(projectId).catch(() => ({ existe: false }));
-      if (nota.existe) {
-        outgoing = `${AcpConversationAdapter._preambleTarea(nota.contenido, nota.modificadoEn)}\n\n${outgoing}`;
-      }
-      // Sesión nueva (arranque de Jarvis o «continuar»): devolvemos contexto con
-      // los últimos mensajes del hilo actual, no con todo el historial. Si el
-      // sub-chat trae resumen, ése manda (es más denso y no pierde el hilo).
+      let summary = '';
+      let history = [];
       if (session.prelude) {
-        outgoing = `${AcpConversationAdapter._preambleSubchat(session.prelude)}\n\n${outgoing}`;
+        summary = session.prelude;
         session.prelude = null;
       } else {
-        const previos = await this._historialReinyeccion(projectId);
-        if (previos.length) outgoing = `${AcpConversationAdapter._preambleHistorial(previos)}\n\n${outgoing}`;
+        history = await this._historialReinyeccion(projectId);
       }
-    }
-
-    // El modo de descarga puede cambiar a mitad de conversación: se recuerda en
-    // cada mensaje (el primero ya lo lleva en el preámbulo). Es corto y evita
-    // que un cambio de ajuste tarde hasta la siguiente sesión.
-    if (!isFirstOfSession) {
-      outgoing = `${outgoing}\n\n${fetchPolicyLines(this.preferred.fetch_mode).join('\n')}`;
+      outgoing = buildFirstMessage({
+        projectId,
+        text: clean,
+        fetchMode: this.preferred.fetch_mode,
+        tmpDir: this.tmpDir,
+        summary,
+        history,
+        resume: nota.existe ? nota : null
+      });
+    } else {
+      outgoing = buildFollowupMessage({
+        projectId,
+        text: clean,
+        fetchMode: this.preferred.fetch_mode,
+        tmpDir: this.tmpDir
+      });
     }
 
     // `session/prompt` NO se espera: en ACP esa petición se resuelve cuando el
@@ -1013,16 +966,7 @@ export class AcpConversationAdapter extends ConversationPort {
 
   /** Bloque de contexto con una conversación anterior. */
   static _preambleHistorial(mensajes) {
-    const lineas = mensajes.map((m) => {
-      const quien = m.role === 'user' ? 'Usuario' : 'Jarvis';
-      const texto = String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 600);
-      return `${quien}: ${texto}`;
-    });
-    return [
-      'Conversación anterior de este proyecto (contexto; continúala sin repetirla):',
-      ...lineas,
-      ''
-    ].join('\n');
+    return preambleHistorial(mensajes);
   }
 
   /* ------------------------------------------------------------------
@@ -1124,32 +1068,15 @@ export class AcpConversationAdapter extends ConversationPort {
 
   /** Bloque que abre un sub-chat con el resumen del anterior. */
   static _preambleSubchat(resumen) {
-    return [
-      'Este chat continúa una conversación anterior de este mismo proyecto.',
-      'Resumen del contexto (continúa sin repetirlo):',
-      '',
-      String(resumen || '').trim(),
-      ''
-    ].join('\n');
+    return preambleSubchat(resumen);
   }
 
   /**
    * Bloque de reanudación: lo que el agente dejó escrito justo antes de
-   * reiniciar Jarvis. Va por delante del historial porque es el estado de
-   * la tarea, no una conversación: dice qué se estaba haciendo, qué falta
-   * y cuál era el siguiente paso.
+   * reiniciar Jarvis.
    */
   static _preambleTarea(contenido, modificadoEn) {
-    const cuando = modificadoEn ? ` (dejada el ${new Date(modificadoEn).toLocaleString()})` : '';
-    return [
-      `Nota de reanudación${cuando}: la escribió una sesión anterior tuya en`,
-      '`tarea-en-curso.md`, justo antes de reiniciar Jarvis, que mató aquella sesión.',
-      'Retoma la tarea desde donde la dejó. Puede estar ya superada: verifica antes de',
-      'darla por buena, y BÓRRALA cuando la tarea termine.',
-      '',
-      String(contenido || '').trim(),
-      ''
-    ].join('\n');
+    return preambleTarea(contenido, modificadoEn);
   }
 
   subscribe(projectId, listener) {

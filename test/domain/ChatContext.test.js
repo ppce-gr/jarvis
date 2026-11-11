@@ -14,7 +14,7 @@ test('estimarTokens aproxima a 4 caracteres por token', () => {
 });
 
 test('normalizarLimites usa los de por defecto si no valen', () => {
-  assert.deepEqual(normalizarLimites({ maxTokens: 10, maxBytes: 20 }), { maxTokens: 10, maxBytes: 20 });
+  assert.deepEqual(normalizarLimites({ maxTokens: 10, maxBytes: 20 }), { maxTokens: 10, maxBytes: 20, maxMensajes: 20 });
   assert.deepEqual(normalizarLimites({ maxTokens: 0, maxBytes: -1 }), CHAT_LIMITS);
   assert.deepEqual(normalizarLimites({}), CHAT_LIMITS);
   assert.deepEqual(normalizarLimites(), CHAT_LIMITS);
@@ -37,4 +37,14 @@ test('medirConversacion parte al pasar tokens o bytes', () => {
   assert.equal(medirConversacion(mensajes, { maxTokens: 1, maxBytes: 100000 }).debePartir, true);
   assert.equal(medirConversacion(mensajes, { maxTokens: 100000, maxBytes: 10 }).debePartir, true);
   assert.equal(medirConversacion(mensajes, { maxTokens: 100000, maxBytes: 100000 }).debePartir, false);
+});
+
+test('medirConversacion parte al alcanzar el umbral de mensajes', () => {
+  const mensajes = [
+    { role: 'user', text: 'hola' },
+    { role: 'assistant', text: 'qué tal' },
+    { role: 'tool', text: 'ruido que no cuenta' }
+  ];
+  assert.equal(medirConversacion(mensajes, { maxTokens: 100000, maxBytes: 100000, maxMensajes: 2 }).debePartir, true);
+  assert.equal(medirConversacion(mensajes, { maxTokens: 100000, maxBytes: 100000, maxMensajes: 3 }).debePartir, false);
 });
